@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@fastify/sensible": "^5.0.0",
-    "@helix-id/core": "*",
+    "@helix-id/core": "workspace:*",
     "@prisma/client": "^7.7.0",
     "fastify": "^4.28.0",
     "zod": "^3.23.0"

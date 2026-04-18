@@ -6,10 +6,10 @@ Initialize the Helix ID monorepo. After this story is complete, every package ex
 
 **Definition of Done for Story 0:**
 
-- `npm install` at root succeeds
-- `npm run build` compiles all packages without errors (Turborepo ensures helix-core builds before dependents)
-- `npm run lint` passes across all packages
-- `npm run test` runs and exits cleanly (zero tests = zero failures)
+- `pnpm install` at root succeeds
+- `pnpm run build` compiles all packages without errors (Turborepo ensures helix-core builds before dependents)
+- `pnpm run lint` passes across all packages
+- `pnpm run test` runs and exits cleanly (zero tests = zero failures)
 - `docker-compose up` starts PostgreSQL and the API container without errors
 - `.env.example` is complete and accurate
 - `decisions.md` has its first entries (project initialization, Turborepo, Fastify, crypto library choices)
@@ -178,9 +178,9 @@ HEDERA_E2E_TESTNET=false
 
 ```bash
 cd helix-core
-npm init -y
-npm install --save-dev typescript @types/node vitest @vitest/coverage-v8 eslint @typescript-eslint/eslint-plugin @typescript-eslint/parser
-npm install zod
+pnpm init -y
+pnpm install --save-dev typescript @types/node vitest @vitest/coverage-v8 eslint @typescript-eslint/eslint-plugin @typescript-eslint/parser
+pnpm install zod
 ```
 
 ### `helix-core/tsconfig.json`
@@ -275,9 +275,9 @@ export * from './status-list/index.js';
 
 ```bash
 cd helix-api
-npm install fastify @fastify/sensible zod @prisma/client
-npm install --save-dev typescript @types/node vitest @vitest/coverage-v8 supertest @types/supertest prisma eslint @typescript-eslint/eslint-plugin @typescript-eslint/parser ts-node
-npm install @helix-id/core  # workspace reference
+pnpm install fastify @fastify/sensible zod @prisma/client
+pnpm install --save-dev typescript @types/node vitest @vitest/coverage-v8 supertest @types/supertest prisma eslint @typescript-eslint/eslint-plugin @typescript-eslint/parser ts-node
+pnpm install @helix-id/core  # workspace reference
 ```
 
 ### `helix-api/tsconfig.json`
@@ -383,8 +383,8 @@ datasource db {
 
 ```bash
 cd helix-sdk-js
-npm install @helix-id/core
-npm install --save-dev typescript @types/node vitest @vitest/coverage-v8 eslint @typescript-eslint/eslint-plugin @typescript-eslint/parser
+pnpm install @helix-id/core
+pnpm install --save-dev typescript @types/node vitest @vitest/coverage-v8 eslint @typescript-eslint/eslint-plugin @typescript-eslint/parser
 ```
 
 ### Folder structure
@@ -496,11 +496,11 @@ COPY package*.json ./
 COPY turbo.json ./
 COPY helix-core/package*.json ./helix-core/
 COPY helix-api/package*.json ./helix-api/
-RUN npm ci
+RUN pnpm install --frozen-lockfile
 COPY helix-core ./helix-core
 COPY helix-api ./helix-api
-RUN npm run build --workspace=helix-core
-RUN npm run build --workspace=helix-api
+RUN pnpm run build --workspace=helix-core
+RUN pnpm run build --workspace=helix-api
 RUN cd helix-api && npx prisma generate
 
 FROM node:20-alpine AS runner
@@ -589,16 +589,16 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: npm run build
+        run: pnpm run build
 
       - name: Lint
-        run: npm run lint
+        run: pnpm run lint
 
       - name: Typecheck
-        run: npm run typecheck
+        run: pnpm run typecheck
 
       - name: Check no security tests are skipped
         run: |
@@ -610,7 +610,7 @@ jobs:
           fi
 
       - name: Test
-        run: npm run test
+        run: pnpm run test
         env:
           DATABASE_URL: postgresql://helixid_test:helixid_test@localhost:5433/helixid_test
           NODE_ENV: test
@@ -626,17 +626,17 @@ jobs:
           AUDIT_LOG_DESTINATION: stdout
 
       - name: Audit dependencies
-        run: npm audit --audit-level=high
+        run: pnpm audit --audit-level=high
 ```
 
 ---
 
 ## Story 0 Acceptance Criteria
 
-- [ ] `npm install` from root installs all workspaces cleanly
-- [ ] `npm run build` from root compiles all packages — zero TypeScript errors — Turborepo task graph ensures helix-core builds first
-- [ ] `npm run lint` from root — zero errors
-- [ ] `npm run test` from root — exits 0 (empty test suites are fine)
+- [ ] `pnpm install` from root installs all workspaces cleanly
+- [ ] `pnpm run build` from root compiles all packages — zero TypeScript errors — Turborepo task graph ensures helix-core builds first
+- [ ] `pnpm run lint` from root — zero errors
+- [ ] `pnpm run test` from root — exits 0 (empty test suites are fine)
 - [ ] `docker-compose up` — postgres and api containers start, `/health` returns `{"status":"ok"}`
 - [ ] `.env.example` has every variable listed with a description
 - [ ] `turbo.json` is present with correct task graph

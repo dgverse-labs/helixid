@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@helix-id/sdk-js": "*",
+    "@helix-id/sdk-js": "workspace:*",
     "@types/node": "^20.0.0",
     "typescript": "^5.4.0",
     "vitest": "^2.0.0"

@@ -2,13 +2,13 @@ FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 COPY turbo.json ./
+COPY pnpm-lock.yaml ./
 COPY helix-core/package*.json ./helix-core/
 COPY helix-api/package*.json ./helix-api/
-RUN npm ci
+RUN corepack enable && pnpm install --frozen-lockfile
 COPY helix-core ./helix-core
 COPY helix-api ./helix-api
-RUN npm run build --workspace=helix-core
-RUN npm run build --workspace=helix-api
+RUN pnpm run build --filter=helix-api
 RUN cd helix-api && npx prisma generate
 
 FROM node:24-alpine AS runner

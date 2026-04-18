@@ -20,7 +20,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@helix-id/core": "*"
+    "@helix-id/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
