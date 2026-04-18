@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: helixid_test
+          POSTGRES_PASSWORD: helixid_test
+          POSTGRES_DB: helixid_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: corepack enable && pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Check no security tests are skipped
+        run: |
+          if grep -r "test\.skip\|xit\|it\.todo\|describe\.skip" \
+            helix-api/tests/security \
+            helix-sdk-js/tests/security 2>/dev/null; then
+            echo "ERROR: Skipped tests found in security test directories"
+            exit 1
+          fi
+
+      - name: Test
+        run: pnpm run test
+        env:
+          DATABASE_URL: postgresql://helixid_test:helixid_test@localhost:5433/helixid_test
+          NODE_ENV: test
+          HEDERA_NETWORK: testnet
+          HEDERA_OPERATOR_ID: ${{ secrets.HEDERA_OPERATOR_ID }}
+          HEDERA_OPERATOR_KEY: ${{ secrets.HEDERA_OPERATOR_KEY }}
+          HEDERA_TOPIC_ID: ${{ secrets.HEDERA_TOPIC_ID }}
+          HELIX_SIGNING_KEY: ${{ secrets.HELIX_SIGNING_KEY }}
+          API_BASE_URL: http://localhost:3000
+          ENROLLMENT_TOKEN_TTL_SECONDS: 900
+          CHALLENGE_TTL_SECONDS: 300
+          VP_TTL_SECONDS: 300
+          AUDIT_LOG_DESTINATION: stdout
+
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=high

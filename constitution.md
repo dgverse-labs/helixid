@@ -207,7 +207,7 @@ e2e/
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Monorepo workspace | npm workspaces + Turborepo | Shared helix-core primitives; Turborepo ensures correct build order and enables remote cache |
+| Monorepo workspace | pnpm workspaces + Turborepo | Shared helix-core primitives; Turborepo ensures correct build order and enables remote cache |
 | Remote cache | turborepo-remote-cache (self-hosted) | MIT licensed; prevents redundant CI builds; set up before team grows beyond 2 people |
 
 ### Hedera
@@ -242,7 +242,7 @@ No other crypto libraries are permitted without a documented decision in decisio
 
 | Purpose | Tool |
 |---|---|
-| Monorepo workspace | npm workspaces + Turborepo |
+| Monorepo workspace | pnpm workspaces + Turborepo |
 | Remote cache | turborepo-remote-cache (self-hosted) |
 | Linting | ESLint (TS) |
 | Formatting | Prettier (TS), Black (Python) |
@@ -497,7 +497,7 @@ Dependencies are not prohibited, but every addition is a decision that must be d
 **DP-1 — Before adding a dependency, check:**
 
 1. Is it actively maintained? (last commit, issue response rate)
-2. Does it have known CVEs? (check npm audit or pip-audit)
+2. Does it have known CVEs? (check pnpm audit or pip-audit)
 3. Can an existing dependency already in the project achieve this?
 4. For crypto libraries specifically: is it a well-known audited library? (see approved list in stack section)
 
@@ -507,7 +507,7 @@ Dependencies are not prohibited, but every addition is a decision that must be d
 
 **DP-4 — Dev dependencies are not exempt.** A malicious build tool is as dangerous as a malicious runtime dependency. The same checks apply.
 
-**DP-5 — npm audit and pip-audit run in CI on every PR.** High or critical severity findings block merge. Exceptions require a documented reason and a filed issue for remediation.
+**DP-5 — pnpm audit and pip-audit run in CI on every PR.** High or critical severity findings block merge. Exceptions require a documented reason and a filed issue for remediation.
 
 ---
 
@@ -596,7 +596,7 @@ A user story is done when all of the following are true:
 - [ ] Audit log entries defined and verified to be emitted for all events in AL-1 that the story triggers
 - [ ] Error cases documented — every non-2xx response the story can produce has an error code in helix-core
 - [ ] No new dependency added without a decisions.md entry
-- [ ] npm audit / pip-audit clean
+- [ ] pnpm audit / pip-audit clean
 - [ ] Coverage minimums met for affected packages
 - [ ] PR description notes any database migrations and whether they are destructive
 - [ ] README.md updated in the affected package if public-facing behaviour changed

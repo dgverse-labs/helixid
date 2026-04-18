@@ -7,7 +7,7 @@ and every deviation from the constitution is recorded here.
 
 ## 2025-04-18 — Project initialization
 
-**Decision:** Monorepo structure with npm workspaces + Turborepo.
+**Decision:** Monorepo structure with pnpm workspaces + Turborepo.
 
 **Reason:** Shared helix-core primitives needed by both API and SDK. Turborepo ensures correct build order and enables remote cache for CI speed.
 
@@ -24,7 +24,7 @@ and every deviation from the constitution is recorded here.
 
 **Reason:** helix-core is a shared dependency — Turborepo ensures build order is correct (helix-core builds before helix-api and helix-sdk-js). Remote cache via self-hosted turborepo-remote-cache prevents redundant CI builds.
 
-**Alternatives considered:** Plain npm workspaces scripts — rejected because build order and cache invalidation must be managed manually as package count grows.
+**Alternatives considered:** Plain pnpm workspaces scripts — rejected because build order and cache invalidation must be managed manually as package count grows.
 **Approved by:** [founder]
 
 ---
@@ -124,6 +124,19 @@ and every deviation from the constitution is recorded here.
 **Alternatives considered:** argon2 — stronger KDF but requires a native addon, breaking browser-compatibility goal of the SDK. libsodium — additional dependency, same algorithm class.
 
 **Approved by:** [founder]
+
+## 6. Migration from npm to pnpm
+**Date:** 2026-04-18
+**Status:** Approved
+
+**Context:** The initial specification (`docs/story0.md` & `constitution.md`) mandated using `npm workspaces` for monorepo management.
+**Decision:** We transitioned from `npm` to `pnpm` (v9+) for robust package management.
+**Rationale:** `pnpm` strictly bans phantom dependencies through its symlinked virtual store (`.pnpm`). In a monolithic repository architecture designed around Zero-Trust and explicit boundaries, letting a workspace implicitly import a dependency it didn't explicitly request is an architectural violation. `pnpm` strictly forbids this. It also integrates perfectly with Turborepo and provides parallel processing speedups.
+**Consequences:** 
+- Workspace linking uses native `pnpm-workspace.yaml`.
+- All `npm install` actions are replaced by `pnpm install`.
+- Internal dependency linking uses `"workspace:*"` explicitly.
+- `package-lock.json` replaced by `pnpm-lock.yaml`.
 
 ---
 

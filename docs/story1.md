@@ -25,13 +25,13 @@ All mocks are constructor-injected interfaces. The real implementations are wire
 In `helix-api`:
 
 ```bash
-npm install @hiero-did-sdk/client @hiero-did-sdk/registrar @hiero-did-sdk/resolver @hashgraph/sdk @noble/curves @noble/hashes
+pnpm install @hiero-did-sdk/client @hiero-did-sdk/registrar @hiero-did-sdk/resolver @hashgraph/sdk @noble/curves @noble/hashes
 ```
 
 In `helix-core`:
 
 ```bash
-npm install @noble/curves @noble/hashes
+pnpm install @noble/curves @noble/hashes
 ```
 
 Add entries to `decisions.md` for all four packages per DP-2.
@@ -600,4 +600,4 @@ Tests:
 - [ ] Unit test coverage ≥ 95% for helix-core crypto and did modules
 - [ ] All security tests pass and none are skipped
 - [ ] `decisions.md` updated with @hiero-did-sdk packages and @hashgraph/sdk entries
-- [ ] `npm run build` compiles without errors
+- [ ] `pnpm run build` compiles without errors

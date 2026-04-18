@@ -1,0 +1,38 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: helixid
+      POSTGRES_PASSWORD: helixid
+      POSTGRES_DB: helixid
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U helixid"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: helix-api/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://helixid:helixid@postgres:5432/helixid
+      HEDERA_NETWORK: testnet
+      PORT: 3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+
+volumes:
+  postgres_data:

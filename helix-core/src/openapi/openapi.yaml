@@ -1,0 +1,12 @@
+openapi: "3.1.0"
+info:
+  title: Helix ID
+  version: "0.1.0"
+  description: >
+    Helix ID agent identity and trust infrastructure API.
+    This spec is the single source of truth for all API contracts (AC-1).
+    Every endpoint must have a spec entry before implementation begins (AC-2).
+paths: {}
+components:
+  schemas: {}
+  securitySchemes: {}
