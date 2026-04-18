@@ -1,0 +1,11 @@
+// Prisma v7 schema
+// See constitution §11 for core table list.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+

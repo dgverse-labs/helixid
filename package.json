@@ -1,0 +1,22 @@
+{
+  "name": "helix-id",
+  "private": true,
+  "workspaces": ["helix-core", "helix-api", "helix-sdk-js", "e2e"],
+  "scripts": {
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test --filter=e2e",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write \"**/*.{ts,json,md}\" --ignore-path .gitignore",
+    "dev": "turbo run dev --parallel"
+  },
+  "packageManager": "npm@10.8.2",
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.3.0",
+    "turbo": "^2.3.0"
+  }
+}
