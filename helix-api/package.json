@@ -17,10 +17,10 @@
     "db:reset": "prisma migrate reset --force"
   },
   "dependencies": {
-    "@fastify/sensible": "^5.0.0",
+    "@fastify/sensible": "^6.0.0",
     "@helix-id/core": "workspace:*",
     "@prisma/client": "^7.7.0",
-    "fastify": "^4.28.0",
+    "fastify": "^5.7.2",
     "zod": "^3.23.0"
   },
   "devDependencies": {
