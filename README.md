@@ -387,7 +387,7 @@ Key areas where help is needed:
 
 ## Built By
 
-HelixID is built by [DgVerse](https://dgverse.io) — building the trust layer for digital credentials and AI agents.
+HelixID is built by [DgVerse](https://www.dgverse.in) — building the trust layer for digital credentials and AI agents.
 
 ---
 
