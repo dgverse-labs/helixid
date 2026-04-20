@@ -259,18 +259,12 @@ Only maintainers merge. Do not merge your own PR even if you have permissions.
 
 ## Security Disclosure
 
-**Do not open public issues for security vulnerabilities.**
+**Do not open public issues for security vulnerabilities.** Use one of:
 
-Email `security@dgverse.io` with:
+- Email `security@dgverse.io`
+- [GitHub Security Advisory](https://github.com/nicedigverse/helixid/security/advisories/new) (private)
 
-- A description of the issue
-- Reproduction steps or proof-of-concept
-- Affected versions
-- Any suggested mitigation
-
-We acknowledge within 48 hours and aim to have a fix or mitigation plan within 7 days for critical issues. Coordinated disclosure: we will credit you in the advisory unless you request otherwise.
-
-PGP key and full policy: [`SECURITY.md`](SECURITY.md).
+We acknowledge within 48 hours, triage within 7 business days, and practice coordinated disclosure with a default 90-day embargo. Full scope, safe-harbor terms, and response policy: [`SECURITY.md`](SECURITY.md).
 
 ---
 
@@ -289,8 +283,8 @@ Maintainers only, documented here for transparency:
 
 ## Community and Code of Conduct
 
-- **Discussions:** [github.com/nicedigverse/helixid/discussions](https://github.com/dgverse-labs/helixid/discussions) — design questions, use cases, show-and-tell
-- **Issues:** [github.com/nicedigverse/helixid/issues](https://github.com/dgverse-labs/helixid.git/issues) — bugs and concrete feature requests
+- **Discussions:** [github.com/nicedigverse/helixid/discussions](https://github.com/nicedigverse/helixid/discussions) — design questions, use cases, show-and-tell
+- **Issues:** [github.com/nicedigverse/helixid/issues](https://github.com/nicedigverse/helixid/issues) — bugs and concrete feature requests
 - **Security:** `security@dgverse.io`
 - **General contact:** `hello@dgverse.io`
 
