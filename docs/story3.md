@@ -163,7 +163,8 @@ Called by the agent SDK immediately before performing an action on an external s
 {
   "agentDid": "did:hedera:testnet:...",
   "userDid": "did:hedera:testnet:...",
-  "targetService": "amazon"
+  "targetService": "amazon",
+  "vcType": "HelixAgentCredential"
 }
 ```
 
@@ -180,7 +181,9 @@ Called by the agent SDK immediately before performing an action on an external s
 **Service behaviour:**
 
 1. Validate `agentDid` exists via `IDIDService.resolveDID` — throw `VPAgentDIDNotFoundError` if not found or deactivated
-2. Fetch agent's active VC via `IVCService.findActiveBySubjectDid(agentDid)` — throw `VPNoActiveVCError` if none
+2. Fetch agent's active VC via `IVCService.findActiveBySubjectDid(agentDid, vcType)`
+    - If zero found: throw `VPNoActiveVCError`
+    - If multiple valid VCs of the requested type found: throw `VPMultipleActiveVCError`
 3. Validate `targetService` exists in `service_registry` — throw `ServiceNotFoundError` if not
 4. Generate `vpId = 'vp:helix:' + cuid()`
 5. Generate `nonce = crypto.randomBytes(32).toString('hex')`

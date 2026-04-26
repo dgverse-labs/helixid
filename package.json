@@ -8,7 +8,8 @@
     "test:e2e": "turbo run test --filter=e2e",
     "typecheck": "turbo run typecheck",
     "format": "prettier --write \"**/*.{ts,json,md}\" --ignore-path .gitignore",
-    "dev": "turbo run dev --parallel"
+    "dev": "turbo run dev",
+    "dev:api": "turbo run dev --filter=@helix-id/api"
   },
   "packageManager": "pnpm@9.15.2",
   "engines": {
@@ -20,6 +21,7 @@
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^8.57.0",
     "prettier": "^3.3.0",
-    "turbo": "^2.3.0"
+    "turbo": "^2.3.0",
+    "typescript": "^6.0.3"
   }
 }

@@ -1,4 +1,13 @@
-// Placeholder — audit log interface (contract only).
-// Implementations live in helix-api/src/audit/ and helix-sdk-js/src/audit/.
-// All events listed in AL-1 of the constitution must be logged.
-export {};
+import { type AuditEvent, AuditEvents } from './events.js';
+
+export { type AuditEvent, AuditEvents };
+
+export interface IAuditLogger {
+  log(
+    event: AuditEvent,
+    payload: Record<string, unknown> & {
+      requestId: string;
+      timestamp?: string;
+    }
+  ): void;
+}

@@ -11,6 +11,8 @@ Fastify HTTP API for Helix ID — self-hostable, stateful operations across four
 | B3 | `/vp/*` | VP template generation, verification, vpId lifecycle |
 | B4 | `/agent/*` | Agent onboarding, user DID, challenge-response, service registry |
 
+Service registry admin endpoint note: `POST /v1/services` is intentionally unauthenticated in open core and intended for manual operation by the Helix ID operator in trusted deployments.
+
 ## Scripts
 
 ```bash

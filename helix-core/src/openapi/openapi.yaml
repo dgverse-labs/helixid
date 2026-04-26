@@ -6,7 +6,360 @@ info:
     Helix ID agent identity and trust infrastructure API.
     This spec is the single source of truth for all API contracts (AC-1).
     Every endpoint must have a spec entry before implementation begins (AC-2).
-paths: {}
+paths:
+  /v1/vp/template:
+    post:
+      summary: Generate unsigned VP template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VPTemplateRequest'
+      responses:
+        "201":
+          description: VP template generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VPTemplateResponse'
+  /v1/vp/verify:
+    post:
+      summary: Verify signed VP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [signedVP]
+              properties:
+                signedVP:
+                  type: object
+      responses:
+        "200":
+          description: VP verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VPVerifySuccessResponse'
+        "400":
+          description: VP verification failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VPVerifyFailedResponse'
+  /v1/enrollment-tokens:
+    post:
+      summary: Generate enrollment token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnrollmentTokenRequest'
+      responses:
+        "201":
+          description: Enrollment token generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrollmentTokenResponse'
+  /v1/onboard:
+    post:
+      summary: Agent onboarding step 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OnboardStepOneRequest'
+      responses:
+        "200":
+          description: Challenge issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChallengeResponse'
+  /v1/onboard/verify:
+    post:
+      summary: Agent onboarding step 2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OnboardVerifyRequest'
+      responses:
+        "201":
+          description: Agent onboarded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardVerifyResponse'
+  /v1/challenges:
+    post:
+      summary: Issue user verification challenge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueChallengeRequest'
+      responses:
+        "201":
+          description: Challenge issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChallengeResponse'
+  /v1/challenges/{challengeId}/verify:
+    post:
+      summary: Verify a user challenge
+      parameters:
+        - in: path
+          name: challengeId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChallengeVerifyRequest'
+      responses:
+        "200":
+          description: Challenge verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChallengeVerifyResponse'
+  /v1/services:
+    get:
+      summary: List active services
+      responses:
+        "200":
+          description: Active services
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListServicesResponse'
+    post:
+      summary: Register a service
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateServiceRequest'
+      responses:
+        "201":
+          description: Service created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceEntry'
+  /v1/services/{serviceName}:
+    get:
+      summary: Get service by name
+      parameters:
+        - in: path
+          name: serviceName
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Service found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceEntry'
 components:
-  schemas: {}
+  schemas:
+    VPTemplateRequest:
+      type: object
+      required: [agentDid, userDid, targetService, vcType]
+      properties:
+        agentDid:
+          type: string
+        userDid:
+          type: string
+        targetService:
+          type: string
+        vcType:
+          type: string
+          description: The type of Verifiable Credential to include in the presentation (e.g. HelixAgentCredential).
+    VPTemplateResponse:
+      type: object
+      required: [unsignedVP, vpId, expiresAt]
+      properties:
+        unsignedVP:
+          type: object
+        vpId:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+    VPVerifySuccessResponse:
+      type: object
+      required: [valid, agentDid, userDid, targetService, verifiedAt]
+      properties:
+        valid:
+          type: boolean
+          enum: [true]
+        agentDid:
+          type: string
+        userDid:
+          type: string
+        targetService:
+          type: string
+        verifiedAt:
+          type: string
+          format: date-time
+    VPVerifyFailedResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code:
+              type: string
+              enum: [VP_VERIFICATION_FAILED]
+            message:
+              type: string
+            requestId:
+              type: string
+    EnrollmentTokenRequest:
+      type: object
+      required: [agentName, requestedScopes]
+      properties:
+        agentName:
+          type: string
+        requestedScopes:
+          type: array
+          items:
+            type: string
+        requestedDomains:
+          type: array
+          items:
+            type: string
+    EnrollmentTokenResponse:
+      type: object
+      required: [token, expiresAt]
+      properties:
+        token:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+    OnboardStepOneRequest:
+      type: object
+      required: [enrollmentToken, publicKeyHex]
+      properties:
+        enrollmentToken:
+          type: string
+        publicKeyHex:
+          type: string
+        domains:
+          type: array
+          items:
+            type: string
+    ChallengeResponse:
+      type: object
+      required: [challengeId, nonce, expiresAt]
+      properties:
+        challengeId:
+          type: string
+        nonce:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+    OnboardVerifyRequest:
+      type: object
+      required: [challengeId, signature]
+      properties:
+        challengeId:
+          type: string
+        signature:
+          type: string
+    OnboardVerifyResponse:
+      type: object
+      required: [agentDid, vc, hederaTransactionId, vcId]
+      properties:
+        agentDid:
+          type: string
+        vc:
+          type: object
+        hederaTransactionId:
+          type: string
+        vcId:
+          type: string
+    IssueChallengeRequest:
+      type: object
+      required: [did, purpose]
+      properties:
+        did:
+          type: string
+        purpose:
+          type: string
+    ChallengeVerifyRequest:
+      type: object
+      required: [signature]
+      properties:
+        signature:
+          type: string
+    ChallengeVerifyResponse:
+      type: object
+      required: [did, verified]
+      properties:
+        did:
+          type: string
+        verified:
+          type: boolean
+        vc:
+          type: object
+    ServiceEntry:
+      type: object
+      required: [serviceName, displayName, verifiedDomain, apiEndpoint, publicKeyMultibase, metadata]
+      properties:
+        serviceName:
+          type: string
+        displayName:
+          type: string
+        verifiedDomain:
+          type: string
+        apiEndpoint:
+          type: string
+        publicKeyMultibase:
+          type: string
+        metadata:
+          type: object
+    CreateServiceRequest:
+      type: object
+      required: [serviceName, displayName, verifiedDomain, apiEndpoint, publicKeyMultibase, metadata]
+      properties:
+        serviceName:
+          type: string
+        displayName:
+          type: string
+        verifiedDomain:
+          type: string
+        apiEndpoint:
+          type: string
+        publicKeyMultibase:
+          type: string
+        metadata:
+          type: object
+    ListServicesResponse:
+      type: object
+      required: [services]
+      properties:
+        services:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceEntry'
   securitySchemes: {}
