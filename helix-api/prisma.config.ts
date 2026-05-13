@@ -8,5 +8,8 @@ export default defineConfig({
   datasource: {
     url: process.env.DATABASE_URL || 'postgresql://helixid_test:helixid_test@localhost:5432/helixid_test',
   },
+  migrations: {
+    seed: 'tsx prisma/seed.ts',
+  },
 });
 

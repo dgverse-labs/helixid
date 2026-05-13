@@ -62,6 +62,15 @@ export class AgentRepository {
     return this.enrollmentTokens.get(tokenHash) ?? null;
   }
 
+  async findEnrollmentTokenById(id: string): Promise<EnrollmentTokenRecord | null> {
+    for (const token of this.enrollmentTokens.values()) {
+      if (token.id === id) {
+        return token;
+      }
+    }
+    return null;
+  }
+
   async burnEnrollmentTokenAtomically(tokenHash: string): Promise<boolean> {
     const token = this.enrollmentTokens.get(tokenHash);
     if (!token || token.usedAt) {

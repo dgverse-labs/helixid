@@ -62,6 +62,7 @@ describe('VP security API', () => {
     vcService.setStatus('active');
     vcService.setActiveVC({
       id: 'vc:test:sec1',
+      type: ['VerifiableCredential', 'HelixAgentCredential'],
       expirationDate: new Date(Date.now() + 60_000).toISOString(),
       credentialSubject: { privilegeScopes: ['read'] }
     });
@@ -72,7 +73,7 @@ describe('VP security API', () => {
     const tmplRes = await app.inject({
       method: 'POST',
       url: '/v1/vp/template',
-      payload: { agentDid: defaultDid, userDid: 'did:hedera:testnet:user1', targetService: 'amazon' }
+      payload: { agentDid: defaultDid, userDid: 'did:hedera:testnet:user1', targetService: 'amazon', vcType: 'HelixAgentCredential' }
     });
     let tmpl = tmplRes.json().unsignedVP;
     if (mutateTmpl) tmpl = mutateTmpl(tmpl);

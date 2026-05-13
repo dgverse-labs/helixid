@@ -69,4 +69,48 @@ describe('AgentWallet', () => {
     await expect(wallet.load('wrong-password', path)).rejects.toThrow();
     await rm(dir, { recursive: true, force: true });
   });
+
+  it('gets private key directly', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'helix-wallet-'));
+    const path = join(dir, 'wallet.json');
+    await wallet.save(
+      {
+        did: 'did:1',
+        publicKeyHex: 'pub',
+        privateKeyHex: 'priv',
+        vcId: 'vc:1',
+        vcJson: '{}',
+        createdAt: 'now',
+        updatedAt: 'now'
+      },
+      'pass',
+      path
+    );
+    const key = await wallet.getPrivateKey('pass', path);
+    expect(key).toBe('priv');
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('updates VC data', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'helix-wallet-'));
+    const path = join(dir, 'wallet.json');
+    await wallet.save(
+      {
+        did: 'did:1',
+        publicKeyHex: 'pub',
+        privateKeyHex: 'priv',
+        vcId: 'vc:1',
+        vcJson: '{}',
+        createdAt: 'now',
+        updatedAt: 'now'
+      },
+      'pass',
+      path
+    );
+    await wallet.updateVC('vc:new', '{"new":true}', path, 'pass');
+    const updated = await wallet.load('pass', path);
+    expect(updated.vcId).toBe('vc:new');
+    expect(updated.vcJson).toBe('{"new":true}');
+    await rm(dir, { recursive: true, force: true });
+  });
 });

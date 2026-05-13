@@ -13,10 +13,10 @@ const vpRoutes: FastifyPluginAsync<VPRouteOptions> = async (fastify, options) =>
         type: 'object',
         required: ['agentDid', 'userDid', 'targetService', 'vcType'],
         properties: {
-          agentDid: { type: 'string' },
-          userDid: { type: 'string' },
-          targetService: { type: 'string' },
-          vcType: { type: 'string' }
+          agentDid: { type: 'string', minLength: 1 },
+          userDid: { type: 'string', minLength: 1 },
+          targetService: { type: 'string', minLength: 1 },
+          vcType: { type: 'string', minLength: 1 }
         }
       }
     }

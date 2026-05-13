@@ -11,6 +11,8 @@ import {
   EnrollmentTokenNotFoundError,
   ServiceAlreadyExistsError,
   ServiceNotFoundError,
+  base58btcDecode,
+  verifySignature,
   type HelixError,
   type IAuditLogger
 } from '@helix-id/core';
@@ -33,6 +35,20 @@ function ensureHttps(url: string): boolean {
 
 function ensureServiceName(name: string): boolean {
   return /^[a-z][a-z0-9-]+$/.test(name);
+}
+
+function extractPublicKeyHex(doc: Awaited<ReturnType<IDIDService['resolveDID']>>): string {
+  const method = doc.verificationMethod?.find((item) => item.type.includes('Ed25519'));
+  if (!method) {
+    throw new ChallengeSignatureInvalidError();
+  }
+  if (method.publicKeyHex) {
+    return method.publicKeyHex;
+  }
+  if (method.publicKeyMultibase?.startsWith('z')) {
+    return Buffer.from(base58btcDecode(method.publicKeyMultibase.slice(1))).toString('hex');
+  }
+  throw new ChallengeSignatureInvalidError();
 }
 
 export class AgentService implements IAgentService {
@@ -155,6 +171,18 @@ export class AgentService implements IAgentService {
     if (!/^[0-9a-f]{128}$/i.test(input.signature)) {
       throw new ChallengeSignatureInvalidError();
     }
+    const validSignature = await verifySignature(
+      Buffer.from(challenge.nonce, 'hex'),
+      input.signature,
+      challenge.pendingPublicKeyHex ?? ''
+    );
+    if (!validSignature) {
+      throw new ChallengeSignatureInvalidError();
+    }
+
+    const enrollmentToken = challenge.enrollmentTokenId
+      ? await this.repository.findEnrollmentTokenById(challenge.enrollmentTokenId)
+      : null;
 
     let didResult;
     try {
@@ -168,13 +196,14 @@ export class AgentService implements IAgentService {
       throw new AgentAlreadyOnboardedError();
     }
 
-    const scopes = ['read:orders'];
+    const scopes = enrollmentToken ? JSON.parse(enrollmentToken.requestedScopes) as string[] : ['read:orders'];
+    const agentName = enrollmentToken?.agentName ?? 'Agent';
     const vc = await this.vcService.issueVC(
       {
         subjectDid: didResult.did,
         subjectType: 'agent',
         privilegeScopes: scopes,
-        agentName: 'Agent',
+        agentName,
         expiresInSeconds: this.enrollmentTokenTtlSeconds * 100
       },
       requestId
@@ -184,7 +213,7 @@ export class AgentService implements IAgentService {
     this.auditLogger.log(AuditEvents.AGENT_ONBOARDED, {
       requestId,
       agentDid: didResult.did,
-      agentName: 'Agent',
+      agentName,
       hederaTransactionId: didResult.hederaTransactionId
     });
 
@@ -226,7 +255,7 @@ export class AgentService implements IAgentService {
 
   async verifyUserChallenge(
     challengeId: string,
-    _input: { signature: string },
+    input: { signature: string },
     requestId: string
   ): Promise<{ did: string; verified: true; vc?: Record<string, unknown> }> {
     const challenge = await this.repository.findChallengeById(challengeId);
@@ -238,6 +267,19 @@ export class AgentService implements IAgentService {
     }
     if (challenge.verifiedAt) {
       throw new ChallengeAlreadyVerifiedError();
+    }
+    if (!/^[0-9a-f]{128}$/i.test(input.signature)) {
+      throw new ChallengeSignatureInvalidError();
+    }
+    const didDocument = await this.didService.resolveDID(challenge.did);
+    const publicKeyHex = extractPublicKeyHex(didDocument);
+    const validSignature = await verifySignature(
+      Buffer.from(challenge.nonce, 'hex'),
+      input.signature,
+      publicKeyHex
+    );
+    if (!validSignature) {
+      throw new ChallengeSignatureInvalidError();
     }
     await this.repository.markChallengeVerified(challengeId);
     let vc = await this.vcService.findActiveBySubjectDid(challenge.did);

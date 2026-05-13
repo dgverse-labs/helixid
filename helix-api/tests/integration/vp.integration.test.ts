@@ -60,6 +60,7 @@ describe('VP integration API', () => {
     didService.setShouldThrow(false);
     vcService.setActiveVC({
       id: 'vc:test:1',
+      type: ['VerifiableCredential', 'HelixAgentCredential'],
       expirationDate: new Date(Date.now() + 60_000).toISOString(),
       credentialSubject: { privilegeScopes: ['read'] }
     });
@@ -69,7 +70,7 @@ describe('VP integration API', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/v1/vp/template',
-      payload: { agentDid: defaultDid, userDid: 'did:hedera:testnet:user1', targetService: 'amazon' }
+      payload: { agentDid: defaultDid, userDid: 'did:hedera:testnet:user1', targetService: 'amazon', vcType: 'HelixAgentCredential' }
     });
 
     expect(response.statusCode).toBe(201);
@@ -85,7 +86,7 @@ describe('VP integration API', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/v1/vp/template',
-      payload: { agentDid: 'did:hedera:testnet:unknown', userDid: 'did:hedera:testnet:user1', targetService: 'amazon' }
+      payload: { agentDid: 'did:hedera:testnet:unknown', userDid: 'did:hedera:testnet:user1', targetService: 'amazon', vcType: 'HelixAgentCredential' }
     });
     
     expect(response.statusCode).toBe(404);
@@ -96,7 +97,7 @@ describe('VP integration API', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/v1/vp/template',
-      payload: { agentDid: defaultDid, userDid: 'did:hedera:testnet:user1', targetService: 'unknown' }
+      payload: { agentDid: defaultDid, userDid: 'did:hedera:testnet:user1', targetService: 'unknown', vcType: 'HelixAgentCredential' }
     });
     
     expect(response.statusCode).toBe(404);
@@ -109,7 +110,7 @@ describe('VP integration API', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/v1/vp/template',
-      payload: { agentDid: defaultDid, userDid: 'did:hedera:testnet:user1', targetService: 'amazon' }
+      payload: { agentDid: defaultDid, userDid: 'did:hedera:testnet:user1', targetService: 'amazon', vcType: 'HelixAgentCredential' }
     });
     
     expect(response.statusCode).toBe(400);
@@ -120,7 +121,7 @@ describe('VP integration API', () => {
     const tmplRes = await app.inject({
       method: 'POST',
       url: '/v1/vp/template',
-      payload: { agentDid: defaultDid, userDid: 'did:hedera:testnet:user1', targetService: 'amazon' }
+      payload: { agentDid: defaultDid, userDid: 'did:hedera:testnet:user1', targetService: 'amazon', vcType: 'HelixAgentCredential' }
     });
     const template = tmplRes.json();
 

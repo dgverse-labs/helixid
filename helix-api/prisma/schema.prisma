@@ -68,4 +68,32 @@ model ServiceRegistry {
 
   @@map("service_registry")
 }
+model VerifiableCredential {
+  id              String   @id @default(cuid())
+  vcId            String   @unique
+  subjectDid      String
+  issuerDid       String
+  type            String   // Comma-separated or JSON array string
+  status          String   @default("active") // active, revoked, expired
+  vcJson          String   @db.Text
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
+  @@index([subjectDid])
+  @@map("vcs")
+}
+
+model Did {
+  id                  String   @id @default(cuid())
+  did                 String   @unique
+  publicKeyHex        String
+  subjectType         String   // agent, user
+  hederaTransactionId String?
+  metadata            String?  @db.Text
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([did])
+  @@map("dids")
+}

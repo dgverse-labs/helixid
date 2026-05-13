@@ -1,11 +1,15 @@
 import Fastify from 'fastify';
 import { describe, expect, it } from 'vitest';
+import { signBytes } from '@helix-id/core';
 import agentRoutes from '../../src/routes/agent/index.js';
 import { AgentRepository } from '../../src/repositories/agent.repository.js';
 import { AgentService } from '../../src/services/agent/agent.service.js';
 import { MockDIDService } from '../mocks/MockDIDService.js';
 import { MockVCService } from '../mocks/MockVCService.js';
 import { TestAuditLogger } from '../utils/TestAuditLogger.js';
+
+const TEST_PRIVATE_KEY_HEX = '00'.repeat(32);
+const TEST_PUBLIC_KEY_HEX = '3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29';
 
 function makeApp() {
   const app = Fastify();
@@ -48,17 +52,18 @@ describe('agent integration', () => {
       url: '/v1/onboard',
       payload: {
         enrollmentToken: tokenBody.token,
-        publicKeyHex: 'b'.repeat(64),
+        publicKeyHex: TEST_PUBLIC_KEY_HEX,
         domains: ['https://myagent.example.com']
       }
     });
     expect(step1.statusCode).toBe(200);
     const step1Body = step1.json();
+    const signature = await signBytes(Buffer.from(step1Body.nonce, 'hex'), TEST_PRIVATE_KEY_HEX);
 
     const step2 = await app.inject({
       method: 'POST',
       url: '/v1/onboard/verify',
-      payload: { challengeId: step1Body.challengeId, signature: 'c'.repeat(128) }
+      payload: { challengeId: step1Body.challengeId, signature }
     });
     expect(step2.statusCode).toBe(201);
     expect(step2.json().agentDid).toContain('did:hedera:testnet:');
@@ -108,5 +113,28 @@ describe('agent integration', () => {
     const listRes = await app.inject({ method: 'GET', url: '/v1/services' });
     expect(listRes.statusCode).toBe(200);
     expect(Array.isArray(listRes.json().services)).toBe(true);
+  });
+
+  it('returns 404 for non-existent service', async () => {
+    const app = makeApp();
+    const res = await app.inject({ method: 'GET', url: '/v1/services/unknown' });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.code).toBe('SERVICE_NOT_FOUND');
+  });
+
+  it('returns 409 for duplicate service creation', async () => {
+    const app = makeApp();
+    const payload = {
+      serviceName: 'duplicate',
+      displayName: 'Duplicate',
+      verifiedDomain: 'https://dup.com',
+      apiEndpoint: 'https://api.dup.com',
+      publicKeyMultibase: 'z123',
+      metadata: {}
+    };
+    await app.inject({ method: 'POST', url: '/v1/services', payload });
+    const second = await app.inject({ method: 'POST', url: '/v1/services', payload });
+    expect(second.statusCode).toBe(409);
+    expect(second.json().error.code).toBe('SERVICE_ALREADY_EXISTS');
   });
 });

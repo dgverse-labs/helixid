@@ -10,52 +10,44 @@ import type { IAuditLogger } from '@helix-id/core';
 import type { IDIDService } from './services/did/IDIDService.js';
 import type { IVCService, IssueVCInput } from './services/vc/IVCService.js';
 
+import { DIDRepository } from './repositories/did.repository.js';
+import { VCRepository } from './repositories/vc.repository.js';
+import { PrismaDIDService } from './services/did/PrismaDIDService.js';
+import { PrismaVCService } from './services/vc/PrismaVCService.js';
+
 class StdoutAuditLogger implements IAuditLogger {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   log(_event: import('@helix-id/core').AuditEvent, _payload: Record<string, unknown>): void {
-    return;
-  }
-}
-
-class DevDIDService implements IDIDService {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async createDID(_publicKeyHex: string, _subjectType: 'agent' | 'user', _domains: string[], _requestId: string): Promise<{ did: string; hederaTransactionId: string }> {
-    return { did: `did:hedera:testnet:${Date.now()}`, hederaTransactionId: 'mock-tx-1' };
-  }
-  async resolveDID(did: string): Promise<any> {
-    if (did.startsWith('did:test:')) {
-      return { id: did, verificationMethod: [{ id: `${did}#key-1`, type: 'Ed25519VerificationKey2020', publicKeyHex: 'abc123' }] };
-    }
-    throw new Error('DID service is not configured');
-  }
-}
-
-class DevVCService implements IVCService {
-  async findActiveBySubjectDid(_did: string, vcType?: string): Promise<Record<string, unknown> | null> {
-    return {
-      id: 'vc:test:1',
-      type: ['VerifiableCredential', vcType || 'HelixAgentCredential'],
-      credentialSubject: { id: _did }
-    };
-  }
-  async getVCStatus(): Promise<'active'> {
-    return 'active';
-  }
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async issueVC(input: IssueVCInput): Promise<Record<string, unknown>> {
-    return { id: `vc:${Date.now()}`, type: ['VerifiableCredential'], credentialSubject: { id: input.subjectDid } };
+    console.log(`[AUDIT] ${_event}:`, JSON.stringify(_payload));
   }
 }
 
 const app = Fastify({ logger: true });
+
+const didRepo = new DIDRepository();
+const vcRepo = new VCRepository();
+const vpRepo = new VPRepository();
+const agentRepo = new AgentRepository();
+const serviceRepo = new ServiceRegistryRepository();
+const auditLogger = new StdoutAuditLogger();
+
+const didService = new PrismaDIDService(didRepo);
+const vcService = new PrismaVCService(vcRepo);
+
 const vpService = new VPService(
-  new VPRepository(),
-  new DevDIDService(),
-  new DevVCService(),
-  new ServiceRegistryRepository(),
-  new StdoutAuditLogger()
+  vpRepo,
+  didService,
+  vcService,
+  serviceRepo,
+  auditLogger
 );
-const agentService = new AgentService(new AgentRepository(), new DevDIDService(), new DevVCService(), new StdoutAuditLogger());
+
+const agentService = new AgentService(
+  agentRepo,
+  didService,
+  vcService,
+  auditLogger
+);
 
 app.get('/health', async () => ({ status: 'ok', version: '0.1.0' }));
 await app.register(vpRoutes, { prefix: '/v1/vp', vpService });

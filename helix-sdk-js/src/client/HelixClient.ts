@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { getPublicKey } from '@noble/ed25519';
-import { hashCanonicalPayload, signBytes } from '@helix-id/core';
+import { signBytes } from '@helix-id/core';
 import { HttpAdapter } from '../http/HttpAdapter.js';
 import { AgentWallet } from '../wallet/AgentWallet.js';
 
@@ -47,7 +47,7 @@ export class HelixClient {
       throw new Error('No pending onboarding keypair');
     }
 
-    const signature = await signBytes(hashCanonicalPayload({ nonce }), this.pendingKeyPair.privateKey);
+    const signature = await signBytes(Buffer.from(nonce, 'hex'), this.pendingKeyPair.privateKey);
     const result = await this.http.post<{
       agentDid: string;
       vc: Record<string, unknown>;

@@ -121,3 +121,27 @@ export class ServiceAlreadyExistsError extends HelixError {
     super(ErrorCodes.SERVICE_ALREADY_EXISTS, message, 409);
   }
 }
+
+export class VCSignatureInvalidError extends HelixError {
+  constructor(message = 'The Verifiable Credential signature is invalid') {
+    super(ErrorCodes.VC_SIGNATURE_INVALID, message, 400);
+  }
+}
+
+export class VCExpiredError extends HelixError {
+  constructor(message = 'The Verifiable Credential has expired') {
+    super(ErrorCodes.VC_EXPIRED, message, 400);
+  }
+}
+
+export class VCRevokedError extends HelixError {
+  constructor(message = 'The Verifiable Credential has been revoked') {
+    super(ErrorCodes.VC_REVOKED, message, 400);
+  }
+}
+
+export class VCIssuerNotFoundError extends HelixError {
+  constructor(message = 'The Verifiable Credential issuer DID could not be resolved') {
+    super(ErrorCodes.VC_ISSUER_NOT_FOUND, message, 400);
+  }
+}
