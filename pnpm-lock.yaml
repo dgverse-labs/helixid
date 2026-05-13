@@ -148,10 +148,10 @@ importers:
       '@helix-id/core':
         specifier: workspace:*
         version: link:../helix-core
-    devDependencies:
       '@noble/ed25519':
         specifier: ^2.3.0
         version: 2.3.0
+    devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.39
