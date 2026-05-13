@@ -32,7 +32,9 @@ function makeVpId(): string {
 }
 
 function extractPublicKeyHex(doc: Awaited<ReturnType<IDIDService['resolveDID']>>): string {
-  const method = doc.verificationMethod?.find((item) => item.type.includes('Ed25519'));
+  const wrapped = doc as any;
+  const document = wrapped.document ?? wrapped.didDocument ?? wrapped;
+  const method = document.verificationMethod?.find((item: any) => item.type.includes('Ed25519'));
   if (!method) {
     throw new VPAgentDIDNotFoundError();
   }

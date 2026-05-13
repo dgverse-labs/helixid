@@ -38,7 +38,9 @@ function ensureServiceName(name: string): boolean {
 }
 
 function extractPublicKeyHex(doc: Awaited<ReturnType<IDIDService['resolveDID']>>): string {
-  const method = doc.verificationMethod?.find((item) => item.type.includes('Ed25519'));
+  const wrapped = doc as any;
+  const document = wrapped.document ?? wrapped.didDocument ?? wrapped;
+  const method = document.verificationMethod?.find((item: any) => item.type.includes('Ed25519'));
   if (!method) {
     throw new ChallengeSignatureInvalidError();
   }
@@ -219,9 +221,9 @@ export class AgentService implements IAgentService {
 
     return {
       agentDid: didResult.did,
-      vc,
+      vc: vc.vc,
       hederaTransactionId: didResult.hederaTransactionId,
-      vcId: String(vc.id ?? 'vc:unknown')
+      vcId: vc.vcId
     };
   }
 
@@ -284,7 +286,7 @@ export class AgentService implements IAgentService {
     await this.repository.markChallengeVerified(challengeId);
     let vc = await this.vcService.findActiveBySubjectDid(challenge.did);
     if (!vc) {
-      vc = await this.vcService.issueVC(
+      const issued = await this.vcService.issueVC(
         {
           subjectDid: challenge.did,
           subjectType: 'user',
@@ -293,6 +295,7 @@ export class AgentService implements IAgentService {
         },
         requestId
       );
+      vc = issued.vc;
     }
     this.auditLogger.log(AuditEvents.CHALLENGE_VERIFIED, {
       requestId,

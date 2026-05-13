@@ -4,8 +4,8 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: helixid
-      POSTGRES_PASSWORD: helixid
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: helixid
     ports:
       - "5432:5432"
