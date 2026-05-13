@@ -1,12 +1,54 @@
-// Copyright 2026 DgVerse LLP
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//    http://www.apache.org/licenses/LICENSE-2.0
+import {
+  base58btcEncode,
+  hashCanonicalPayload,
+  signBytes,
+  verifySignature,
+  VPInvalidStructureError,
+  VPExpiredError,
+  type UnsignedVP,
+  type SignedVP,
+  unsignedVPSchema,
+  base58btcDecode
+} from '@helix-id/core';
 
-// VPBuilder — local VP construction and signing (B3).
-// SA-1: buildAndSignVP executes entirely client-side. Private key never transmitted.
-// Uses @noble/curves for signing (DP-3).
 export class VPBuilder {
-  // placeholder — full implementation in Story 3
+  constructor(private unsignedVP: UnsignedVP) {}
+
+  public async sign(privateKeyHex: string, verificationMethod: string): Promise<SignedVP> {
+    const parsed = unsignedVPSchema.safeParse(this.unsignedVP);
+    if (!parsed.success) {
+      throw new VPInvalidStructureError();
+    }
+    const vp = parsed.data;
+
+    if (new Date(vp.expirationDate).getTime() <= Date.now()) {
+      throw new VPExpiredError();
+    }
+
+    const hash = hashCanonicalPayload(vp);
+    const signatureHex = await signBytes(hash, privateKeyHex);
+    const signatureBytes = Buffer.from(signatureHex, 'hex');
+
+    return {
+      ...vp,
+      proof: {
+        type: 'Ed25519Signature2020',
+        created: new Date().toISOString(),
+        verificationMethod,
+        proofPurpose: 'assertionMethod',
+        proofValue: base58btcEncode(signatureBytes)
+      }
+    };
+  }
+
+  public static async verify(signedVP: SignedVP, publicKeyHex: string): Promise<boolean> {
+    const { proof, ...payload } = signedVP;
+    const hash = hashCanonicalPayload(payload);
+    const valid = await verifySignature(
+        hash, 
+        Buffer.from(base58btcDecode(proof.proofValue)).toString('hex'), 
+        publicKeyHex
+    );
+    return valid;
+  }
 }

@@ -16,11 +16,12 @@
     "test": "vitest run --coverage --passWithNoTests",
     "test:watch": "vitest",
     "test:security": "vitest run tests/security",
-    "lint": "eslint src",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@helix-id/core": "workspace:*"
+    "@helix-id/core": "workspace:*",
+    "@noble/ed25519": "^2.3.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

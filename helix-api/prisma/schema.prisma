@@ -9,3 +9,91 @@ datasource db {
   provider = "postgresql"
 }
 
+model VpId {
+  id            String   @id @default(cuid())
+  vpId          String   @unique
+  agentDid      String
+  userDid       String
+  targetService String
+  expiresAt     DateTime
+  consumedAt    DateTime?
+  createdAt     DateTime @default(now())
+
+  @@index([vpId])
+  @@map("vp_ids")
+}
+
+model EnrollmentToken {
+  id               String      @id @default(cuid())
+  tokenHash        String      @unique
+  agentName        String
+  requestedScopes  String
+  requestedDomains String
+  expiresAt        DateTime
+  usedAt           DateTime?
+  createdAt        DateTime    @default(now())
+  challenges       Challenge[]
+
+  @@map("enrollment_tokens")
+}
+
+model Challenge {
+  id                  String           @id @default(cuid())
+  challengeId         String           @unique
+  nonce               String
+  did                 String
+  purpose             String
+  pendingPublicKeyHex String?
+  pendingDomains      String?
+  expiresAt           DateTime
+  verifiedAt          DateTime?
+  createdAt           DateTime         @default(now())
+  enrollmentToken     EnrollmentToken? @relation(fields: [enrollmentTokenId], references: [id])
+  enrollmentTokenId   String?
+
+  @@map("challenges")
+}
+
+model ServiceRegistry {
+  id                 String   @id @default(cuid())
+  serviceName        String   @unique
+  displayName        String
+  verifiedDomain     String
+  publicKeyMultibase String
+  apiEndpoint        String
+  metadata           String
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@map("service_registry")
+}
+model VerifiableCredential {
+  id              String   @id @default(cuid())
+  vcId            String   @unique
+  subjectDid      String
+  issuerDid       String
+  type            String   // Comma-separated or JSON array string
+  status          String   @default("active") // active, revoked, expired
+  vcJson          String   @db.Text
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([subjectDid])
+  @@map("vcs")
+}
+
+model Did {
+  id                  String   @id @default(cuid())
+  did                 String   @unique
+  publicKeyHex        String
+  subjectType         String   // agent, user
+  hederaTransactionId String?
+  metadata            String?  @db.Text
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([did])
+  @@map("dids")
+}

@@ -1,0 +1,1 @@
+SUCCESS_URL=postgresql://harishharidas@localhost:5432/postgres

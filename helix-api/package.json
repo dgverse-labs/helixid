@@ -10,7 +10,7 @@
     "test": "vitest run --coverage --passWithNoTests",
     "test:watch": "vitest",
     "test:security": "vitest run tests/security",
-    "lint": "eslint src",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
@@ -19,12 +19,17 @@
   "dependencies": {
     "@fastify/sensible": "^6.0.0",
     "@helix-id/core": "workspace:*",
+    "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.7.0",
     "fastify": "^5.7.2",
+    "pg": "^8.20.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@noble/ed25519": "^2.3.0",
+    "@prisma/config": "^7.8.0",
     "@types/node": "^20.0.0",
+    "@types/pg": "^8.20.0",
     "@types/supertest": "^6.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
@@ -35,5 +40,8 @@
     "tsx": "^4.0.0",
     "typescript": "^5.4.0",
     "vitest": "^2.0.0"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   }
 }
