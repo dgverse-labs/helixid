@@ -28,6 +28,8 @@
     "vitest": "^2.0.0"
   },
   "dependencies": {
-    "zod": "^3.23.0"
+    "zod": "^3.23.0",
+    "@noble/curves": "^1.4.0",
+    "@noble/hashes": "^1.4.0"
   }
 }

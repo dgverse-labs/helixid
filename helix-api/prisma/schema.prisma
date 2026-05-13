@@ -9,3 +9,67 @@ datasource db {
   provider = "postgresql"
 }
 
+model Did {
+  id                  String      @id // The DID string, e.g., did:helix:...
+  subjectType         String      // 'agent' or 'user'
+  controller          String
+  publicKey           String      // Hex-encoded Ed25519 public key
+  hederaTransactionId String
+  didDocument         Json        // Full W3C DID Document
+  deactivatedAt       DateTime?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  updates             DidUpdate[]
+  vcs                 Vc[]
+
+  @@map("dids")
+}
+
+model DidUpdate {
+  id                  String   @id @default(uuid())
+  didId               String
+  updateType          String   // 'add_service_endpoint', 'remove_service_endpoint', etc.
+  hederaTransactionId String
+  payload             Json     // The update payload or resulting document snippet
+  createdAt           DateTime @default(now())
+  did                 Did      @relation(fields: [didId], references: [id])
+
+  @@map("did_updates")
+}
+
+model Vc {
+  id               String    @id @default(cuid())
+  vcId             String    @unique // vc:helix:<cuid>
+  subjectDid       String
+  subjectType      String    // 'agent' or 'user'
+  vcJson           Json      // Full signed VC JSON
+  privilegeScopes  Json?     // Array of strings: ["read:orders"]
+  statusListIndex  Int
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  renewedByVcId    String?
+  createdAt        DateTime  @default(now())
+  did              Did       @relation(fields: [subjectDid], references: [id])
+
+  @@map("vcs")
+}
+
+model StatusListEntry {
+  id          String   @id @default(cuid())
+  listId      String   @unique // e.g. helix-status-list-1
+  encodedList String   // gzip-compressed, base64url-encoded bitstring
+  nextIndex   Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@map("status_list_entries")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  timestamp   DateTime @default(now())
+  eventType   String   // Matches AuditEventType in core
+  requestId   String
+  payloadJson String   // JSON-serialized event data
+  
+  @@map("audit_log")
+}

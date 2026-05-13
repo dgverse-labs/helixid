@@ -4,6 +4,4 @@
 // You may obtain a copy of the License at
 //    http://www.apache.org/licenses/LICENSE-2.0
 
-// Placeholder — VC schemas will be implemented in Story 2.
-// Covers: agent VC, user VC, privilege scopes.
-export {};
+export * from './vc.js';

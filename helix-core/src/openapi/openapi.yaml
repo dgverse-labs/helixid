@@ -1,12 +1,295 @@
 openapi: "3.1.0"
 info:
   title: Helix ID
-  version: "0.1.0"
+  version: "0.2.0"
   description: >
     Helix ID agent identity and trust infrastructure API.
     This spec is the single source of truth for all API contracts (AC-1).
-    Every endpoint must have a spec entry before implementation begins (AC-2).
-paths: {}
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  version: { type: string, example: 0.1.0 }
+
+  /v1/dids:
+    post:
+      summary: Create a new DID
+      tags: [DID Lifecycle]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDIDRequest'
+      responses:
+        "201":
+          description: DID created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateDIDResponse'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "409":
+          $ref: '#/components/responses/ConflictError'
+        "502":
+          $ref: '#/components/responses/HederaError'
+
+  /v1/dids/{did}:
+    get:
+      summary: Resolve a DID
+      tags: [DID Lifecycle]
+      parameters:
+        - $ref: '#/components/parameters/DIDParam'
+        - name: live
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Successful resolution
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolveDIDResponse'
+        "404":
+          $ref: '#/components/responses/NotFoundError'
+        "410":
+          $ref: '#/components/responses/GoneError'
+
+  /v1/dids/{did}/services:
+    post:
+      summary: Add a service endpoint
+      tags: [DID Updates]
+      parameters:
+        - $ref: '#/components/parameters/DIDParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddServiceEndpointRequest'
+      responses:
+        "200":
+          description: Updated DID Document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DIDDocument'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "404":
+          $ref: '#/components/responses/NotFoundError'
+        "410":
+          $ref: '#/components/responses/GoneError'
+
+  /v1/vcs:
+    post:
+      summary: Issue a Verifiable Credential
+      tags: [VC Lifecycle]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueVCRequest'
+      responses:
+        "201":
+          description: VC Issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IssueVCResponse'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "404":
+          $ref: '#/components/responses/NotFoundError'
+        "503":
+          description: Status list exhausted
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+
+  /v1/vcs/{vcId}:
+    get:
+      summary: Get VC details
+      tags: [VC Lifecycle]
+      parameters:
+        - name: vcId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: VC Details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VCDetails'
+        "404":
+          $ref: '#/components/responses/NotFoundError'
+
+  /v1/vcs/{vcId}/revoke:
+    post:
+      summary: Revoke a VC
+      tags: [VC Lifecycle]
+      parameters:
+        - name: vcId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Revoked
+        "404":
+          $ref: '#/components/responses/NotFoundError'
+        "409":
+          $ref: '#/components/responses/ConflictError'
+
+  /v1/status-list/{listId}:
+    get:
+      summary: Serve Status List Credential
+      tags: [Status List]
+      parameters:
+        - name: listId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Status List Credential JSON
+          content:
+            application/json:
+              schema: { type: object }
+
 components:
-  schemas: {}
-  securitySchemes: {}
+  parameters:
+    DIDParam:
+      name: did
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^did:helix:[0-9a-f]{32}$"
+
+  schemas:
+    CreateDIDRequest:
+      type: object
+      required: [publicKeyHex, subjectType]
+      properties:
+        publicKeyHex: { type: string, pattern: "^[0-9a-fA-F]{64}$" }
+        subjectType: { type: string, enum: [agent, user] }
+        domains: { type: array, items: { type: string, format: uri }, maxItems: 10 }
+
+    CreateDIDResponse:
+      type: object
+      required: [id, didDocument, hederaTransactionId]
+      properties:
+        id: { type: string }
+        didDocument: { $ref: '#/components/schemas/DIDDocument' }
+        hederaTransactionId: { type: string }
+
+    IssueVCRequest:
+      type: object
+      required: [subjectDid, subjectType]
+      properties:
+        subjectDid: { type: string }
+        subjectType: { type: string, enum: [agent, user] }
+        privilegeScopes: { type: array, items: { type: string } }
+        agentName: { type: string }
+        userId: { type: string }
+        expiresInSeconds: { type: integer, minimum: 3600, maximum: 31536000 }
+
+    IssueVCResponse:
+      type: object
+      required: [vcId, vc, statusListIndex, expiresAt]
+      properties:
+        vcId: { type: string }
+        vc: { type: object }
+        statusListIndex: { type: integer }
+        expiresAt: { type: string, format: date-time }
+
+    VCDetails:
+      type: object
+      required: [vcId, vc, status, expiresAt]
+      properties:
+        vcId: { type: string }
+        vc: { type: object }
+        status: { type: string, enum: [active, revoked, expired] }
+        expiresAt: { type: string, format: date-time }
+        revokedAt: { type: string, format: date-time, nullable: true }
+        renewedByVcId: { type: string, nullable: true }
+
+    ResolveDIDResponse:
+      $ref: '#/components/schemas/DIDDocument'
+
+    AddServiceEndpointRequest:
+      type: object
+      required: [id, type, serviceEndpoint]
+      properties:
+        id: { type: string, pattern: "^#[a-zA-Z0-9\\-]+$" }
+        type: { type: string, enum: [LinkedDomains] }
+        serviceEndpoint: { type: string, format: uri }
+
+    DIDDocument:
+      type: object
+      required: [id, verificationMethod]
+      properties:
+        "@context": { type: array, items: { type: string } }
+        id: { type: string }
+        controller: { type: string }
+        verificationMethod:
+          type: array
+          items:
+            type: object
+            required: [id, type, controller, publicKeyMultibase]
+            properties:
+              id: { type: string }
+              type: { type: string }
+              controller: { type: string }
+              publicKeyMultibase: { type: string }
+        service:
+          type: array
+          items:
+            type: object
+            required: [id, type, serviceEndpoint]
+            properties:
+              id: { type: string }
+              type: { type: string }
+              serviceEndpoint: { type: string }
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        requestId: { type: string }
+
+  responses:
+    ValidationError:
+      description: Invalid request
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFoundError:
+      description: Not found
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    ConflictError:
+      description: Resource already exists
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    GoneError:
+      description: DID deactivated
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    HederaError:
+      description: Hedera network error
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
