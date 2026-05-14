@@ -9,7 +9,7 @@ export class HttpAdapter {
     });
     if (!response.ok) {
       const payload = (await response.json()) as { error?: { code?: string; message?: string } };
-      throw new Error(payload.error?.message ?? 'Request failed');
+      throw this.toError(payload);
     }
     return (await response.json()) as T;
   }
@@ -18,8 +18,28 @@ export class HttpAdapter {
     const response = await fetch(`${this.baseUrl}${path}`);
     if (!response.ok) {
       const payload = (await response.json()) as { error?: { code?: string; message?: string } };
-      throw new Error(payload.error?.message ?? 'Request failed');
+      throw this.toError(payload);
     }
     return (await response.json()) as T;
+  }
+
+  async delete<T>(path: string): Promise<T> {
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      const payload = (await response.json()) as { error?: { code?: string; message?: string } };
+      throw this.toError(payload);
+    }
+    return (await response.json()) as T;
+  }
+
+  private toError(payload: { error?: { code?: string; message?: string } }): Error {
+    const message = payload.error?.message ?? 'Request failed';
+    const error = new Error(message);
+    if (payload.error?.code) {
+      (error as Error & { code?: string }).code = payload.error.code;
+    }
+    return error;
   }
 }

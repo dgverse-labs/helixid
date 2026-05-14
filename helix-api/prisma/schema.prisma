@@ -68,32 +68,84 @@ model ServiceRegistry {
 
   @@map("service_registry")
 }
-model VerifiableCredential {
-  id              String   @id @default(cuid())
-  vcId            String   @unique
+model Vc {
+  id              String    @id @default(cuid())
+  vcId            String    @unique
   subjectDid      String
-  issuerDid       String
-  type            String   // Comma-separated or JSON array string
-  status          String   @default("active") // active, revoked, expired
-  vcJson          String   @db.Text
+  subjectType     String
+  vcJson          String    @db.Text
+  privilegeScopes String    @db.Text
+  statusListIndex Int
   expiresAt       DateTime
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  revokedAt       DateTime?
+  renewedByVcId   String?
+  createdAt       DateTime  @default(now())
 
   @@index([subjectDid])
+  @@index([vcId])
   @@map("vcs")
 }
 
+model StatusListEntry {
+  id          String   @id @default(cuid())
+  listId      String   @unique
+  encodedList String   @db.Text
+  nextIndex   Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@map("status_list_entries")
+}
+
 model Did {
-  id                  String   @id @default(cuid())
-  did                 String   @unique
-  publicKeyHex        String
-  subjectType         String   // agent, user
-  hederaTransactionId String?
-  metadata            String?  @db.Text
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                   String      @id @default(cuid())
+  did                  String      @unique
+  // "agent" or "user"
+  subjectType          String
+  publicKeyHex         String
+  publicKeyMultibase   String
+  // Hedera HCS topic ID used for anchoring
+  hederaTopicId        String      @default("")
+  // Hedera sequence number of the anchoring message
+  hederaSequenceNumber Int         @default(0)
+  // The transaction consensus timestamp from Hedera (ISO 8601)
+  hederaTransactionId  String
+  // The full DID document JSON — stored for fast resolution
+  didDocumentJson      String      @db.Text
+  // Soft-delete marker — DID is never hard-deleted
+  deactivated          Boolean     @default(false)
+  deactivatedAt        DateTime?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  didUpdates           DidUpdate[]
 
   @@index([did])
   @@map("dids")
+}
+
+model DidUpdate {
+  id                  String   @id @default(cuid())
+  didId               String
+  did                 Did      @relation(fields: [didId], references: [id])
+  // "add_service_endpoint" | "remove_service_endpoint" | "deactivate"
+  updateType          String
+  // JSON snapshot of what changed
+  updatePayloadJson   String
+  hederaTransactionId String
+  createdAt           DateTime @default(now())
+
+  @@map("did_updates")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  timestamp   String
+  eventType   String
+  requestId   String
+  payloadJson String   @db.Text
+  createdAt   DateTime @default(now())
+
+  @@index([eventType])
+  @@index([requestId])
+  @@map("audit_log")
 }

@@ -7,6 +7,119 @@ info:
     This spec is the single source of truth for all API contracts (AC-1).
     Every endpoint must have a spec entry before implementation begins (AC-2).
 paths:
+  /v1/dids:
+    post:
+      summary: Create a DID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDIDRequest'
+      responses:
+        "201":
+          description: DID created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateDIDResponse'
+  /v1/dids/{did}:
+    get:
+      summary: Resolve a DID
+      parameters:
+        - in: path
+          name: did
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: live
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: DID resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolveDIDResponse'
+  /v1/dids/{did}/services:
+    post:
+      summary: Add a service endpoint
+      parameters:
+        - in: path
+          name: did
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceEndpoint'
+      responses:
+        "200":
+          description: Service endpoint added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateDIDResponse'
+  /v1/dids/{did}/services/{endpointId}:
+    delete:
+      summary: Remove a service endpoint
+      parameters:
+        - in: path
+          name: did
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: endpointId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Service endpoint removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateDIDResponse'
+  /v1/dids/{did}/deactivate:
+    post:
+      summary: Deactivate a DID
+      parameters:
+        - in: path
+          name: did
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: DID deactivated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [did, deactivated]
+                properties:
+                  did:
+                    type: string
+                  deactivated:
+                    type: boolean
+                    enum: [true]
   /v1/vp/template:
     post:
       summary: Generate unsigned VP template
@@ -176,8 +289,147 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ServiceEntry'
+  /v1/vcs:
+    post:
+      summary: Issue a Verifiable Credential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueVCRequest'
+      responses:
+        "201":
+          description: VC issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IssueVCResponse'
+  /v1/vcs/{vcId}:
+    get:
+      summary: Get VC details
+      parameters:
+        - in: path
+          name: vcId
+          required: true
+          schema:
+            type: string
+            pattern: '^vc:helix:[a-zA-Z0-9]+$'
+      responses:
+        "200":
+          description: VC details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VCDetailsResponse'
+  /v1/vcs/{vcId}/revoke:
+    post:
+      summary: Revoke a VC
+      parameters:
+        - in: path
+          name: vcId
+          required: true
+          schema:
+            type: string
+            pattern: '^vc:helix:[a-zA-Z0-9]+$'
+      responses:
+        "200":
+          description: VC revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevokeVCResponse'
+  /v1/vcs/{vcId}/renew:
+    post:
+      summary: Renew a VC
+      parameters:
+        - in: path
+          name: vcId
+          required: true
+          schema:
+            type: string
+            pattern: '^vc:helix:[a-zA-Z0-9]+$'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenewVCRequest'
+      responses:
+        "201":
+          description: VC renewed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RenewVCResponse'
+  /v1/status-list/{listId}:
+    get:
+      summary: Get StatusList2021 credential
+      parameters:
+        - in: path
+          name: listId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Status list credential
+          content:
+            application/json:
+              schema:
+                type: object
 components:
   schemas:
+    CreateDIDRequest:
+      type: object
+      required: [publicKeyHex, subjectType]
+      properties:
+        publicKeyHex:
+          type: string
+        subjectType:
+          type: string
+          enum: [agent, user]
+        domains:
+          type: array
+          items:
+            type: string
+    CreateDIDResponse:
+      type: object
+      required: [did, didDocument, hederaTransactionId]
+      properties:
+        did:
+          type: string
+        didDocument:
+          type: object
+        hederaTransactionId:
+          type: string
+    ResolveDIDResponse:
+      type: object
+      required: [did, didDocument, source]
+      properties:
+        did:
+          type: string
+        didDocument:
+          type: object
+        source:
+          type: string
+          enum: [cache, hedera]
+    UpdateDIDResponse:
+      type: object
+      required: [didDocument]
+      properties:
+        didDocument:
+          type: object
+    ServiceEndpoint:
+      type: object
+      required: [id, type, serviceEndpoint]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        serviceEndpoint:
+          type: string
     VPTemplateRequest:
       type: object
       required: [agentDid, userDid, targetService, vcType]
@@ -362,4 +614,93 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ServiceEntry'
+    IssueVCRequest:
+      type: object
+      required: [subjectDid, subjectType, expiresInSeconds]
+      properties:
+        subjectDid:
+          type: string
+        subjectType:
+          type: string
+          enum: [agent, user]
+        privilegeScopes:
+          type: array
+          items:
+            type: string
+        agentName:
+          type: string
+        userId:
+          type: string
+        expiresInSeconds:
+          type: integer
+          minimum: 3600
+          maximum: 31536000
+    IssueVCResponse:
+      type: object
+      required: [vcId, vc, statusListIndex, expiresAt]
+      properties:
+        vcId:
+          type: string
+        vc:
+          type: object
+        statusListIndex:
+          type: integer
+        expiresAt:
+          type: string
+          format: date-time
+    VCDetailsResponse:
+      type: object
+      required: [vcId, vc, status, expiresAt, revokedAt, renewedByVcId]
+      properties:
+        vcId:
+          type: string
+        vc:
+          type: object
+        status:
+          type: string
+          enum: [active, revoked, expired]
+        expiresAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: [string, 'null']
+          format: date-time
+        renewedByVcId:
+          type: [string, 'null']
+    RevokeVCResponse:
+      type: object
+      required: [vcId, revoked, revokedAt]
+      properties:
+        vcId:
+          type: string
+        revoked:
+          type: boolean
+          enum: [true]
+        revokedAt:
+          type: string
+          format: date-time
+    RenewVCRequest:
+      type: object
+      properties:
+        privilegeScopes:
+          type: array
+          items:
+            type: string
+        expiresInSeconds:
+          type: integer
+          minimum: 3600
+          maximum: 31536000
+    RenewVCResponse:
+      type: object
+      required: [vcId, vc, previousVcId, expiresAt]
+      properties:
+        vcId:
+          type: string
+        vc:
+          type: object
+        previousVcId:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
   securitySchemes: {}

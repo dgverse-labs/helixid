@@ -1,40 +1,83 @@
+/**
+ * helix-api/src/repositories/did.repository.ts
+ *
+ * Repository layer for DID records.
+ * Prisma queries only — no business logic (DB-4).
+ */
+
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type Did, type DidUpdate } from '@prisma/client';
 
-const connectionString = process.env.DATABASE_URL || 'postgresql://helixid_test:helixid_test@localhost:5432/helixid_test';
+export type { Did, DidUpdate };
+
+const connectionString =
+  process.env.DATABASE_URL || 'postgresql://helixid_test:helixid_test@localhost:5432/helixid_test';
+
 const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+export const prisma = new PrismaClient({ adapter });
 
-export interface DidRecord {
-  id: string;
+export interface CreateDidData {
   did: string;
-  publicKeyHex: string;
   subjectType: string;
-  hederaTransactionId: string | null;
-  metadata: string | null;
-  createdAt: Date;
-  updatedAt: Date;
+  publicKeyHex: string;
+  publicKeyMultibase: string;
+  hederaTopicId: string;
+  hederaSequenceNumber: number;
+  hederaTransactionId: string;
+  didDocumentJson: string;
+}
+
+export interface CreateDidUpdateData {
+  didId: string;
+  updateType: string;
+  updatePayloadJson: string;
+  hederaTransactionId: string;
 }
 
 export class DIDRepository {
-  async createDID(data: Omit<DidRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<DidRecord> {
-    return prisma.did.create({
-      data
-    });
+  constructor(private readonly db: PrismaClient = prisma) {}
+
+  async create(data: CreateDidData): Promise<Did> {
+    return this.db.did.create({ data });
   }
 
-  async findByDid(did: string): Promise<DidRecord | null> {
-    return prisma.did.findUnique({
-      where: { did }
-    });
+  async findByDid(did: string): Promise<Did | null> {
+    return this.db.did.findUnique({ where: { did } });
   }
 
-  async updateMetadata(did: string, metadata: string): Promise<DidRecord> {
-    return prisma.did.update({
+  async findByPublicKeyMultibase(multibase: string): Promise<Did | null> {
+    return this.db.did.findFirst({ where: { publicKeyMultibase: multibase } });
+  }
+
+  async updateDIDDocument(
+    did: string,
+    didDocumentJson: string,
+    hederaTransactionId: string,
+  ): Promise<Did> {
+    return this.db.did.update({
       where: { did },
-      data: { metadata }
+      data: { didDocumentJson, hederaTransactionId, updatedAt: new Date() },
     });
+  }
+
+  async deactivate(did: string): Promise<Did> {
+    return this.db.did.update({
+      where: { did },
+      data: { deactivated: true, deactivatedAt: new Date() },
+    });
+  }
+
+  async createDidUpdate(data: CreateDidUpdateData): Promise<DidUpdate> {
+    return this.db.didUpdate.create({ data });
+  }
+
+  async getDidUpdates(did: string): Promise<DidUpdate[]> {
+    const record = await this.db.did.findUnique({
+      where: { did },
+      include: { didUpdates: { orderBy: { createdAt: 'asc' } } },
+    });
+    return record?.didUpdates ?? [];
   }
 }

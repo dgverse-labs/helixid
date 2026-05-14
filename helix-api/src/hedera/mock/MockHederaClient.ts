@@ -1,27 +1,69 @@
-// Copyright 2026 DgVerse LLP
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//    http://www.apache.org/licenses/LICENSE-2.0
+/**
+ * MockHederaClient — test double for IHederaClient (HR-3).
+ * In-memory implementation — never makes network calls.
+ * Exposes anchoredPayloads[] for test assertions.
+ * Call reset() in afterEach to clear state.
+ */
 
 import type { HederaTransactionResult, IHederaClient } from '../IHederaClient.js';
 
-// MockHederaClient — test double for IHederaClient.
-// Records calls without writing to Hedera testnet (HR-3).
+interface StoredMessage {
+  payload: string;
+  sequenceNumber: number;
+  consensusTimestamp: string;
+}
+
 export class MockHederaClient implements IHederaClient {
-  public readonly anchored: string[] = [];
-  public readonly resolved: Array<{ topicId: string; sequenceNumber: number }> = [];
+  private readonly messages = new Map<number, StoredMessage>();
+  private sequenceCounter = 0;
+
+  /** All payloads that have been anchored — for test assertions. */
+  public get anchoredPayloads(): string[] {
+    return Array.from(this.messages.values()).map((m) => m.payload);
+  }
+
+  /** Clear all in-memory state — call in afterEach. */
+  reset(): void {
+    this.messages.clear();
+    this.sequenceCounter = 0;
+  }
 
   async anchorDocument(payload: string): Promise<HederaTransactionResult> {
-    this.anchored.push(payload);
+    this.sequenceCounter += 1;
+    const seqNum = this.sequenceCounter;
+    const txId = `mock-tx-${Date.now()}-${seqNum}`;
+    const msg: StoredMessage = {
+      payload,
+      sequenceNumber: seqNum,
+      consensusTimestamp: new Date().toISOString(),
+    };
+    this.messages.set(seqNum, msg);
     return {
-      transactionId: `mock-tx-${Date.now()}`,
-      topicSequenceNumber: this.anchored.length,
+      transactionId: txId,
+      sequenceNumber: seqNum,
+      topicId: 'mock-topic-0.0.1234',
     };
   }
 
+  async fetchMessage(topicId: string, sequenceNumber: number): Promise<{
+    sequenceNumber: number;
+    consensusTimestamp: string;
+    contents: string;
+  }> {
+    const msg = this.messages.get(sequenceNumber);
+    if (!msg) {
+      throw new Error(`MockHederaClient: no message at sequenceNumber ${sequenceNumber} for topic ${topicId}`);
+    }
+    return {
+      sequenceNumber: msg.sequenceNumber,
+      consensusTimestamp: msg.consensusTimestamp,
+      contents: msg.payload,
+    };
+  }
+
+  /** Legacy — kept for backward compatibility with VP flow */
   async resolveDocument(topicId: string, sequenceNumber: number): Promise<string> {
-    this.resolved.push({ topicId, sequenceNumber });
-    return JSON.stringify({});
+    const result = await this.fetchMessage(topicId, sequenceNumber);
+    return result.contents;
   }
 }

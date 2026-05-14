@@ -1,4 +1,4 @@
-import type { DIDDocument, IDIDService } from '../../src/services/did/IDIDService.js';
+import type { DIDDocument, IDIDService, CreateDIDResult, ResolveDIDResult } from '../../src/services/did/IDIDService.js';
 
 export class MockDIDService implements IDIDService {
   private shouldThrow = false;
@@ -11,11 +11,19 @@ export class MockDIDService implements IDIDService {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async resolveDID(_did: string): Promise<DIDDocument> {
+  async resolveDID(_did: string, _requestId = 'mock'): Promise<ResolveDIDResult> {
     if (this.shouldThrow) {
       throw new Error('DID not found');
     }
-    return this.document;
+    return { did: this.document.id, didDocument: this.document, source: 'cache' };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async resolveDIDFromHedera(_did: string, _requestId = 'mock'): Promise<ResolveDIDResult> {
+    if (this.shouldThrow) {
+      throw new Error('DID not found');
+    }
+    return { did: this.document.id, didDocument: this.document, source: 'hedera' };
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -23,11 +31,26 @@ export class MockDIDService implements IDIDService {
     _publicKeyHex: string,
     _subjectType: 'agent' | 'user',
     _domains: string[],
-    _requestId: string
-  ): Promise<{ did: string; hederaTransactionId: string }> {
+    _requestId: string,
+  ): Promise<CreateDIDResult> {
     if (this.shouldThrow) {
       throw new Error('DID not found');
     }
-    return { did: this.createdDid, hederaTransactionId: 'mock-tx-1' };
+    return { did: this.createdDid, didDocument: this.document, hederaTransactionId: 'mock-tx-1' };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async addServiceEndpoint(_did: string, _endpoint: import('@helix-id/core').ServiceEndpoint, _requestId: string): Promise<DIDDocument> {
+    return this.document;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async removeServiceEndpoint(_did: string, _endpointId: string, _requestId: string): Promise<DIDDocument> {
+    return this.document;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async deactivateDID(_did: string, _reason: string, _requestId: string): Promise<void> {
+    // no-op for mock
   }
 }

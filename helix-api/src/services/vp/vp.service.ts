@@ -31,13 +31,13 @@ function makeVpId(): string {
   return `vp:helix:${randomBytes(12).toString('hex')}`;
 }
 
-function extractPublicKeyHex(doc: Awaited<ReturnType<IDIDService['resolveDID']>>): string {
+function extractPublicKeyHex(doc: import('@helix-id/core').DIDDocument): string {
   const method = doc.verificationMethod?.find((item) => item.type.includes('Ed25519'));
   if (!method) {
     throw new VPAgentDIDNotFoundError();
   }
-  if (method.publicKeyHex) {
-    return method.publicKeyHex;
+  if ('publicKeyHex' in method && method.publicKeyHex) {
+    return method.publicKeyHex as string;
   }
   if (method.publicKeyMultibase?.startsWith('z')) {
     return Buffer.from(base58btcDecode(method.publicKeyMultibase.slice(1))).toString('hex');
@@ -68,7 +68,7 @@ export class VPService implements IVPService {
 
   async generateVPTemplate(params: VPTemplateParams, requestId: string): Promise<VPTemplateResult> {
     try {
-      await this.didService.resolveDID(params.agentDid);
+      await this.didService.resolveDID(params.agentDid, requestId);
     } catch {
       throw new VPAgentDIDNotFoundError();
     }
@@ -140,7 +140,8 @@ export class VPService implements IVPService {
 
       let didDocument;
       try {
-        didDocument = await this.didService.resolveDID(parsed.data.holder);
+        const result = await this.didService.resolveDID(parsed.data.holder, requestId);
+        didDocument = result.didDocument;
       } catch {
         throw new VPAgentDIDNotFoundError();
       }
@@ -176,9 +177,10 @@ export class VPService implements IVPService {
       // Hedera DID resolution is not implemented yet, so we only enforce VC
       // signature verification for issuers we can fully verify locally.
       if (vc.proof?.proofValue && vc.issuer && !shouldSkipVCSignatureVerification(vc)) {
-        let issuerDidDocument: Awaited<ReturnType<IDIDService['resolveDID']>>;
+        let issuerDidDocument: import('@helix-id/core').DIDDocument;
         try {
-          issuerDidDocument = await this.didService.resolveDID(vc.issuer as string);
+          const result = await this.didService.resolveDID(vc.issuer as string, requestId);
+          issuerDidDocument = result.didDocument;
         } catch {
           throw new VCIssuerNotFoundError();
         }

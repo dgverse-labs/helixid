@@ -13,6 +13,7 @@ import {
   ServiceNotFoundError,
   base58btcDecode,
   verifySignature,
+  extractPublicKeyFromDIDDocument,
   type HelixError,
   type IAuditLogger
 } from '@helix-id/core';
@@ -37,19 +38,7 @@ function ensureServiceName(name: string): boolean {
   return /^[a-z][a-z0-9-]+$/.test(name);
 }
 
-function extractPublicKeyHex(doc: Awaited<ReturnType<IDIDService['resolveDID']>>): string {
-  const method = doc.verificationMethod?.find((item) => item.type.includes('Ed25519'));
-  if (!method) {
-    throw new ChallengeSignatureInvalidError();
-  }
-  if (method.publicKeyHex) {
-    return method.publicKeyHex;
-  }
-  if (method.publicKeyMultibase?.startsWith('z')) {
-    return Buffer.from(base58btcDecode(method.publicKeyMultibase.slice(1))).toString('hex');
-  }
-  throw new ChallengeSignatureInvalidError();
-}
+
 
 export class AgentService implements IAgentService {
   constructor(
@@ -219,9 +208,9 @@ export class AgentService implements IAgentService {
 
     return {
       agentDid: didResult.did,
-      vc,
+      vc: vc.vc,
       hederaTransactionId: didResult.hederaTransactionId,
-      vcId: String(vc.id ?? 'vc:unknown')
+      vcId: vc.vcId
     };
   }
 
@@ -229,7 +218,7 @@ export class AgentService implements IAgentService {
     input: { did: string; purpose: 'user_verification' },
     requestId: string
   ): Promise<ChallengeResult> {
-    await this.didService.resolveDID(input.did);
+    await this.didService.resolveDID(input.did, requestId);
     const challengeId = `chal:${randomBytes(8).toString('hex')}`;
     const nonce = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + this.challengeTtlSeconds * 1000);
@@ -271,8 +260,13 @@ export class AgentService implements IAgentService {
     if (!/^[0-9a-f]{128}$/i.test(input.signature)) {
       throw new ChallengeSignatureInvalidError();
     }
-    const didDocument = await this.didService.resolveDID(challenge.did);
-    const publicKeyHex = extractPublicKeyHex(didDocument);
+    const resolveResult = await this.didService.resolveDID(challenge.did, requestId);
+    let publicKeyHex: string;
+    try {
+      publicKeyHex = extractPublicKeyFromDIDDocument(resolveResult.didDocument as any);
+    } catch {
+      throw new ChallengeSignatureInvalidError();
+    }
     const validSignature = await verifySignature(
       Buffer.from(challenge.nonce, 'hex'),
       input.signature,
@@ -284,7 +278,7 @@ export class AgentService implements IAgentService {
     await this.repository.markChallengeVerified(challengeId);
     let vc = await this.vcService.findActiveBySubjectDid(challenge.did);
     if (!vc) {
-      vc = await this.vcService.issueVC(
+      const issued = await this.vcService.issueVC(
         {
           subjectDid: challenge.did,
           subjectType: 'user',
@@ -293,6 +287,7 @@ export class AgentService implements IAgentService {
         },
         requestId
       );
+      vc = issued.vc;
     }
     this.auditLogger.log(AuditEvents.CHALLENGE_VERIFIED, {
       requestId,

@@ -42,7 +42,7 @@ describe('Story 4 Realistic Agent And User Flows', () => {
         walletPath
       );
 
-      expect(onboarding.agentDid).toMatch(/^did:helix:/);
+      expect(onboarding.agentDid).toMatch(/^did:hedera:testnet:/);
       expect(onboarding.walletSaved).toBe(true);
       expect(onboarding.vcId).toBeTruthy();
 

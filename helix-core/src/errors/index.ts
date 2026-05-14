@@ -5,12 +5,84 @@ export { ErrorCodes, type ErrorCode };
 export class HelixError extends Error {
   public readonly code: ErrorCode;
   public readonly httpStatus: number;
+  public readonly details?: Record<string, unknown>;
 
-  constructor(code: ErrorCode, message: string, httpStatus: number) {
+  constructor(code: ErrorCode, message: string, httpStatus: number, details?: Record<string, unknown>) {
     super(message);
     this.name = new.target.name;
     this.code = code;
     this.httpStatus = httpStatus;
+    if (details !== undefined) {
+      this.details = details;
+    }
+  }
+}
+
+// ─── B1: DID & Hedera ────────────────────────────────────────────────────────
+
+export class InvalidPublicKeyError extends HelixError {
+  constructor(message = 'The provided public key is invalid.') {
+    super(ErrorCodes.INVALID_PUBLIC_KEY, message, 400);
+  }
+}
+
+export class InvalidDIDFormatError extends HelixError {
+  constructor(did: string) {
+    super(ErrorCodes.INVALID_DID_FORMAT, `The DID format is invalid: ${did}`, 400);
+  }
+}
+
+export class DIDNotFoundError extends HelixError {
+  constructor(did: string) {
+    super(ErrorCodes.DID_NOT_FOUND, `DID not found: ${did}`, 404);
+  }
+}
+
+export class DIDAlreadyExistsError extends HelixError {
+  constructor(message = 'A DID with this public key already exists.') {
+    super(ErrorCodes.DID_ALREADY_EXISTS, message, 409);
+  }
+}
+
+export class DIDDeactivatedError extends HelixError {
+  constructor(did: string) {
+    super(ErrorCodes.DID_DEACTIVATED, `DID has been deactivated: ${did}`, 410);
+  }
+}
+
+export class InvalidServiceEndpointUrlError extends HelixError {
+  constructor(url: string) {
+    super(ErrorCodes.INVALID_SERVICE_ENDPOINT_URL, `Invalid service endpoint URL (must be https://): ${url}`, 400);
+  }
+}
+
+export class ServiceEndpointNotFoundError extends HelixError {
+  constructor(id: string) {
+    super(ErrorCodes.SERVICE_ENDPOINT_NOT_FOUND, `Service endpoint not found: ${id}`, 404);
+  }
+}
+
+export class ServiceEndpointAlreadyExistsError extends HelixError {
+  constructor(id: string) {
+    super(ErrorCodes.SERVICE_ENDPOINT_ALREADY_EXISTS, `Service endpoint already exists: ${id}`, 409);
+  }
+}
+
+export class HederaAnchorFailedError extends HelixError {
+  constructor(message = 'Failed to anchor document on Hedera.') {
+    super(ErrorCodes.HEDERA_ANCHOR_FAILED, message, 502);
+  }
+}
+
+export class HederaResolutionFailedError extends HelixError {
+  constructor(message = 'Failed to resolve document from Hedera.') {
+    super(ErrorCodes.HEDERA_RESOLUTION_FAILED, message, 502);
+  }
+}
+
+export class InternalError extends HelixError {
+  constructor(message = 'An internal error occurred.') {
+    super(ErrorCodes.INTERNAL_ERROR, message, 500);
   }
 }
 
@@ -143,5 +215,37 @@ export class VCRevokedError extends HelixError {
 export class VCIssuerNotFoundError extends HelixError {
   constructor(message = 'The Verifiable Credential issuer DID could not be resolved') {
     super(ErrorCodes.VC_ISSUER_NOT_FOUND, message, 400);
+  }
+}
+
+// ─── B2: VC Issuance & Management ────────────────────────────────────────────
+
+export class VCNotFoundError extends HelixError {
+  constructor(vcId: string) {
+    super(ErrorCodes.VC_NOT_FOUND, `Verifiable Credential not found: ${vcId}`, 404);
+  }
+}
+
+export class VCAlreadyRevokedError extends HelixError {
+  constructor(message = 'The Verifiable Credential has already been revoked') {
+    super(ErrorCodes.VC_ALREADY_REVOKED, message, 409);
+  }
+}
+
+export class VCSubjectDIDNotFoundError extends HelixError {
+  constructor(did: string) {
+    super(ErrorCodes.VC_SUBJECT_DID_NOT_FOUND, `Subject DID not found: ${did}`, 404);
+  }
+}
+
+export class VCInvalidPrivilegeScopeError extends HelixError {
+  constructor(scope: string) {
+    super(ErrorCodes.VC_INVALID_PRIVILEGE_SCOPE, `Invalid privilege scope: ${scope}`, 400);
+  }
+}
+
+export class StatusListIndexExhaustedError extends HelixError {
+  constructor(message = 'The status list index space is exhausted. No more VCs can be issued.') {
+    super(ErrorCodes.STATUS_LIST_INDEX_EXHAUSTED, message, 503);
   }
 }
