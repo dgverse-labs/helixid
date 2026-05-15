@@ -12,7 +12,16 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      exclude: ['node_modules/', 'tests/'],
+      include: ['src/**/*.ts'],
+      exclude: [
+        'src/index.ts',
+        'src/**/index.ts',
+        'src/audit/index.ts',
+        'src/resolver/IDidResolver.ts',
+        'src/resolver/types.ts',
+        'vitest.config.ts',
+        'tests/**', // Explicitly exclude tests folder
+      ],
     },
   },
 });

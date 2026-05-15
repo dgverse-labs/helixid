@@ -12,7 +12,7 @@
 
 import { z } from 'zod';
 
-const ConfigSchema = z.object({
+export const ConfigSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   API_BASE_URL: z.string().url(),
@@ -45,8 +45,8 @@ const ConfigSchema = z.object({
 
 export type Config = z.infer<typeof ConfigSchema>;
 
-function loadConfig(): Config {
-  const result = ConfigSchema.safeParse(process.env);
+export function loadConfig(input: Record<string, unknown>): Config {
+  const result = ConfigSchema.safeParse(input);
   if (!result.success) {
     const issues = result.error.issues
       .map((i) => `  ${i.path.join('.')}: ${i.message}`)
@@ -68,8 +68,9 @@ function loadConfig(): Config {
 }
 
 /**
- * Singleton configuration object.
- * Loaded once at startup, validated against environment variables.
- * This is the ONLY place process.env should be accessed in the codebase.
+ * API/runtime helper. Library consumers should pass explicit config to their
+ * own application boundary instead of importing a process-bound singleton.
  */
-export const config: Config = loadConfig();
+export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Config {
+  return loadConfig(env);
+}

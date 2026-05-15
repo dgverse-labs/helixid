@@ -1,34 +1,41 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { VPRepository } from '../../../src/services/../../src/repositories/vp.repository.js';
-import { prisma } from '../../../src/repositories/vp.repository.js';
-
-vi.mock('../../../src/repositories/vp.repository.js', async (importOriginal) => {
-  const original = await importOriginal() as any;
-  return {
-    ...original,
-    prisma: {
-      vpId: {
-        updateMany: vi.fn(),
-        findUnique: vi.fn(),
-      }
-    }
-  };
-});
+// Copyright 2026 DgVerse LLP
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { VPRepository } from '../../../src/repositories/vp.repository.js';
 
 describe('VPRepository Unit Tests', () => {
+  let mockPrisma: any;
   let repository: VPRepository;
 
   beforeEach(() => {
-    repository = new VPRepository();
-    vi.clearAllMocks();
+    mockPrisma = {
+      vpId: {
+        create: vi.fn(),
+        findUnique: vi.fn(),
+        updateMany: vi.fn(),
+      },
+    };
+    repository = new VPRepository(mockPrisma);
   });
 
-  describe('consumeAtomically', () => {
-    it('returns false if prisma updateMany throws', async () => {
-      (prisma.vpId.updateMany as any).mockRejectedValue(new Error('Prisma Error'));
-      
-      const result = await repository.consumeAtomically('vp:helix:123');
-      expect(result).toBe(false);
-    });
+  it('creates a presentation', async () => {
+    await repository.create({ vpId: 'vp1', agentDid: 'a', userDid: 'u', targetService: 's', expiresAt: new Date() });
+    expect(mockPrisma.vpId.create).toHaveBeenCalled();
+  });
+
+  it('finds by ID', async () => {
+    await repository.findByVpId('vp1');
+    expect(mockPrisma.vpId.findUnique).toHaveBeenCalled();
+  });
+
+  it('consumes atomically', async () => {
+    mockPrisma.vpId.updateMany.mockResolvedValue({ count: 1 });
+    const res = await repository.consumeAtomically('vp1');
+    expect(res).toBe(true);
+  });
+
+  it('returns false on consumeAtomically error', async () => {
+    mockPrisma.vpId.updateMany.mockRejectedValue(new Error('db error'));
+    const res = await repository.consumeAtomically('vp1');
+    expect(res).toBe(false);
   });
 });

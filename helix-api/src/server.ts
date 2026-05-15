@@ -1,12 +1,12 @@
 // Copyright 2026 DgVerse LLP
 // Licensed under the Apache License, Version 2.0
-import 'dotenv/config';
+import './loadEnv.js';
 import crypto from 'node:crypto';
 import Fastify from 'fastify';
 import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { config } from '@helix-id/core';
+import { loadConfigFromEnv } from '@helix-id/core';
 
 import { errorHandler } from './middleware/errorHandler.js';
 import { ApiAuditLogger } from './audit/index.js';
@@ -27,20 +27,21 @@ import statusListRoutes from './routes/status-list/index.js';
 import vpRoutes from './routes/vp/index.js';
 import agentRoutes from './routes/agent/index.js';
 
+const config = loadConfigFromEnv();
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
-const auditLogger = new ApiAuditLogger(prisma);
+const auditLogger = new ApiAuditLogger(prisma, config);
 const didRepository = new DidRepository(prisma);
 const vcRepository = new VcRepository(prisma);
 const vpRepository = new VPRepository();
-const agentRepository = new AgentRepository();
+const agentRepository = new AgentRepository(prisma);
 const serviceRegistry = new ServiceRegistryRepository();
 
 const hederaClient = config.NODE_ENV === 'test' || process.env['HEDERA_MOCK'] === 'true'
   ? new MockHederaClient()
-  : new HieroHederaClient();
+  : new HieroHederaClient(config);
 
 const didService = new DIDService(didRepository, hederaClient, auditLogger);
 const vcService = new VCService(

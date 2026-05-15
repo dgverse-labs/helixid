@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeAll, afterEach, afterAll } from 'vitest';
 import Fastify from 'fastify';
-import { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
 import { generateKeyPair, ErrorCode } from '@helix-id/core';
 
 import { DIDService } from '../../src/services/did/did.service.js';
@@ -21,6 +21,8 @@ import { ApiAuditLogger } from '../../src/audit/index.js';
 import { MockHederaClient } from '../../src/hedera/mock/MockHederaClient.js';
 import { errorHandler } from '../../src/middleware/errorHandler.js';
 import didRoutes from '../../src/routes/did/index.js';
+import { createTestPrisma } from '../utils/prisma.js';
+import { registerErrorSchemas } from '../utils/registerErrorSchemas.js';
 
 describe('DID API Integration', () => {
   let app: any;
@@ -28,23 +30,22 @@ describe('DID API Integration', () => {
   let mockHedera: MockHederaClient;
 
   beforeAll(async () => {
-    prisma = new PrismaClient({ 
-      datasources: { 
-        db: { url: process.env['DATABASE_URL'] || 'postgresql://postgres:postgres@localhost:5432/helixid?schema=public' } 
-      } 
-    });
+    prisma = createTestPrisma();
     mockHedera = new MockHederaClient();
     const auditLogger = new ApiAuditLogger(prisma);
     const didRepository = new DidRepository(prisma);
     const didService = new DIDService(didRepository, mockHedera, auditLogger);
 
     app = Fastify({ logger: false });
+    registerErrorSchemas(app);
     app.setErrorHandler(errorHandler);
     await app.register(didRoutes, { didService });
     await app.ready();
   });
 
   afterEach(async () => {
+    await prisma.vc.deleteMany();
+    await prisma.statusListEntry.deleteMany();
     await prisma.auditLog.deleteMany();
     await prisma.didUpdate.deleteMany();
     await prisma.did.deleteMany();
@@ -70,7 +71,7 @@ describe('DID API Integration', () => {
 
       expect(response.statusCode).toBe(201);
       const body = JSON.parse(response.body);
-      expect(body.id).toMatch(/^did:helix:[0-9a-f]{32}$/);
+      expect(body.id).toMatch(/^did:hedera:testnet:[0-9a-f]{32}$/);
       expect(body.publicKey).toBe(publicKey);
       expect(mockHedera.anchoredPayloads).toHaveLength(1);
     });
@@ -119,7 +120,7 @@ describe('DID API Integration', () => {
     it('returns 404 for unknown DID', async () => {
       const response = await app.inject({
         method: 'GET',
-        url: '/v1/dids/did:helix:0123456789abcdef0123456789abcdef',
+        url: '/v1/dids/did:hedera:testnet:0123456789abcdef0123456789abcdef',
       });
       expect(response.statusCode).toBe(404);
     });

@@ -78,7 +78,7 @@ export interface IVCService {
  */
 export class VCService implements IVCService {
   private readonly DEFAULT_STATUS_LIST_ID = 'helix-status-list-1';
-  private readonly HELIX_DID = 'did:helix:00000000000000000000000000000000'; // System Issuer
+  private readonly HELIX_DID = 'did:hedera:testnet:helix-operator'; // System issuer DID
 
   constructor(
     private readonly vcRepo: VcRepository,
@@ -92,7 +92,7 @@ export class VCService implements IVCService {
     const records = await this.vcRepo.findActiveBySubjectDid(subjectDid, vcType);
     const record = records.at(-1);
     if (!record) return null;
-    return typeof record.vcJson === 'string' ? JSON.parse(record.vcJson) : record.vcJson;
+    return (typeof record.vcJson === 'string' ? JSON.parse(record.vcJson) : record.vcJson) as Record<string, unknown>;
   }
 
   async issueVC(params: IssueVCParams, requestId: string): Promise<IssueVCResult> {
@@ -156,13 +156,13 @@ export class VCService implements IVCService {
         ? {
             id: params.subjectDid,
             type: 'HelixAgent',
-            privilegeScopes: params.privilegeScopes || [],
-            agentName: params.agentName || 'Unknown Agent',
+            privilegeScopes: params.privilegeScopes!,
+            agentName: params.agentName!,
           }
         : {
             id: params.subjectDid,
             type: 'HelixUser',
-            userId: params.userId || 'unknown_user',
+            userId: params.userId!,
           } as any,
     };
 
@@ -274,10 +274,10 @@ export class VCService implements IVCService {
     const newVcResult = await this.issueVC({
       subjectDid: record.subjectDid,
       subjectType: record.subjectType as 'agent' | 'user',
-      privilegeScopes: overrides.privilegeScopes || (record.privilegeScopes as unknown as string[] | undefined),
-      agentName: (record.vcJson as any).credentialSubject?.agentName,
-      userId: (record.vcJson as any).credentialSubject?.userId,
-      expiresInSeconds: overrides.expiresInSeconds as number | undefined,
+      privilegeScopes: overrides.privilegeScopes || (record.privilegeScopes as unknown as string[]),
+      agentName: (record.vcJson as any).credentialSubject.agentName,
+      userId: (record.vcJson as any).credentialSubject.userId,
+      expiresInSeconds: overrides.expiresInSeconds,
       // Carry over other metadata if needed
     }, requestId);
 

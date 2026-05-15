@@ -87,7 +87,7 @@ describe('agent integration', () => {
       url: '/v1/onboard',
       payload: { enrollmentToken: token, publicKeyHex: 'd'.repeat(64), domains: [] }
     });
-    expect(second.statusCode).toBe(400);
+    expect(second.statusCode).toBe(409);
     expect(second.json().error.code).toBe('ENROLLMENT_TOKEN_ALREADY_USED');
   });
 

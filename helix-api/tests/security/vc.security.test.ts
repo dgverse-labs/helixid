@@ -13,8 +13,10 @@
 import { describe, it, expect, beforeAll, afterEach, afterAll, vi } from 'vitest';
 import Fastify from 'fastify';
 import { PrismaClient } from '@prisma/client';
+import { createTestPrisma } from '../utils/prisma.js';
+import { verifySignature, hashCanonicalPayload, derivePublicKey } from '@helix-id/core';
 import * as crypto from 'node:crypto';
-import * as bs58 from 'bs58';
+import bs58 from 'bs58';
 
 import { VCService } from '../../src/services/vc/vc.service.js';
 import { VcRepository } from '../../src/repositories/vc.repository.js';
@@ -32,9 +34,7 @@ describe('VC Security', () => {
   const signingKeyHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
   beforeAll(async () => {
-    prisma = new PrismaClient({ 
-      datasources: { db: { url: process.env['DATABASE_URL'] || 'postgresql://postgres:postgres@localhost:5432/helixid?schema=public' } } 
-    });
+    prisma = createTestPrisma();
     
     const auditLogger = new ApiAuditLogger(prisma);
     const didRepo = new DidRepository(prisma);
@@ -61,7 +61,7 @@ describe('VC Security', () => {
 
   afterEach(async () => {
     await prisma.vc.deleteMany();
-    await prisma.status_list_entries.deleteMany();
+    await prisma.statusListEntry.deleteMany();
   });
 
   afterAll(async () => {
@@ -74,26 +74,19 @@ describe('VC Security', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/v1/vcs',
-      payload: { subjectDid: didId, subjectType: 'user' },
+      payload: { subjectDid: didId, subjectType: 'user', userId: 'security-user' },
     });
     const { vc } = JSON.parse(res.body);
 
     const proofValue = vc.proof.proofValue;
-    const signature = bs58.default.decode(proofValue);
+    const signature = bs58.decode(proofValue);
     
     const credentialWithoutProof = { ...vc };
     delete credentialWithoutProof.proof;
-    const canonical = JSON.stringify(credentialWithoutProof);
+    const hash = hashCanonicalPayload(credentialWithoutProof);
+    const publicKeyHex = derivePublicKey(signingKeyHex);
 
-    const publicKey = crypto.createPublicKey({
-      key: crypto.createPrivateKey({
-        key: Buffer.from(signingKeyHex, 'hex'),
-        format: 'der',
-        type: 'pkcs8',
-      }),
-    });
-
-    const isValid = crypto.verify(null, Buffer.from(canonical), publicKey, signature);
+    const isValid = await verifySignature(hash, Buffer.from(signature).toString('hex'), publicKeyHex);
     expect(isValid).toBe(true);
   });
 
@@ -101,7 +94,7 @@ describe('VC Security', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/v1/vcs',
-      payload: { subjectDid: didId, subjectType: 'agent', agentName: 'Original' },
+      payload: { subjectDid: didId, subjectType: 'agent', agentName: 'Original', privilegeScopes: ['read:orders'] },
     });
     const { vc } = JSON.parse(res.body);
 
@@ -109,20 +102,13 @@ describe('VC Security', () => {
     vc.credentialSubject.agentName = 'TAMPERED';
 
     const proofValue = vc.proof.proofValue;
-    const signature = bs58.default.decode(proofValue);
+    const signature = bs58.decode(proofValue);
     const credentialWithoutProof = { ...vc };
     delete credentialWithoutProof.proof;
-    const canonical = JSON.stringify(credentialWithoutProof);
+    const hash = hashCanonicalPayload(credentialWithoutProof);
+    const publicKeyHex = derivePublicKey(signingKeyHex);
 
-    const publicKey = crypto.createPublicKey({
-      key: crypto.createPrivateKey({
-        key: Buffer.from(signingKeyHex, 'hex'),
-        format: 'der',
-        type: 'pkcs8',
-      }),
-    });
-
-    const isValid = crypto.verify(null, Buffer.from(canonical), publicKey, signature);
+    const isValid = await verifySignature(hash, Buffer.from(signature).toString('hex'), publicKeyHex);
     expect(isValid).toBe(false);
   });
 
@@ -130,7 +116,7 @@ describe('VC Security', () => {
     const requests = Array.from({ length: 5 }, () => app.inject({
       method: 'POST',
       url: '/v1/vcs',
-      payload: { subjectDid: didId, subjectType: 'user' },
+      payload: { subjectDid: didId, subjectType: 'user', userId: 'concurrent-user' },
     }));
 
     const responses = await Promise.all(requests);

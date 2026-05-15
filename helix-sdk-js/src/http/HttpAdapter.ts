@@ -37,12 +37,12 @@ export class HttpAdapter {
 
     const data = await response.json();
     if (!response.ok) {
-      throw this.mapErrorResponse(data);
+      throw this.mapErrorResponse(data, response.status);
     }
     return data as T;
   }
 
-  private mapErrorResponse(data: unknown): HelixError {
-    return mapApiError(data);
+  private mapErrorResponse(data: unknown, status: number): HelixError {
+    return mapApiError({ ...(typeof data === 'object' && data !== null ? data : {}), status });
   }
 }

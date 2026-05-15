@@ -14,6 +14,7 @@ import { describe, it, expect, beforeAll, afterEach, afterAll } from 'vitest';
 import Fastify from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { generateKeyPair, ErrorCode } from '@helix-id/core';
+import { createTestPrisma } from '../utils/prisma.js';
 
 import { DIDService } from '../../src/services/did/did.service.js';
 import { DidRepository } from '../../src/repositories/did.repository.js';
@@ -28,17 +29,34 @@ describe('DID API Security', () => {
   let mockHedera: MockHederaClient;
 
   beforeAll(async () => {
-    prisma = new PrismaClient({ 
-      datasources: { 
-        db: { url: process.env['DATABASE_URL'] || 'postgresql://postgres:postgres@localhost:5432/helixid?schema=public' } 
-      } 
-    });
+    prisma = createTestPrisma();
     mockHedera = new MockHederaClient();
     const auditLogger = new ApiAuditLogger(prisma);
     const didRepository = new DidRepository(prisma);
     const didService = new DIDService(didRepository, mockHedera, auditLogger);
 
     app = Fastify({ logger: false });
+    app.addSchema({
+      $id: 'Error',
+      type: 'object',
+      required: ['error'],
+      properties: {
+        error: {
+          type: 'object',
+          required: ['code', 'message'],
+          properties: {
+            code: { type: 'string' },
+            message: { type: 'string' },
+            requestId: { type: 'string' },
+            details: { type: 'object', additionalProperties: true },
+          },
+        },
+      },
+    });
+    app.addSchema({ $id: 'BadRequest', type: 'object', $ref: 'Error#' });
+    app.addSchema({ $id: 'NotFound', type: 'object', $ref: 'Error#' });
+    app.addSchema({ $id: 'Conflict', type: 'object', $ref: 'Error#' });
+
     app.setErrorHandler(errorHandler);
     await app.register(didRoutes, { didService });
     await app.ready();
@@ -46,6 +64,8 @@ describe('DID API Security', () => {
 
   afterEach(async () => {
     await prisma.auditLog.deleteMany();
+    await prisma.vc.deleteMany();
+    await prisma.statusListEntry.deleteMany();
     await prisma.didUpdate.deleteMany();
     await prisma.did.deleteMany();
     mockHedera.reset();

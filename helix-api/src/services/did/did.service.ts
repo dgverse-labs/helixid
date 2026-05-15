@@ -98,7 +98,11 @@ export class DIDService implements IDIDService {
         requestId,
         reason: 'Hedera anchoring failed',
       });
-      throw err;
+      if (err instanceof HelixError) {
+        throw err;
+      }
+      const message = err instanceof Error ? err.message : 'Hedera anchoring failed';
+      throw new HelixError(ErrorCode.HEDERA_ANCHOR_FAILED, message, 502);
     }
 
     // 4. Persist to DB

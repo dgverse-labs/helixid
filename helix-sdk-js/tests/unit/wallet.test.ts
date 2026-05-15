@@ -28,7 +28,7 @@ describe('AgentWallet', () => {
   it('generates a new keypair and DID when no key provided', () => {
     const wallet = new AgentWallet({ client });
     expect(wallet.getPublicKey()).toBeDefined();
-    expect(wallet.getDID()).toMatch(/^did:helix:[0-9a-f]{32}$/);
+    expect(wallet.getDID()).toMatch(/^did:hedera:testnet:[0-9a-f]{32}$/);
   });
 
   it('signs data correctly', () => {

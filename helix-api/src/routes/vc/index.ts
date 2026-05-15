@@ -24,7 +24,7 @@ const vcRoutes: FastifyPluginAsync<VcRouteOptions> = async (fastify, options) =>
   const { vcService } = options;
 
   // POST /v1/vcs - Issue a VC
-  fastify.post('/', async (request, reply) => {
+  fastify.post('', async (request, reply) => {
     const params = request.body as any;
     const result = await vcService.issueVC(params, request.id);
     return reply.status(201).send(result);

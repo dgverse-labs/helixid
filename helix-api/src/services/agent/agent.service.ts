@@ -6,6 +6,7 @@ import {
   ChallengeExpiredError,
   ChallengeNotFoundError,
   ChallengeSignatureInvalidError,
+  ErrorCode,
   EnrollmentTokenAlreadyUsedError,
   EnrollmentTokenExpiredError,
   EnrollmentTokenNotFoundError,
@@ -48,7 +49,8 @@ function extractPublicKeyHex(doc: Awaited<ReturnType<IDIDService['resolveDID']>>
     return method.publicKeyHex;
   }
   if (method.publicKeyMultibase?.startsWith('z')) {
-    return Buffer.from(base58btcDecode(method.publicKeyMultibase.slice(1))).toString('hex');
+    const decoded = base58btcDecode(method.publicKeyMultibase.slice(1));
+    return Buffer.from(decoded.slice(2)).toString('hex');
   }
   throw new ChallengeSignatureInvalidError();
 }
@@ -194,8 +196,11 @@ export class AgentService implements IAgentService {
         JSON.parse(challenge.pendingDomains ?? '[]') as string[],
         requestId
       );
-    } catch {
-      throw new AgentAlreadyOnboardedError();
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === ErrorCode.DID_ALREADY_EXISTS) {
+        throw new AgentAlreadyOnboardedError();
+      }
+      throw error;
     }
 
     const scopes = enrollmentToken ? JSON.parse(enrollmentToken.requestedScopes) as string[] : ['read:orders'];
@@ -212,6 +217,13 @@ export class AgentService implements IAgentService {
     );
 
     await this.repository.markChallengeVerified(input.challengeId);
+    this.auditLogger.log(AuditEvents.CHALLENGE_VERIFIED, {
+      requestId,
+      challengeId: input.challengeId,
+      did: didResult.did,
+      purpose: 'agent_onboarding',
+      success: true
+    });
     this.auditLogger.log(AuditEvents.AGENT_ONBOARDED, {
       requestId,
       agentDid: didResult.did,

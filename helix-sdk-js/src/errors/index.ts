@@ -18,7 +18,17 @@ import {
   ValidationError,
   DIDNotFoundError,
   DIDDeactivatedError,
-  DIDAlreadyExistsError
+  DIDAlreadyExistsError,
+  EnrollmentTokenNotFoundError,
+  EnrollmentTokenExpiredError,
+  EnrollmentTokenAlreadyUsedError,
+  ChallengeNotFoundError,
+  ChallengeExpiredError,
+  ChallengeAlreadyVerifiedError,
+  ChallengeSignatureInvalidError,
+  AgentAlreadyOnboardedError,
+  ServiceNotFoundError,
+  ServiceAlreadyExistsError
 } from '@helix-id/core';
 
 /**
@@ -43,9 +53,29 @@ export function mapApiError(body: any): HelixError {
       return new DIDDeactivatedError(message);
     case ErrorCode.DID_ALREADY_EXISTS:
       return new DIDAlreadyExistsError();
+    case ErrorCode.ENROLLMENT_TOKEN_NOT_FOUND:
+      return new EnrollmentTokenNotFoundError(message);
+    case ErrorCode.ENROLLMENT_TOKEN_EXPIRED:
+      return new EnrollmentTokenExpiredError(message);
+    case ErrorCode.ENROLLMENT_TOKEN_ALREADY_USED:
+      return new EnrollmentTokenAlreadyUsedError(message);
+    case ErrorCode.CHALLENGE_NOT_FOUND:
+      return new ChallengeNotFoundError(message);
+    case ErrorCode.CHALLENGE_EXPIRED:
+      return new ChallengeExpiredError(message);
+    case ErrorCode.CHALLENGE_ALREADY_VERIFIED:
+      return new ChallengeAlreadyVerifiedError(message);
+    case ErrorCode.CHALLENGE_SIGNATURE_INVALID:
+      return new ChallengeSignatureInvalidError(message);
+    case ErrorCode.AGENT_ALREADY_ONBOARDED:
+      return new AgentAlreadyOnboardedError(message);
+    case ErrorCode.SERVICE_NOT_FOUND:
+      return new ServiceNotFoundError(message);
+    case ErrorCode.SERVICE_ALREADY_EXISTS:
+      return new ServiceAlreadyExistsError(message);
     default:
       // Fallback to base HelixError for unknown codes
-      return new HelixError(code as ErrorCode, message, 500);
+      return new HelixError(code as ErrorCode, message, body?.statusCode ?? body?.status ?? 500);
   }
 }
 

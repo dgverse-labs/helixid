@@ -42,7 +42,8 @@ function extractPublicKeyHex(doc: Awaited<ReturnType<IDIDService['resolveDID']>>
     return method.publicKeyHex;
   }
   if (method.publicKeyMultibase?.startsWith('z')) {
-    return Buffer.from(base58btcDecode(method.publicKeyMultibase.slice(1))).toString('hex');
+    const decoded = base58btcDecode(method.publicKeyMultibase.slice(1));
+    return Buffer.from(decoded.slice(2)).toString('hex');
   }
   throw new VPAgentDIDNotFoundError();
 }
@@ -248,17 +249,12 @@ export class VPService implements IVPService {
 }
 
 export function mapErrorToResponse(error: unknown): { statusCode: number; code: string; message: string } {
-  if (error instanceof VPAgentDIDNotFoundError || error instanceof VPNoActiveVCError || error instanceof VPMultipleActiveVCError) {
-    return { statusCode: error.httpStatus, code: error.code, message: error.message };
+  if (error && typeof error === 'object' && 'code' in error && 'httpStatus' in error) {
+    const typed = error as any;
+    return { statusCode: typed.httpStatus, code: typed.code, message: typed.message };
   }
   if (error instanceof ServiceNotFoundError) {
     return { statusCode: 404, code: ErrorCodes.SERVICE_NOT_FOUND, message: error.message };
-  }
-  if (error instanceof VCSignatureInvalidError || error instanceof VCExpiredError || error instanceof VCRevokedError || error instanceof VCIssuerNotFoundError) {
-    return { statusCode: error.httpStatus, code: error.code, message: error.message };
-  }
-  if (error instanceof VPVerificationFailedError) {
-    return { statusCode: 400, code: error.code, message: error.message };
   }
   return { statusCode: 500, code: 'INTERNAL_ERROR', message: 'Internal server error' };
 }

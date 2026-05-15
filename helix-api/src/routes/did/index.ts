@@ -11,6 +11,7 @@
 // limitations under the License.
 
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
+import { ErrorCode, HelixError } from '@helix-id/core';
 import { IDIDService } from '../../services/did/did.service.js';
 
 interface DIDRouteOptions {
@@ -46,6 +47,12 @@ const didRoutes: FastifyPluginAsync<DIDRouteOptions> = async (fastify: FastifyIn
             enum: ['agent', 'user'],
             description: 'The type of subject this DID represents'
           },
+          domains: {
+            type: 'array',
+            items: { type: 'string', format: 'uri', pattern: '^https://' },
+            maxItems: 10,
+            description: 'Optional linked domain service endpoints',
+          },
         },
       },
       response: {
@@ -67,8 +74,8 @@ const didRoutes: FastifyPluginAsync<DIDRouteOptions> = async (fastify: FastifyIn
       }
     },
     handler: async (request, reply) => {
-      const { publicKeyHex, subjectType } = request.body as any;
-      const result = await didService.createDID(publicKeyHex, subjectType, [], request.id);
+      const { publicKeyHex, subjectType, domains = [] } = request.body as any;
+      const result = await didService.createDID(publicKeyHex, subjectType, domains, request.id);
       return reply.status(201).send({
         id: result.did,
         subjectType,
@@ -125,7 +132,7 @@ const didRoutes: FastifyPluginAsync<DIDRouteOptions> = async (fastify: FastifyIn
       const result = await didService.resolveDID(did, { live }, request.id);
       
       if (result.deactivated) {
-        return reply.status(200).send(result.document);
+        throw new HelixError(ErrorCode.DID_DEACTIVATED, 'DID is deactivated', 410, { did });
       }
       
       return result.document;
@@ -148,7 +155,7 @@ const didRoutes: FastifyPluginAsync<DIDRouteOptions> = async (fastify: FastifyIn
         properties: {
           id: { type: 'string', description: 'Fragment identifier (e.g. #service-1)' },
           type: { type: 'string' },
-          serviceEndpoint: { type: 'string', format: 'uri' },
+          serviceEndpoint: { type: 'string', format: 'uri', pattern: '^https://' },
         },
       },
       response: {
@@ -210,14 +217,21 @@ const didRoutes: FastifyPluginAsync<DIDRouteOptions> = async (fastify: FastifyIn
         properties: { did: { type: 'string', pattern: didPattern } } 
       },
       response: {
-        204: { description: 'DID deactivated successfully', type: 'null' },
+        200: {
+          description: 'DID deactivated successfully',
+          type: 'object',
+          properties: {
+            did: { type: 'string', pattern: didPattern },
+            deactivated: { type: 'boolean' },
+          },
+        },
         404: { $ref: 'NotFound#' }
       }
     },
     handler: async (request, reply) => {
       const { did } = request.params as any;
       await didService.deactivateDID(did, request.id);
-      return reply.status(204).send();
+      return reply.status(200).send({ did, deactivated: true });
     },
   });
 };

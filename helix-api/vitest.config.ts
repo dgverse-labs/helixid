@@ -9,10 +9,32 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     setupFiles: ['./tests/setup.ts'],
+    fileParallelism: false,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      exclude: ['node_modules/', 'tests/'],
+      include: ['src/**/*.ts'],
+      exclude: [
+        'src/index.ts',
+        'src/server.ts',
+        'src/prisma.ts',
+        'src/loadEnv.ts',
+        'src/**/index.ts',
+        'src/hedera/mock/**',
+        'src/repositories/index.ts',
+        'src/services/agent/index.ts',
+        'src/services/did/index.ts',
+        'src/services/vc/index.ts',
+        'src/services/vp/index.ts',
+        'src/audit/index.ts',
+        'src/middleware/index.ts',
+        'src/services/vc/IVCService.ts',
+        'src/services/vp/IVPService.ts',
+        'src/services/agent/IAgentService.ts',
+        'src/services/did/IDIDService.ts',
+        'vitest.config.ts',
+        'tests/**', // Explicitly exclude tests folder
+      ],
     },
   },
 });

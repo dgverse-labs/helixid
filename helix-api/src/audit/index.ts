@@ -11,7 +11,7 @@
 // limitations under the License.
 
 import { PrismaClient } from '@prisma/client';
-import { IAuditLogger, AuditEvent, AuditEventType, config } from '@helix-id/core';
+import { IAuditLogger, AuditEvent, AuditEventType, type Config } from '@helix-id/core';
 
 /**
  * Audit logger for the API.
@@ -20,7 +20,10 @@ import { IAuditLogger, AuditEvent, AuditEventType, config } from '@helix-id/core
  * 2. Structured JSON output to stdout for external log aggregators.
  */
 export class ApiAuditLogger implements IAuditLogger {
-  constructor(private prisma: PrismaClient) {}
+  constructor(
+    private prisma: PrismaClient,
+    private readonly config: Pick<Config, 'AUDIT_LOG_DESTINATION'> = { AUDIT_LOG_DESTINATION: 'stdout' },
+  ) {}
 
   async log(
     eventOrType: AuditEvent | AuditEventType,
@@ -36,7 +39,7 @@ export class ApiAuditLogger implements IAuditLogger {
     const payloadJson = JSON.stringify(event);
 
     // 1. Log to stdout (if enabled)
-    if (config.AUDIT_LOG_DESTINATION === 'stdout' || config.AUDIT_LOG_DESTINATION === 'both') {
+    if (this.config.AUDIT_LOG_DESTINATION === 'stdout' || this.config.AUDIT_LOG_DESTINATION === 'both') {
       console.log(payloadJson);
     }
 

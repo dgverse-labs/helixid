@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeAll, afterEach, afterAll } from 'vitest';
 import Fastify from 'fastify';
-import { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
 import { ErrorCode } from '@helix-id/core';
 
 import { VCService } from '../../src/services/vc/vc.service.js';
@@ -24,6 +24,7 @@ import { MockHederaClient } from '../../src/hedera/mock/MockHederaClient.js';
 import { errorHandler } from '../../src/middleware/errorHandler.js';
 import vcRoutes from '../../src/routes/vc/index.js';
 import statusListRoutes from '../../src/routes/status-list/index.js';
+import { createTestPrisma } from '../utils/prisma.js';
 
 describe('VC API Integration', () => {
   let app: any;
@@ -31,9 +32,7 @@ describe('VC API Integration', () => {
   let didId: string;
 
   beforeAll(async () => {
-    prisma = new PrismaClient({ 
-      datasources: { db: { url: process.env['DATABASE_URL'] || 'postgresql://postgres:postgres@localhost:5432/helixid?schema=public' } } 
-    });
+    prisma = createTestPrisma();
     
     const auditLogger = new ApiAuditLogger(prisma);
     const didRepo = new DidRepository(prisma);
@@ -57,19 +56,19 @@ describe('VC API Integration', () => {
 
     // Create a test DID to issue VCs to
     const didRec = await didRepo.createDid({
-      id: 'did:helix:testsubject',
+      id: 'did:hedera:testnet:testsubject',
       subjectType: 'agent',
-      controller: 'did:helix:testsubject',
+      controller: 'did:hedera:testnet:testsubject',
       publicKey: 'a'.repeat(64),
       hederaTransactionId: 'tx-1',
-      didDocument: { id: 'did:helix:testsubject' },
+      didDocument: { id: 'did:hedera:testnet:testsubject' },
     });
     didId = didRec.id;
   });
 
   afterEach(async () => {
     await prisma.vc.deleteMany();
-    await prisma.status_list_entries.deleteMany();
+    await prisma.statusListEntry.deleteMany();
   });
 
   afterAll(async () => {
@@ -102,8 +101,9 @@ describe('VC API Integration', () => {
         method: 'POST',
         url: '/v1/vcs',
         payload: {
-          subjectDid: 'did:helix:unknown',
+          subjectDid: 'did:hedera:testnet:unknown',
           subjectType: 'user',
+          userId: 'unknown-user',
         },
       });
 
@@ -117,7 +117,7 @@ describe('VC API Integration', () => {
       const issueRes = await app.inject({
         method: 'POST',
         url: '/v1/vcs',
-        payload: { subjectDid: didId, subjectType: 'user' },
+        payload: { subjectDid: didId, subjectType: 'user', userId: 'test-user' },
       });
       const { vcId } = JSON.parse(issueRes.body);
 
@@ -137,7 +137,7 @@ describe('VC API Integration', () => {
       const issueRes = await app.inject({
         method: 'POST',
         url: '/v1/vcs',
-        payload: { subjectDid: didId, subjectType: 'user' },
+        payload: { subjectDid: didId, subjectType: 'user', userId: 'test-user' },
       });
       const { vcId } = JSON.parse(issueRes.body);
 
@@ -160,7 +160,7 @@ describe('VC API Integration', () => {
       await app.inject({
         method: 'POST',
         url: '/v1/vcs',
-        payload: { subjectDid: didId, subjectType: 'user' },
+        payload: { subjectDid: didId, subjectType: 'user', userId: 'test-user' },
       });
 
       const response = await app.inject({
