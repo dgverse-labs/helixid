@@ -18,6 +18,7 @@ import {
   verifySignature,
   publicKeyToMultibase,
   multibaseToPublicKeyHex,
+  normalizeEd25519PrivateKeyHex,
 } from '../../../src/crypto/keys.js';
 
 describe('generateKeyPair', () => {
@@ -39,6 +40,12 @@ describe('derivePublicKey', () => {
   it('derives the same public key that generateKeyPair returns', () => {
     const kp = generateKeyPair();
     expect(derivePublicKey(kp.privateKey)).toBe(kp.publicKey);
+  });
+
+  it('accepts an Ed25519 PKCS8 DER seed wrapper', () => {
+    const kp = generateKeyPair();
+    const derWrapped = `302e020100300506032b657004220420${kp.privateKey}`;
+    expect(derivePublicKey(derWrapped)).toBe(kp.publicKey);
   });
 
   it('throws on invalid hex input', () => {
@@ -72,6 +79,14 @@ describe('signData / verifySignature', () => {
     expect(verifySignature(tampered, sig, kp.publicKey)).toBe(false);
   });
 
+  it('signs with an Ed25519 PKCS8 DER seed wrapper', () => {
+    const kp = generateKeyPair();
+    const message = new TextEncoder().encode('test');
+    const derWrapped = `302e020100300506032b657004220420${kp.privateKey}`;
+    const sig = signData(message, derWrapped);
+    expect(verifySignature(message, sig, kp.publicKey)).toBe(true);
+  });
+
   it('returns false for malformed signature hex', () => {
     const kp = generateKeyPair();
     const message = new TextEncoder().encode('test');
@@ -84,6 +99,18 @@ describe('signData / verifySignature', () => {
     const sig = signData(message, kp.privateKey);
     const messageBytes = new TextEncoder().encode(message);
     expect(verifySignature(messageBytes, sig, 'not-hex')).toBe(false);
+  });
+});
+
+describe('normalizeEd25519PrivateKeyHex', () => {
+  it('normalizes raw and PKCS8 DER seed keys', () => {
+    const kp = generateKeyPair();
+    expect(normalizeEd25519PrivateKeyHex(kp.privateKey)).toBe(kp.privateKey);
+    expect(normalizeEd25519PrivateKeyHex(`302e020100300506032b657004220420${kp.privateKey}`)).toBe(kp.privateKey);
+  });
+
+  it('rejects unsupported key formats', () => {
+    expect(normalizeEd25519PrivateKeyHex('not-a-key')).toBeNull();
   });
 });
 

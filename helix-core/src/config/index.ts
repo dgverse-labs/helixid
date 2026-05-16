@@ -11,6 +11,7 @@
 // limitations under the License.
 
 import { z } from 'zod';
+import { isSupportedEd25519PrivateKeyHex } from '../crypto/keys.js';
 
 export const ConfigSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -25,7 +26,13 @@ export const ConfigSchema = z.object({
   HEDERA_TOPIC_ID: z.string().min(1),
 
   // Helix ID signing key for VC issuance
-  HELIX_SIGNING_KEY: z.string().min(64),
+  HELIX_SIGNING_KEY: z.string().refine(isSupportedEd25519PrivateKeyHex, {
+    message: 'must be raw 32-byte Ed25519 private key hex or PKCS8 DER seed hex',
+  }),
+  HELIX_ISSUER_DID: z.string().regex(/^did:hedera:(testnet|previewnet|mainnet):.+$/, {
+    message: 'must be a did:hedera issuer DID',
+  }),
+  HELIX_ADMIN_API_KEY: z.string().min(16).optional(),
 
   // TTLs
   ENROLLMENT_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),

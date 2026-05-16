@@ -1,5 +1,9 @@
 import type { PrismaClient } from '@prisma/client';
 
+type PrismaRaw = PrismaClient & {
+  $queryRawUnsafe<T = unknown>(query: string, ...values: unknown[]): Promise<T>;
+};
+
 export interface EnrollmentTokenRecord {
   id: string;
   tokenHash: string;
@@ -19,6 +23,8 @@ export interface ChallengeRecord {
   purpose: 'agent_onboarding' | 'user_verification';
   pendingPublicKeyHex: string | null;
   pendingDomains: string | null;
+  pendingDidCreateStateJson?: string | null;
+  pendingDidCreatePayloadHex?: string | null;
   expiresAt: Date;
   verifiedAt: Date | null;
   createdAt: Date;
@@ -40,6 +46,24 @@ export interface ServiceRegistryRecord {
 
 function makeId(prefix: string): string {
   return `${prefix}:${Math.random().toString(16).slice(2, 14)}`;
+}
+
+function toChallengeRecord(row: any): ChallengeRecord {
+  return {
+    id: row.id,
+    challengeId: row.challengeId,
+    nonce: row.nonce,
+    did: row.did,
+    purpose: row.purpose,
+    pendingPublicKeyHex: row.pendingPublicKeyHex,
+    pendingDomains: row.pendingDomains,
+    pendingDidCreateStateJson: row.pendingDidCreateStateJson,
+    pendingDidCreatePayloadHex: row.pendingDidCreatePayloadHex,
+    expiresAt: row.expiresAt,
+    verifiedAt: row.verifiedAt,
+    createdAt: row.createdAt,
+    enrollmentTokenId: row.enrollmentTokenId,
+  };
 }
 
 export class AgentRepository {
@@ -111,9 +135,34 @@ export class AgentRepository {
     data: Omit<ChallengeRecord, 'id' | 'verifiedAt' | 'createdAt'>
   ): Promise<ChallengeRecord> {
     if (this.prisma) {
-      return this.prisma.challenge.create({
-        data
-      }) as Promise<ChallengeRecord>;
+      const rows = await (this.prisma as PrismaRaw).$queryRawUnsafe<any[]>(
+        `INSERT INTO "challenges" (
+          "id",
+          "challengeId",
+          "nonce",
+          "did",
+          "purpose",
+          "pendingPublicKeyHex",
+          "pendingDomains",
+          "pendingDidCreateStateJson",
+          "pendingDidCreatePayloadHex",
+          "expiresAt",
+          "enrollmentTokenId"
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        RETURNING *`,
+        makeId('chdb'),
+        data.challengeId,
+        data.nonce,
+        data.did,
+        data.purpose,
+        data.pendingPublicKeyHex,
+        data.pendingDomains,
+        data.pendingDidCreateStateJson ?? null,
+        data.pendingDidCreatePayloadHex ?? null,
+        data.expiresAt,
+        data.enrollmentTokenId,
+      );
+      return toChallengeRecord(rows[0]);
     }
 
     const record: ChallengeRecord = {
@@ -128,7 +177,11 @@ export class AgentRepository {
 
   async findChallengeById(challengeId: string): Promise<ChallengeRecord | null> {
     if (this.prisma) {
-      return this.prisma.challenge.findUnique({ where: { challengeId } }) as Promise<ChallengeRecord | null>;
+      const rows = await (this.prisma as PrismaRaw).$queryRawUnsafe<any[]>(
+        `SELECT * FROM "challenges" WHERE "challengeId" = $1 LIMIT 1`,
+        challengeId,
+      );
+      return rows[0] ? toChallengeRecord(rows[0]) : null;
     }
 
     return this.challenges.get(challengeId) ?? null;
@@ -136,10 +189,12 @@ export class AgentRepository {
 
   async markChallengeVerified(challengeId: string): Promise<ChallengeRecord> {
     if (this.prisma) {
-      return this.prisma.challenge.update({
-        where: { challengeId },
-        data: { verifiedAt: new Date() }
-      }) as Promise<ChallengeRecord>;
+      const rows = await (this.prisma as PrismaRaw).$queryRawUnsafe<any[]>(
+        `UPDATE "challenges" SET "verifiedAt" = $1 WHERE "challengeId" = $2 RETURNING *`,
+        new Date(),
+        challengeId,
+      );
+      return toChallengeRecord(rows[0]);
     }
 
     const challenge = this.challenges.get(challengeId);

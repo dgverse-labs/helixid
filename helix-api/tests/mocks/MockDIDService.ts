@@ -19,6 +19,14 @@ export class MockDIDService implements IDIDService {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async prepareDIDCreation(_publicKeyHex: string): Promise<{ stateJson: string; signingPayloadHex: string }> {
+    return {
+      stateJson: '{}',
+      signingPayloadHex: Buffer.from('mock-did-create', 'utf8').toString('hex'),
+    };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async createDID(
     _publicKeyHex: string,
     _subjectType: 'agent' | 'user',

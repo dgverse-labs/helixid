@@ -11,17 +11,27 @@
 // limitations under the License.
 
 import { FastifyPluginAsync } from 'fastify';
+import { AdminAuthRequiredError } from '@helix-id/core';
 import { IVCService } from '../../services/vc/vc.service.js';
 
 export interface VcRouteOptions {
   vcService: IVCService;
+  adminApiKey?: string | undefined;
 }
 
 /**
  * VC API Route Definitions (Boundary 2).
  */
 const vcRoutes: FastifyPluginAsync<VcRouteOptions> = async (fastify, options) => {
-  const { vcService } = options;
+  const { vcService, adminApiKey } = options;
+
+  function requireAdmin(request: { headers: Record<string, string | string[] | undefined> }): void {
+    const submitted = request.headers['x-admin-api-key'];
+    const submittedKey = Array.isArray(submitted) ? submitted[0] : submitted;
+    if (!adminApiKey || submittedKey !== adminApiKey) {
+      throw new AdminAuthRequiredError();
+    }
+  }
 
   // POST /v1/vcs - Issue a VC
   fastify.post('', async (request, reply) => {
@@ -39,6 +49,7 @@ const vcRoutes: FastifyPluginAsync<VcRouteOptions> = async (fastify, options) =>
 
   // POST /v1/vcs/:vcId/revoke - Revoke a VC
   fastify.post('/:vcId/revoke', async (request, reply) => {
+    requireAdmin(request);
     const { vcId } = request.params as { vcId: string };
     const result = await vcService.revokeVC(vcId, request.id);
     return reply.send(result);

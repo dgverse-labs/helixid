@@ -108,15 +108,23 @@ paths:
   /v1/vcs/{vcId}/revoke:
     post:
       summary: Revoke a VC
+      description: Admin-only issuer operation. Requires x-admin-api-key.
       parameters:
         - in: path
           name: vcId
           required: true
           schema:
             type: string
+        - in: header
+          name: x-admin-api-key
+          required: true
+          schema:
+            type: string
       responses:
         "200":
           description: VC revoked
+        "403":
+          description: Admin authorization required
   /v1/vcs/{vcId}/renew:
     post:
       summary: Renew a VC

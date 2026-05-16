@@ -146,6 +146,12 @@ export class ValidationError extends HelixError {
   }
 }
 
+export class AdminAuthRequiredError extends HelixError {
+  constructor(message = 'Admin authorization is required') {
+    super('ADMIN_AUTH_REQUIRED', message, 403);
+  }
+}
+
 export class VCNotFoundError extends HelixError {
   constructor(vcId: string) {
     super('VC_NOT_FOUND', `Verifiable Credential not found: ${vcId}`, 404);

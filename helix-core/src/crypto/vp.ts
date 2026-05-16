@@ -2,6 +2,7 @@ import { sha256 } from '@noble/hashes/sha2';
 import { sha512 } from '@noble/hashes/sha512';
 import { utf8ToBytes } from '@noble/hashes/utils';
 import * as ed25519 from '@noble/ed25519';
+import { normalizeEd25519PrivateKey } from './keys.js';
 
 ed25519.etc.sha512Sync = (...m: Uint8Array[]): Uint8Array => sha512(ed25519.etc.concatBytes(...m));
 ed25519.etc.sha512Async = (...m: Uint8Array[]): Promise<Uint8Array> => Promise.resolve(sha512(ed25519.etc.concatBytes(...m)));
@@ -33,7 +34,7 @@ export function hashCanonicalPayload(payload: unknown): Uint8Array {
 }
 
 export async function signBytes(hashBytes: Uint8Array, privateKeyHex: string): Promise<string> {
-  const signature = await ed25519.sign(hashBytes, privateKeyHex);
+  const signature = await ed25519.sign(hashBytes, normalizeEd25519PrivateKey(privateKeyHex));
   return Buffer.from(signature).toString('hex');
 }
 

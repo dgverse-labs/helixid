@@ -10,7 +10,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import type { HederaMessage, IHederaClient, HederaTransactionResult } from '../IHederaClient.js';
+import type {
+  HederaDIDCreationRequest,
+  HederaDIDCreationResult,
+  HederaMessage,
+  IHederaClient,
+  HederaTransactionResult
+} from '../IHederaClient.js';
 
 /**
  * Mock implementation of IHederaClient for unit and integration tests.
@@ -19,6 +25,41 @@ import type { HederaMessage, IHederaClient, HederaTransactionResult } from '../I
 export class MockHederaClient implements IHederaClient {
   public anchoredPayloads: string[] = [];
   public txCounter = 0;
+
+  async prepareDIDCreation(publicKeyMultibase: string): Promise<HederaDIDCreationRequest> {
+    return {
+      stateJson: JSON.stringify({ publicKeyMultibase }),
+      signingPayloadHex: Buffer.from(`mock-did-create:${publicKeyMultibase}`, 'utf8').toString('hex'),
+    };
+  }
+
+  async submitDIDCreation(stateJson: string, _signatureHex: string): Promise<HederaDIDCreationResult> {
+    this.txCounter++;
+    const state = JSON.parse(stateJson) as { publicKeyMultibase: string };
+    const did = `did:hedera:testnet:${this.txCounter.toString(16).padStart(32, '0')}`;
+    const didDocument = {
+      id: did,
+      controller: did,
+      verificationMethod: [
+        {
+          id: `${did}#did-root-key`,
+          type: 'Ed25519VerificationKey2020',
+          controller: did,
+          publicKeyMultibase: state.publicKeyMultibase,
+        },
+      ],
+      authentication: [`${did}#did-root-key`],
+      assertionMethod: [`${did}#did-root-key`],
+    };
+    this.anchoredPayloads.push(JSON.stringify(didDocument));
+    return {
+      did,
+      didDocument,
+      transactionId: `mock-tx-${this.txCounter}`,
+      topicId: '0.0.12345',
+      sequenceNumber: this.txCounter,
+    };
+  }
 
   async anchorDocument(payload: string): Promise<HederaTransactionResult> {
     this.txCounter++;

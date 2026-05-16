@@ -8,6 +8,7 @@ ed25519.etc.sha512Async = (...m: Uint8Array[]): Promise<Uint8Array> =>
 
 const ED25519_MULTICODEC_PREFIX = new Uint8Array([0xed, 0x01]);
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const ED25519_PKCS8_DER_PREFIX = '302e020100300506032b657004220420';
 
 export interface KeyPair {
   privateKey: string;
@@ -24,12 +25,12 @@ export function generateKeyPair(): KeyPair {
 }
 
 export function derivePublicKey(privateKeyHex: string): string {
-  return Buffer.from(ed25519.getPublicKey(Buffer.from(privateKeyHex, 'hex'))).toString('hex');
+  return Buffer.from(ed25519.getPublicKey(normalizeEd25519PrivateKey(privateKeyHex))).toString('hex');
 }
 
 export function signData(data: string | Uint8Array, privateKeyHex: string): string {
   const message = typeof data === 'string' ? Buffer.from(data, 'utf8') : data;
-  return Buffer.from(ed25519.sign(message, Buffer.from(privateKeyHex, 'hex'))).toString('hex');
+  return Buffer.from(ed25519.sign(message, normalizeEd25519PrivateKey(privateKeyHex))).toString('hex');
 }
 
 export function verifySignature(message: Uint8Array, signatureHex: string, publicKeyHex: string): boolean {
@@ -101,4 +102,31 @@ function base58BtcDecode(value: string): Uint8Array {
   const decoded = new Uint8Array(leadingZeroes + bytes.length);
   for (let i = 0; i < bytes.length; i += 1) decoded[decoded.length - 1 - i] = bytes[i]!;
   return decoded;
+}
+
+export function isSupportedEd25519PrivateKeyHex(privateKeyHex: string): boolean {
+  return normalizeEd25519PrivateKeyHex(privateKeyHex) !== null;
+}
+
+export function normalizeEd25519PrivateKeyHex(privateKeyHex: string): string | null {
+  const value = privateKeyHex.trim();
+  if (/^[0-9a-fA-F]{64}$/.test(value)) {
+    return value.toLowerCase();
+  }
+  if (
+    value.length === 96 &&
+    value.toLowerCase().startsWith(ED25519_PKCS8_DER_PREFIX) &&
+    /^[0-9a-fA-F]+$/.test(value)
+  ) {
+    return value.slice(ED25519_PKCS8_DER_PREFIX.length).toLowerCase();
+  }
+  return null;
+}
+
+export function normalizeEd25519PrivateKey(privateKeyHex: string): Buffer {
+  const normalized = normalizeEd25519PrivateKeyHex(privateKeyHex);
+  if (!normalized) {
+    throw new Error('Ed25519 private key must be raw 32-byte hex or PKCS8 DER seed hex');
+  }
+  return Buffer.from(normalized, 'hex');
 }

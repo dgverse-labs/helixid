@@ -13,6 +13,7 @@ import { AgentWallet } from '../wallet/AgentWallet.js';
 interface PendingKeyPair {
   publicKey: string;
   privateKey: string;
+  didCreateSigningPayloadHex?: string | undefined;
 }
 
 interface HttpAdapterLike {
@@ -150,14 +151,21 @@ export class HelixClient {
   async requestOnboardingChallenge(
     enrollmentToken: string,
     domains: string[] = [],
-  ): Promise<{ challengeId: string; nonce: string; expiresAt: string }> {
+  ): Promise<{ challengeId: string; nonce: string; expiresAt: string; didCreateSigningPayloadHex?: string }> {
     const keyPair = generateKeyPair();
     this.pendingKeyPair = { publicKey: keyPair.publicKey, privateKey: keyPair.privateKey };
-    return this.http.post('/v1/onboard', {
+    const challenge = await this.http.post<{
+      challengeId: string;
+      nonce: string;
+      expiresAt: string;
+      didCreateSigningPayloadHex?: string;
+    }>('/v1/onboard', {
       enrollmentToken,
       publicKeyHex: keyPair.publicKey,
       domains,
     });
+    this.pendingKeyPair.didCreateSigningPayloadHex = challenge.didCreateSigningPayloadHex;
+    return challenge;
   }
 
   async completeOnboarding(
@@ -168,11 +176,12 @@ export class HelixClient {
   ): Promise<{ agentDid: string; vcId: string; walletSaved: true }> {
     if (!this.pendingKeyPair) throw new Error('No pending onboarding keypair');
     const signature = await signBytes(Buffer.from(nonce, 'hex'), this.pendingKeyPair.privateKey);
+    const didCreateSignature = await this.signPendingDidCreatePayload(challengeId);
     const result = await this.http.post<{
       agentDid: string;
       vc: Record<string, unknown>;
       vcId: string;
-    }>('/v1/onboard/verify', { challengeId, signature });
+    }>('/v1/onboard/verify', { challengeId, signature, didCreateSignature });
     await this.wallet.save(
       {
         did: result.agentDid,
@@ -218,5 +227,15 @@ export class HelixClient {
 
   __getPendingKeyPairForTest(): PendingKeyPair | null {
     return this.pendingKeyPair;
+  }
+
+  private async signPendingDidCreatePayload(_challengeId: string): Promise<string | undefined> {
+    if (!this.pendingKeyPair?.didCreateSigningPayloadHex) {
+      return undefined;
+    }
+    return signBytes(
+      Buffer.from(this.pendingKeyPair.didCreateSigningPayloadHex, 'hex'),
+      this.pendingKeyPair.privateKey,
+    );
   }
 }

@@ -78,13 +78,13 @@ export interface IVCService {
  */
 export class VCService implements IVCService {
   private readonly DEFAULT_STATUS_LIST_ID = 'helix-status-list-1';
-  private readonly HELIX_DID = 'did:hedera:testnet:helix-operator'; // System issuer DID
 
   constructor(
     private readonly vcRepo: VcRepository,
     private readonly didService: IDIDService,
     private readonly audit: ApiAuditLogger,
     private readonly signingKeyHex: string,
+    private readonly issuerDid: string,
     private readonly apiBaseUrl: string,
   ) {}
 
@@ -142,7 +142,7 @@ export class VCService implements IVCService {
       '@context': ['https://www.w3.org/2018/credentials/v1', 'https://helix-id.io/contexts/v1'],
       id: vcId,
       type: ['VerifiableCredential', params.subjectType === 'agent' ? 'HelixAgentCredential' : 'HelixUserCredential'],
-      issuer: this.HELIX_DID,
+      issuer: this.issuerDid,
       issuanceDate: now.toISOString(),
       expirationDate: expiresAt.toISOString(),
       credentialStatus: {
@@ -307,7 +307,7 @@ export class VCService implements IVCService {
     return buildStatusListCredential(
       listId,
       list.encodedList,
-      this.HELIX_DID,
+      this.issuerDid,
       this.apiBaseUrl
     );
   }
@@ -321,7 +321,7 @@ export class VCService implements IVCService {
       proof: {
         type: 'Ed25519Signature2020',
         created: new Date().toISOString(),
-        verificationMethod: `${this.HELIX_DID}#key-1`,
+        verificationMethod: `${this.issuerDid}#key-1`,
         proofPurpose: 'assertionMethod',
         proofValue,
       },

@@ -36,7 +36,11 @@ describe('AgentService Unit Tests', () => {
       listActiveServices: vi.fn(),
       createEnrollmentToken: vi.fn(),
     };
-    didService = { createDID: vi.fn(), resolveDID: vi.fn() };
+    didService = {
+      createDID: vi.fn(),
+      resolveDID: vi.fn(),
+      prepareDIDCreation: vi.fn().mockResolvedValue({ stateJson: '{}', signingPayloadHex: 'ab'.repeat(32) }),
+    };
     vcService = { issueVC: vi.fn(), findActiveBySubjectDid: vi.fn() };
     auditLogger = { log: vi.fn() };
 

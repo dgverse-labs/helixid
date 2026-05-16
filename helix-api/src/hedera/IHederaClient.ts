@@ -22,11 +22,31 @@ export interface HederaMessage {
   contents: string;  // Raw JSON string of anchored document
 }
 
+export interface HederaDIDCreationRequest {
+  stateJson: string;
+  signingPayloadHex: string;
+}
+
+export interface HederaDIDCreationResult extends HederaTransactionResult {
+  did: string;
+  didDocument: unknown;
+}
+
 /**
  * Interface for Hedera HCS operations (HR-2).
  * Allows switching between real implementation (Hiero SDK) and mocks.
  */
 export interface IHederaClient {
+  /**
+   * Prepares a did:hedera creation operation for local agent signing.
+   */
+  prepareDIDCreation(publicKeyMultibase: string): Promise<HederaDIDCreationRequest>;
+
+  /**
+   * Submits a locally signed did:hedera creation operation.
+   */
+  submitDIDCreation(stateJson: string, signatureHex: string): Promise<HederaDIDCreationResult>;
+
   /**
    * Anchors a payload to a Hedera HCS topic.
    */

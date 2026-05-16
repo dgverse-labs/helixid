@@ -41,11 +41,18 @@ describe('VC Security', () => {
     const vcRepo = new VcRepository(prisma);
     
     const didService = new DIDService(didRepo, new MockHederaClient(), auditLogger);
-    const vcService = new VCService(vcRepo, didService, auditLogger, signingKeyHex, 'http://localhost:3000');
+    const vcService = new VCService(
+      vcRepo,
+      didService,
+      auditLogger,
+      signingKeyHex,
+      'did:hedera:testnet:testissuer',
+      'http://localhost:3000',
+    );
 
     app = Fastify({ logger: false });
     app.setErrorHandler(errorHandler);
-    await app.register(vcRoutes, { prefix: '/v1/vcs', vcService });
+    await app.register(vcRoutes, { prefix: '/v1/vcs', vcService, adminApiKey: 'test-admin-key-0001' });
     await app.ready();
 
     const didRec = await didRepo.createDid({

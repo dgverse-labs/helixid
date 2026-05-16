@@ -42,7 +42,7 @@ const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (fastify, optio
   fastify.post('/onboard/verify', async (request, reply) => {
     try {
       const result = await options.agentService.processOnboardVerify(
-        request.body as { challengeId: string; signature: string },
+        request.body as { challengeId: string; signature: string; didCreateSignature?: string },
         request.id
       );
       return reply.code(201).send(result);

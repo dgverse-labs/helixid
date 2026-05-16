@@ -14,3 +14,4 @@ process.env['HEDERA_OPERATOR_ID'] = '0.0.123';
 process.env['HEDERA_OPERATOR_KEY'] = '302e020100300506032b657004220420' + 'a'.repeat(64);
 process.env['HEDERA_TOPIC_ID'] = '0.0.456';
 process.env['HELIX_SIGNING_KEY'] = 'a'.repeat(64);
+process.env['HELIX_ISSUER_DID'] = 'did:hedera:testnet:testissuer';

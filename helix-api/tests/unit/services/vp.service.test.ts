@@ -202,7 +202,7 @@ describe('VPService Branch Coverage', () => {
         await expect(service.verifyVP(validVP as any, 'req-1')).rejects.toThrow(VPVerificationFailedError);
     });
 
-    it('skips VC signature verification if issuer is hedera', async () => {
+    it('verifies VC signature when issuer is hedera', async () => {
         const vp = JSON.parse(JSON.stringify(validVP));
         vp.verifiableCredential[0].issuer = 'did:hedera:testnet:123';
         repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
@@ -215,10 +215,10 @@ describe('VPService Branch Coverage', () => {
 
         const res = await service.verifyVP(vp, 'req-1');
         expect(res.valid).toBe(true);
-        expect(verifySignature).toHaveBeenCalledTimes(1); // Only VP signature
+        expect(verifySignature).toHaveBeenCalledTimes(2);
     });
 
-    it('handles missing issuer by skipping VC sig verification', async () => {
+    it('rejects missing VC issuer', async () => {
         const vp = JSON.parse(JSON.stringify(validVP));
         delete vp.verifiableCredential[0].issuer;
         repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
@@ -229,8 +229,7 @@ describe('VPService Branch Coverage', () => {
         vcService.getVCStatus.mockResolvedValue('active');
         repository.consumeAtomically.mockResolvedValue(true);
 
-        const res = await service.verifyVP(vp, 'req-1');
-        expect(res.valid).toBe(true);
+        await expect(service.verifyVP(vp, 'req-1')).rejects.toThrow(VPVerificationFailedError);
     });
   });
 

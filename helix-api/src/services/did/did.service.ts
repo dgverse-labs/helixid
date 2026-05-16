@@ -15,6 +15,7 @@ import {
   buildDIDDocument, 
   addServiceEndpoint as addServiceCore,
   removeServiceEndpoint as removeServiceCore,
+  publicKeyToMultibase,
   HelixError,
   ErrorCode,
   IAuditLogger,
@@ -23,6 +24,27 @@ import {
 } from '@helix-id/core';
 import type { DidRepository } from '../../repositories/did.repository.js';
 import type { IHederaClient } from '../../hedera/IHederaClient.js';
+
+export interface DIDCreationProof {
+  stateJson: string;
+  signatureHex: string;
+}
+
+function withServiceEndpoints(document: DIDDocument, serviceEndpoints: Array<{ id: string; type: string; serviceEndpoint: string }>): DIDDocument {
+  if (serviceEndpoints.length === 0) {
+    return document;
+  }
+  return {
+    ...document,
+    service: [
+      ...(document.service ?? []),
+      ...serviceEndpoints.map((endpoint) => ({
+        ...endpoint,
+        id: `${document.id}${endpoint.id}`,
+      })),
+    ],
+  };
+}
 
 export interface CreateDIDResult {
   did: string;
@@ -43,7 +65,8 @@ export interface ResolveDIDResult {
  * B4 and SDK consume this interface.
  */
 export interface IDIDService {
-  createDID(publicKeyHex: string, subjectType: 'agent' | 'user', domains: string[], requestId: string): Promise<CreateDIDResult>;
+  prepareDIDCreation(publicKeyHex: string): Promise<{ stateJson: string; signingPayloadHex: string }>;
+  createDID(publicKeyHex: string, subjectType: 'agent' | 'user', domains: string[], requestId: string, creationProof?: DIDCreationProof): Promise<CreateDIDResult>;
   resolveDID(did: string, options?: { live?: boolean } | string, requestId?: string): Promise<ResolveDIDResult>;
   addServiceEndpoint(did: string, endpoint: ServiceEndpoint, requestId: string): Promise<DIDDocument>;
   removeServiceEndpoint(did: string, endpointId: string, requestId: string): Promise<DIDDocument>;
@@ -58,10 +81,17 @@ export class DIDService implements IDIDService {
   ) {}
 
   /**
+   * Prepare a live did:hedera creation request for SDK-side signing.
+   */
+  async prepareDIDCreation(publicKeyHex: string): Promise<{ stateJson: string; signingPayloadHex: string }> {
+    return this.hedera.prepareDIDCreation(publicKeyToMultibase(publicKeyHex));
+  }
+
+  /**
    * Create a new DID and anchor it to Hedera.
    * Satisfies SA-2 (Deduplication) and DID-1 (Anchoring).
    */
-  async createDID(publicKeyHex: string, subjectType: 'agent' | 'user', domains: string[] = [], requestId: string): Promise<CreateDIDResult> {
+  async createDID(publicKeyHex: string, subjectType: 'agent' | 'user', domains: string[] = [], requestId: string, creationProof?: DIDCreationProof): Promise<CreateDIDResult> {
     // 1. Check for existing DID with this public key (SA-2)
     const existing = await this.repository.findDidByPublicKey(publicKeyHex);
     if (existing) {
@@ -78,19 +108,33 @@ export class DIDService implements IDIDService {
       );
     }
 
-    // 2. Generate DID and Document
-    const did = deriveDID(publicKeyHex);
+    // 2. Generate service endpoints. Live did:hedera creation itself is
+    // submitted through Hiero using an agent-side signature.
     const serviceEndpoints = domains.map((domain, index) => ({
       id: `#domain-${index + 1}`,
       type: 'LinkedDomains',
       serviceEndpoint: domain,
     }));
-    const document = buildDIDDocument(did, publicKeyHex, serviceEndpoints);
 
     // 3. Anchor to Hedera
+    let did: string;
+    let document: DIDDocument;
     let anchoring;
     try {
-      anchoring = await this.hedera.anchorDocument(JSON.stringify(document));
+      if (creationProof) {
+        const result = await this.hedera.submitDIDCreation(creationProof.stateJson, creationProof.signatureHex);
+        did = result.did;
+        document = withServiceEndpoints(result.didDocument as DIDDocument, serviceEndpoints);
+        anchoring = {
+          transactionId: result.transactionId,
+          topicId: result.topicId,
+          sequenceNumber: result.sequenceNumber,
+        };
+      } else {
+        did = deriveDID(publicKeyHex);
+        document = buildDIDDocument(did, publicKeyHex, serviceEndpoints);
+        anchoring = await this.hedera.anchorDocument(JSON.stringify(document));
+      }
     } catch (err) {
       await this.audit.log({
         timestamp: new Date().toISOString(),

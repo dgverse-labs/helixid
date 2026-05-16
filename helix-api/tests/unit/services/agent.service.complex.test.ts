@@ -47,7 +47,11 @@ describe('AgentService Branch Coverage', () => {
       createChallenge: vi.fn(),
       findEnrollmentTokenById: vi.fn(),
     };
-    didService = { resolveDID: vi.fn(), createDID: vi.fn() };
+    didService = {
+      resolveDID: vi.fn(),
+      createDID: vi.fn(),
+      prepareDIDCreation: vi.fn().mockResolvedValue({ stateJson: '{}', signingPayloadHex: 'ab'.repeat(32) }),
+    };
     vcService = { findActiveBySubjectDid: vi.fn(), issueVC: vi.fn() };
     auditLogger = { log: vi.fn() };
     service = new AgentService(repository, didService, vcService, auditLogger);

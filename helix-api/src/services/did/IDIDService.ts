@@ -8,6 +8,11 @@ export interface CreateDIDResult {
   hederaTransactionId: string;
 }
 
+export interface DIDCreationProof {
+  stateJson: string;
+  signatureHex: string;
+}
+
 export interface ResolveDIDResult {
   did: string;
   didDocument: DIDDocument;
@@ -17,11 +22,14 @@ export interface ResolveDIDResult {
 }
 
 export interface IDIDService {
+  prepareDIDCreation(publicKeyHex: string): Promise<{ stateJson: string; signingPayloadHex: string }>;
+
   createDID(
     publicKeyHex: string,
     subjectType: 'agent' | 'user',
     domains: string[],
     requestId: string,
+    creationProof?: DIDCreationProof,
   ): Promise<CreateDIDResult>;
 
   resolveDID(did: string, requestId?: string): Promise<ResolveDIDResult>;

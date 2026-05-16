@@ -107,6 +107,8 @@ model Challenge {
   purpose             String
   pendingPublicKeyHex String?
   pendingDomains      String?
+  pendingDidCreateStateJson String?
+  pendingDidCreatePayloadHex String?
   expiresAt           DateTime
   verifiedAt          DateTime?
   createdAt           DateTime         @default(now())

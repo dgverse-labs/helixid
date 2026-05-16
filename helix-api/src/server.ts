@@ -6,7 +6,7 @@ import Fastify from 'fastify';
 import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { loadConfigFromEnv } from '@helix-id/core';
+import { buildDIDDocument, derivePublicKey, loadConfigFromEnv } from '@helix-id/core';
 
 import { errorHandler } from './middleware/errorHandler.js';
 import { ApiAuditLogger } from './audit/index.js';
@@ -28,7 +28,14 @@ import vpRoutes from './routes/vp/index.js';
 import agentRoutes from './routes/agent/index.js';
 
 const config = loadConfigFromEnv();
-const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const databaseName = getDatabaseName(config.DATABASE_URL);
+if (config.NODE_ENV !== 'test' && /test/i.test(databaseName)) {
+  throw new Error(
+    `Refusing to start ${config.NODE_ENV} API against test database '${databaseName}'. ` +
+      'Set DATABASE_URL to the working database or run with NODE_ENV=test intentionally.',
+  );
+}
+const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
@@ -39,7 +46,9 @@ const vpRepository = new VPRepository();
 const agentRepository = new AgentRepository(prisma);
 const serviceRegistry = new ServiceRegistryRepository();
 
-const hederaClient = config.NODE_ENV === 'test' || process.env['HEDERA_MOCK'] === 'true'
+await ensureIssuerDidCached();
+
+const hederaClient = process.env['HEDERA_MOCK'] === 'true'
   ? new MockHederaClient()
   : new HieroHederaClient(config);
 
@@ -49,6 +58,7 @@ const vcService = new VCService(
   didService,
   auditLogger,
   config.HELIX_SIGNING_KEY,
+  config.HELIX_ISSUER_DID,
   config.API_BASE_URL,
 );
 const vpService = new VPService(vpRepository, didService, vcService, serviceRegistry, auditLogger);
@@ -89,10 +99,36 @@ app.get('/health', async () => ({
   status: 'ok',
   version: '0.1.0',
   environment: config.NODE_ENV,
+  database: databaseName,
 }));
 
+function getDatabaseName(databaseUrl: string): string {
+  try {
+    return new URL(databaseUrl).pathname.replace(/^\//, '');
+  } catch {
+    return 'unknown';
+  }
+}
+
+async function ensureIssuerDidCached(): Promise<void> {
+  const existing = await didRepository.findDidById(config.HELIX_ISSUER_DID);
+  if (existing) return;
+
+  const publicKeyHex = derivePublicKey(config.HELIX_SIGNING_KEY);
+  const didDocument = buildDIDDocument(config.HELIX_ISSUER_DID, publicKeyHex);
+  await didRepository.createDid({
+    id: config.HELIX_ISSUER_DID,
+    subjectType: 'user',
+    controller: config.HELIX_ISSUER_DID,
+    publicKey: publicKeyHex,
+    publicKeyMultibase: didDocument.verificationMethod[0]!.publicKeyMultibase,
+    hederaTransactionId: `configured-issuer:${config.HELIX_ISSUER_DID}`,
+    didDocument,
+  });
+}
+
 await app.register(didRoutes, { didService });
-await app.register(vcRoutes, { prefix: '/v1/vcs', vcService });
+await app.register(vcRoutes, { prefix: '/v1/vcs', vcService, adminApiKey: config.HELIX_ADMIN_API_KEY });
 await app.register(statusListRoutes, { prefix: '/v1/status-list', vcService });
 await app.register(vpRoutes, { prefix: '/v1/vp', vpService });
 await app.register(agentRoutes, { prefix: '/v1', agentService });

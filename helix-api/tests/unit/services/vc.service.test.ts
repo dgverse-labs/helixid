@@ -28,7 +28,14 @@ describe('VCService Branch Coverage', () => {
     };
     didService = { resolveDID: vi.fn() };
     auditLogger = { log: vi.fn() };
-    service = new VCService(repository, didService, auditLogger, 'a'.repeat(64), 'http://localhost');
+    service = new VCService(
+      repository,
+      didService,
+      auditLogger,
+      'a'.repeat(64),
+      'did:hedera:testnet:testissuer',
+      'http://localhost',
+    );
   });
 
   describe('issueVC branches', () => {

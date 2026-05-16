@@ -53,12 +53,6 @@ function decodeBase58ProofValue(proofValue: string): Uint8Array {
   return base58btcDecode(rawProofValue);
 }
 
-function shouldSkipVCSignatureVerification(vc: { issuer?: string; proof?: { verificationMethod?: string } }): boolean {
-  const issuer = vc.issuer ?? '';
-  const verificationMethod = vc.proof?.verificationMethod ?? '';
-  return issuer.startsWith('did:hedera:') || verificationMethod.startsWith('did:hedera:');
-}
-
 export class VPService implements IVPService {
   constructor(
     private readonly vpRepository: VPRepository,
@@ -176,27 +170,26 @@ export class VPService implements IVPService {
       }
 
       // Step 7: Verify the VC signature (issuer signed the credential).
-      // Hedera DID resolution is not implemented yet, so we only enforce VC
-      // signature verification for issuers we can fully verify locally.
-      if (vc.proof?.proofValue && vc.issuer && !shouldSkipVCSignatureVerification(vc)) {
-        let issuerDidDocument: Awaited<ReturnType<IDIDService['resolveDID']>>;
-        try {
-          issuerDidDocument = await this.didService.resolveDID(vc.issuer as string);
-        } catch {
-          throw new VCIssuerNotFoundError();
-        }
-        
-        const issuerPublicKeyHex = extractPublicKeyHex(issuerDidDocument);
-        const { proof: vcProof, ...vcPayload } = vc as Record<string, unknown> & { proof: NonNullable<typeof vc.proof> };
-        const vcHash = hashCanonicalPayload(vcPayload);
-        const vcProofBytes = decodeBase58ProofValue(vcProof.proofValue!);
-        const vcSignature = new Uint8Array(vcProofBytes);
-        const issuerPublicKey = Buffer.from(issuerPublicKeyHex, 'hex');
+      if (!vc.issuer || !vc.proof?.proofValue) {
+        throw new VCSignatureInvalidError('The Verifiable Credential proof is missing');
+      }
+      let issuerDidDocument: Awaited<ReturnType<IDIDService['resolveDID']>>;
+      try {
+        issuerDidDocument = await this.didService.resolveDID(vc.issuer as string);
+      } catch {
+        throw new VCIssuerNotFoundError();
+      }
 
-        const validVCSignature = await verifySignature(vcHash, vcSignature as any, issuerPublicKey as any);
-        if (!validVCSignature) {
-          throw new VCSignatureInvalidError();
-        }
+      const issuerPublicKeyHex = extractPublicKeyHex(issuerDidDocument);
+      const { proof: vcProof, ...vcPayload } = vc as Record<string, unknown> & { proof: NonNullable<typeof vc.proof> };
+      const vcHash = hashCanonicalPayload(vcPayload);
+      const vcProofBytes = decodeBase58ProofValue(vcProof.proofValue!);
+      const vcSignature = new Uint8Array(vcProofBytes);
+      const issuerPublicKey = Buffer.from(issuerPublicKeyHex, 'hex');
+
+      const validVCSignature = await verifySignature(vcHash, vcSignature as any, issuerPublicKey as any);
+      if (!validVCSignature) {
+        throw new VCSignatureInvalidError();
       }
 
       // Step 8: Check VC revocation status in DB

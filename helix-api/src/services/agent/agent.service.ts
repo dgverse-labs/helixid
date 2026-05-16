@@ -128,6 +128,16 @@ export class AgentService implements IAgentService {
       throw new EnrollmentTokenAlreadyUsedError();
     }
 
+    let didCreateRequest;
+    try {
+      didCreateRequest = await this.didService.prepareDIDCreation(input.publicKeyHex);
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : 'Hedera DID creation request failed';
+      throw Object.assign(new Error(message), { code: ErrorCode.HEDERA_ANCHOR_FAILED, httpStatus: 502 });
+    }
     const challengeId = `chal:${randomBytes(8).toString('hex')}`;
     const nonce = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + this.challengeTtlSeconds * 1000);
@@ -138,6 +148,8 @@ export class AgentService implements IAgentService {
       purpose: 'agent_onboarding',
       pendingPublicKeyHex: input.publicKeyHex,
       pendingDomains: JSON.stringify(input.domains ?? []),
+      pendingDidCreateStateJson: didCreateRequest.stateJson,
+      pendingDidCreatePayloadHex: didCreateRequest.signingPayloadHex,
       expiresAt,
       enrollmentTokenId: tokenRecord.id
     });
@@ -155,11 +167,16 @@ export class AgentService implements IAgentService {
       expiresAt: expiresAt.toISOString()
     });
 
-    return { challengeId, nonce, expiresAt: expiresAt.toISOString() };
+    return {
+      challengeId,
+      nonce,
+      expiresAt: expiresAt.toISOString(),
+      didCreateSigningPayloadHex: didCreateRequest.signingPayloadHex,
+    };
   }
 
   async processOnboardVerify(
-    input: { challengeId: string; signature: string },
+    input: { challengeId: string; signature: string; didCreateSignature?: string },
     requestId: string
   ): Promise<{ agentDid: string; vc: Record<string, unknown>; hederaTransactionId: string; vcId: string }> {
     const challenge = await this.repository.findChallengeById(input.challengeId);
@@ -183,6 +200,9 @@ export class AgentService implements IAgentService {
     if (!validSignature) {
       throw new ChallengeSignatureInvalidError();
     }
+    if (challenge.pendingDidCreateStateJson && !/^[0-9a-f]{128}$/i.test(input.didCreateSignature ?? '')) {
+      throw new ChallengeSignatureInvalidError('DID creation signature is invalid');
+    }
 
     const enrollmentToken = challenge.enrollmentTokenId
       ? await this.repository.findEnrollmentTokenById(challenge.enrollmentTokenId)
@@ -194,7 +214,13 @@ export class AgentService implements IAgentService {
         challenge.pendingPublicKeyHex ?? '',
         'agent',
         JSON.parse(challenge.pendingDomains ?? '[]') as string[],
-        requestId
+        requestId,
+        challenge.pendingDidCreateStateJson && input.didCreateSignature
+          ? {
+              stateJson: challenge.pendingDidCreateStateJson,
+              signatureHex: input.didCreateSignature,
+            }
+          : undefined
       );
     } catch (error) {
       if (error && typeof error === 'object' && 'code' in error && error.code === ErrorCode.DID_ALREADY_EXISTS) {

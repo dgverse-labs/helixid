@@ -5,13 +5,13 @@ import { HieroHederaClient } from '../../../src/hedera/HieroHederaClient.js';
 describe('HieroHederaClient', () => {
   const client = new HieroHederaClient();
 
-  it('anchorDocument throws not configured error', async () => {
+  it('anchorDocument rejects direct payload anchoring', async () => {
     await expect(client.anchorDocument('payload'))
-      .rejects.toThrow(/Real Hedera anchoring is not configured/);
+      .rejects.toThrow(/prepareDIDCreation\/submitDIDCreation/);
   });
 
-  it('fetchMessage throws not configured error', async () => {
+  it('fetchMessage throws until live message fetching is implemented', async () => {
     await expect(client.fetchMessage('topic', 1))
-      .rejects.toThrow(/Real Hedera resolution is not configured/);
+      .rejects.toThrow(/Live Hedera message fetching is not implemented/);
   });
 });

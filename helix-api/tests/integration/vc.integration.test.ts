@@ -45,12 +45,13 @@ describe('VC API Integration', () => {
       didService, 
       auditLogger, 
       '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      'did:hedera:testnet:testissuer',
       'http://localhost:3000'
     );
 
     app = Fastify({ logger: false });
     app.setErrorHandler(errorHandler);
-    await app.register(vcRoutes, { prefix: '/v1/vcs', vcService });
+    await app.register(vcRoutes, { prefix: '/v1/vcs', vcService, adminApiKey: 'test-admin-key-0001' });
     await app.register(statusListRoutes, { prefix: '/v1/status-list', vcService });
     await app.ready();
 
@@ -144,6 +145,7 @@ describe('VC API Integration', () => {
       const response = await app.inject({
         method: 'POST',
         url: `/v1/vcs/${vcId}/revoke`,
+        headers: { 'x-admin-api-key': 'test-admin-key-0001' },
       });
 
       expect(response.statusCode).toBe(200);
@@ -151,6 +153,23 @@ describe('VC API Integration', () => {
 
       const getRes = await app.inject({ method: 'GET', url: `/v1/vcs/${vcId}` });
       expect(JSON.parse(getRes.body).status).toBe('revoked');
+    });
+
+    it('requires admin authorization', async () => {
+      const issueRes = await app.inject({
+        method: 'POST',
+        url: '/v1/vcs',
+        payload: { subjectDid: didId, subjectType: 'user', userId: 'test-user' },
+      });
+      const { vcId } = JSON.parse(issueRes.body);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/v1/vcs/${vcId}/revoke`,
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(JSON.parse(response.body).error.code).toBe(ErrorCode.ADMIN_AUTH_REQUIRED);
     });
   });
 

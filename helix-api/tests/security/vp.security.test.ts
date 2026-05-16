@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { VPBuilder } from '../../../helix-sdk-js/src/vp/VPBuilder.js';
 import Fastify, { FastifyInstance } from 'fastify';
 import { getPublicKey } from '@noble/ed25519';
+import { base58btcEncode, hashCanonicalPayload, signBytes } from '@helix-id/core';
 
 import { VPRepository, prisma } from '../../src/repositories/vp.repository.js';
 import { ServiceRegistryRepository } from '../../src/services/vp/ServiceRegistryRepository.js';
@@ -60,13 +61,28 @@ describe('VP security API', () => {
     auditLogger.events.length = 0;
     didService.setShouldThrow(false);
     vcService.setStatus('active');
-    vcService.setActiveVC({
+    vcService.setActiveVC(await signTestVC({
       id: 'vc:test:sec1',
       type: ['VerifiableCredential', 'HelixAgentCredential'],
+      issuer: defaultDid,
       expirationDate: new Date(Date.now() + 60_000).toISOString(),
       credentialSubject: { privilegeScopes: ['read'] }
-    });
+    }));
   });
+
+  async function signTestVC(vc: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const signatureHex = await signBytes(hashCanonicalPayload(vc), privateKeyHex);
+    return {
+      ...vc,
+      proof: {
+        type: 'Ed25519Signature2020',
+        created: new Date().toISOString(),
+        verificationMethod: `${defaultDid}#key-1`,
+        proofPurpose: 'assertionMethod',
+        proofValue: base58btcEncode(Buffer.from(signatureHex, 'hex')),
+      },
+    };
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getSignedVP = async (mutateTmpl?: (t: any) => any, useWrongKey = false): Promise<any> => {
