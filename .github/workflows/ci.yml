@@ -49,6 +49,12 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
 
+      - name: Prepare test database
+        run: pnpm --filter @helix-id/api db:test:prepare
+        env:
+          DATABASE_URL: postgresql://helixid_test:helixid_test@localhost:5433/helixid_test
+          NODE_ENV: test
+
       - name: Check no security tests are skipped
         run: |
           if grep -r "test\.skip\|xit\|it\.todo\|describe\.skip" \
