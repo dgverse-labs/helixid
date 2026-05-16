@@ -57,7 +57,7 @@ describe('Onboarding Live Integration', () => {
       expect(wallet.did).toBe(agent.did);
       expect(wallet.vcId).toBe(agent.vcId);
 
-      const auditTypes = (await prisma.auditLog.findMany()).map((entry) => entry.eventType);
+      const auditTypes = (await prisma.auditLog.findMany()).map((entry: { eventType: string }) => entry.eventType);
       expect(auditTypes).toEqual(expect.arrayContaining([
         'ENROLLMENT_TOKEN_GENERATED',
         'ENROLLMENT_TOKEN_CONSUMED',

@@ -16,7 +16,7 @@ export interface DIDResolutionMetadata {
   contentType?: string;
   error?: string;
   deactivated?: boolean;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface DIDDocumentMetadata {
@@ -25,7 +25,7 @@ export interface DIDDocumentMetadata {
   deactivated?: boolean;
   versionId?: string;
   nextVersionId?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface DIDResolutionResult {

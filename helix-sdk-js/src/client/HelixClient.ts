@@ -43,6 +43,27 @@ export interface IssueVCOptions {
   expiresInSeconds?: number;
 }
 
+export interface VCResponse {
+  vcId: string;
+  vc?: Record<string, unknown>;
+  status?: string;
+  statusListIndex?: number;
+  expiresAt?: string;
+  [key: string]: unknown;
+}
+
+export interface StatusListCredentialResponse {
+  credentialSubject: {
+    encodedList: string;
+  };
+  [key: string]: unknown;
+}
+
+type DIDResolveResponse = {
+  didDocument?: DIDDocument;
+  document?: DIDDocument;
+} & DIDDocument;
+
 export class HelixClient {
   private http: HttpAdapterLike;
   private readonly wallet = new AgentWallet();
@@ -51,6 +72,7 @@ export class HelixClient {
   constructor(baseUrl: string);
   constructor(http: HttpAdapter, baseUrl: string);
   constructor(first: string | HttpAdapter, _baseUrl?: string) {
+    void _baseUrl;
     this.http = typeof first === 'string' ? new HttpAdapter(first) : first;
   }
 
@@ -80,7 +102,7 @@ export class HelixClient {
   ): Promise<{ did: string; didDocument: DIDDocument; source: 'cache' | 'hedera' }> {
     const query = options?.live ? '?live=true' : '';
     if (!this.http.get) throw new Error('GET not implemented by adapter');
-    const response = await this.http.get<any>(`/v1/dids/${encodeURIComponent(did)}${query}`);
+    const response = await this.http.get<DIDResolveResponse>(`/v1/dids/${encodeURIComponent(did)}${query}`);
     const didDocument = response.didDocument ?? response.document ?? response;
     return {
       did,
@@ -119,20 +141,20 @@ export class HelixClient {
     });
   }
 
-  async getVC(vcId: string): Promise<any> {
+  async getVC(vcId: string): Promise<VCResponse> {
     if (!this.http.get) throw new Error('GET not implemented by adapter');
     return this.http.get(`/v1/vcs/${encodeURIComponent(vcId)}`);
   }
 
-  async revokeVC(vcId: string): Promise<any> {
+  async revokeVC(vcId: string): Promise<VCResponse> {
     return this.http.post(`/v1/vcs/${encodeURIComponent(vcId)}/revoke`);
   }
 
-  async renewVC(vcId: string, overrides: { privilegeScopes?: string[]; expiresInSeconds?: number } = {}): Promise<any> {
+  async renewVC(vcId: string, overrides: { privilegeScopes?: string[]; expiresInSeconds?: number } = {}): Promise<VCResponse> {
     return this.http.post(`/v1/vcs/${encodeURIComponent(vcId)}/renew`, overrides);
   }
 
-  async getStatusList(listId: string): Promise<any> {
+  async getStatusList(listId: string): Promise<StatusListCredentialResponse> {
     if (!this.http.get) throw new Error('GET not implemented by adapter');
     return this.http.get(`/v1/status-list/${encodeURIComponent(listId)}`);
   }
@@ -143,7 +165,7 @@ export class HelixClient {
     }
     const { statusListCredential, statusListIndex } = vc.credentialStatus;
     if (!this.http.get) throw new Error('GET not implemented by adapter');
-    const listCredential = await this.http.get<any>(statusListCredential);
+    const listCredential = await this.http.get<StatusListCredentialResponse>(statusListCredential);
     const encodedList = listCredential.credentialSubject.encodedList;
     return getBit(encodedList, Number(statusListIndex)) === 1 ? 'revoked' : 'active';
   }
@@ -230,6 +252,7 @@ export class HelixClient {
   }
 
   private async signPendingDidCreatePayload(_challengeId: string): Promise<string | undefined> {
+    void _challengeId;
     if (!this.pendingKeyPair?.didCreateSigningPayloadHex) {
       return undefined;
     }

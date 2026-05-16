@@ -5,3 +5,12 @@ coverage
 .turbo
 tmp
 prisma/generated
+scratch
+scratch/**
+scratch_*.ts
+scratch_*.js
+helix-api/scratch
+helix-api/scratch/**
+helix-api/scratch_*.ts
+helix-api/scratch_*.js
+helix-api/prisma/seed.ts

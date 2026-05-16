@@ -12,6 +12,20 @@
 
 import { gzipSync, gunzipSync } from 'node:zlib';
 
+export interface StatusListCredential {
+  '@context': string[];
+  id: string;
+  type: string[];
+  issuer: string;
+  issuanceDate: string;
+  credentialSubject: {
+    id: string;
+    type: 'StatusList2021';
+    statusPurpose: 'revocation';
+    encodedList: string;
+  };
+}
+
 /**
  * Encodes a buffer to a base64url string.
  */
@@ -89,7 +103,7 @@ export function buildStatusListCredential(
   encodedList: string, 
   issuerDid: string, 
   apiBaseUrl: string
-) {
+): StatusListCredential {
   return {
     '@context': [
       'https://www.w3.org/2018/credentials/v1',

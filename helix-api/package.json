@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "prisma generate && tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "test:deps": "pnpm --filter @helix-id/core build && pnpm --filter @helix-id/sdk-js build",
@@ -17,7 +17,7 @@
     "test:watch": "vitest",
     "test:security": "pnpm run test:deps && vitest run tests/security",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "prisma generate && tsc --noEmit",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:reset": "prisma migrate reset --force"

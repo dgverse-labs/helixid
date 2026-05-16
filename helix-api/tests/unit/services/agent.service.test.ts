@@ -1,16 +1,7 @@
 // Copyright 2026 DgVerse LLP
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { AgentService, mapAgentError } from '../../../src/services/agent/agent.service.js';
+import { AgentService } from '../../../src/services/agent/agent.service.js';
 import { 
-  EnrollmentTokenNotFoundError, 
-  EnrollmentTokenAlreadyUsedError,
-  EnrollmentTokenExpiredError,
-  ChallengeNotFoundError,
-  ChallengeExpiredError,
-  ChallengeAlreadyVerifiedError,
-  AgentAlreadyOnboardedError,
-  ErrorCodes,
-  HelixError,
   ServiceNotFoundError,
   ServiceAlreadyExistsError
 } from '@helix-id/core';

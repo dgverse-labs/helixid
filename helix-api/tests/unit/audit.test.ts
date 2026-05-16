@@ -13,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ApiAuditLogger } from '../../src/audit/index.js';
 import type { PrismaClient } from '@prisma/client';
-import type { DidCreatedEvent } from '@helix-id/core';
+import type { AuditEvent } from '@helix-id/core';
 
 describe('ApiAuditLogger', () => {
   let mockPrisma: any;
@@ -31,7 +31,7 @@ describe('ApiAuditLogger', () => {
   });
 
   it('persists audit events to the database', async () => {
-    const event: DidCreatedEvent = {
+    const event: AuditEvent = {
       timestamp: new Date().toISOString(),
       event: 'DID_CREATED',
       requestId: 'req-1',

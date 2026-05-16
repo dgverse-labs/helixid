@@ -34,6 +34,7 @@ export class MockHederaClient implements IHederaClient {
   }
 
   async submitDIDCreation(stateJson: string, _signatureHex: string): Promise<HederaDIDCreationResult> {
+    void _signatureHex;
     this.txCounter++;
     const state = JSON.parse(stateJson) as { publicKeyMultibase: string };
     const did = `did:hedera:testnet:${this.txCounter.toString(16).padStart(32, '0')}`;

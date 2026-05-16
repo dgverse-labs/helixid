@@ -6,14 +6,12 @@ import {
   ChallengeSignatureInvalidError,
   ChallengeExpiredError,
   ChallengeAlreadyVerifiedError,
-  ServiceAlreadyExistsError,
   EnrollmentTokenNotFoundError,
   EnrollmentTokenAlreadyUsedError,
   EnrollmentTokenExpiredError,
   AgentAlreadyOnboardedError,
   HelixError,
-  ErrorCode,
-  AuditEvents
+  ErrorCode
 } from '@helix-id/core';
 
 vi.mock('@helix-id/core', async () => {

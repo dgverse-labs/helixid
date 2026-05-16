@@ -35,8 +35,9 @@ import {
  * Maps a structured API error response to a typed HelixError instance.
  * Useful for client-side catch blocks.
  */
-export function mapApiError(body: any): HelixError {
-  const errorBody: HelixErrorBody = body?.error;
+export function mapApiError(body: unknown): HelixError {
+  const responseBody = body && typeof body === 'object' ? body as Record<string, unknown> : {};
+  const errorBody = responseBody['error'] as HelixErrorBody | undefined;
   
   if (!errorBody || !errorBody.code) {
     return new InternalError();
@@ -75,7 +76,11 @@ export function mapApiError(body: any): HelixError {
       return new ServiceAlreadyExistsError(message);
     default:
       // Fallback to base HelixError for unknown codes
-      return new HelixError(code as ErrorCode, message, body?.statusCode ?? body?.status ?? 500);
+      return new HelixError(
+        code as ErrorCode,
+        message,
+        Number(responseBody['statusCode'] ?? responseBody['status'] ?? 500),
+      );
   }
 }
 

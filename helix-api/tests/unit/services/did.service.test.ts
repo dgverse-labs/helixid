@@ -115,7 +115,7 @@ describe('DIDService Branch Coverage', () => {
         hedera.fetchMessage.mockResolvedValue({ contents: JSON.stringify({ id: 'did:1', live: true }) });
         const res = await service.resolveDID('did:1', { live: true });
         expect(res.source).toBe('hedera');
-        expect(res.didDocument.live).toBe(true);
+        expect((res.didDocument as unknown as { live?: boolean }).live).toBe(true);
     });
 
     it('falls back to cache if live fetch fails', async () => {

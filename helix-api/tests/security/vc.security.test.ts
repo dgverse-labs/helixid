@@ -10,12 +10,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { describe, it, expect, beforeAll, afterEach, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, afterAll } from 'vitest';
 import Fastify from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { createTestPrisma } from '../utils/prisma.js';
 import { verifySignature, hashCanonicalPayload, derivePublicKey } from '@helix-id/core';
-import * as crypto from 'node:crypto';
 import bs58 from 'bs58';
 
 import { VCService } from '../../src/services/vc/vc.service.js';

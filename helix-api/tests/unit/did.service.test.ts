@@ -12,7 +12,6 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DIDService } from '../../src/services/did/did.service.js';
-import { ErrorCode, HelixError } from '@helix-id/core';
 
 describe('DIDService Unit Tests', () => {
   let mockRepo: any;

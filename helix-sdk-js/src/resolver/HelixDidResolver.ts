@@ -18,6 +18,11 @@ export interface HelixDidResolverOptions {
   baseUrl: string;
 }
 
+type ResolveApiResponse = {
+  document?: DIDResolutionResult['didDocument'];
+  deactivated?: boolean;
+} & NonNullable<DIDResolutionResult['didDocument']>;
+
 /**
  * DID Resolver implementation that uses the Helix ID API.
  */
@@ -54,7 +59,7 @@ export class HelixDidResolver implements IDidResolver {
 
       if (response.status === 410) {
         // Special case for DIDs that are permanently deactivated
-        const body = (await response.json()) as any;
+        const body = (await response.json()) as ResolveApiResponse;
         return {
           didDocument: body.document || null,
           didResolutionMetadata: { deactivated: true },
@@ -62,7 +67,7 @@ export class HelixDidResolver implements IDidResolver {
         };
       }
 
-      const body = (await response.json()) as any;
+      const body = (await response.json()) as ResolveApiResponse;
 
       if (!response.ok) {
         throw mapApiError(body);
