@@ -43,6 +43,7 @@ export class HieroHederaClient implements IHederaClient {
       HEDERA_OPERATOR_ID: '',
       HEDERA_OPERATOR_KEY: '',
     },
+    private readonly registrarClient: HieroRegistrar = registrar,
   ) {
     patchAccountIdFromString();
   }
@@ -50,7 +51,7 @@ export class HieroHederaClient implements IHederaClient {
   async prepareDIDCreation(publicKeyMultibase: string): Promise<HederaDIDCreationRequest> {
     const client = this.getClient();
     try {
-      const request = await registrar.generateCreateDIDRequest(
+      const request = await this.registrarClient.generateCreateDIDRequest(
         {
           multibasePublicKey: publicKeyMultibase,
         },
@@ -81,7 +82,7 @@ export class HieroHederaClient implements IHederaClient {
         );
       }
 
-      const result = await registrar.submitCreateDIDRequest(
+      const result = await this.registrarClient.submitCreateDIDRequest(
         {
           state,
           signature: Buffer.from(signatureHex, 'hex'),

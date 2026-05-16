@@ -14,6 +14,8 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest run --coverage --passWithNoTests",
+    "test:unit": "vitest run tests/unit --passWithNoTests",
+    "test:coverage": "vitest run --coverage --passWithNoTests",
     "test:watch": "vitest",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"

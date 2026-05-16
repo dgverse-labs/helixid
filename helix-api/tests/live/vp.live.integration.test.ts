@@ -29,6 +29,7 @@ describe('VP Live Integration', () => {
       agentName: 'Live VP Agent',
       requestedScopes: ['read:orders'],
       requestedDomains: ['https://live-vp.agent.example.com'],
+      passphrase: 'live-vp-passphrase',
     });
 
     try {
@@ -68,6 +69,7 @@ describe('VP Live Integration', () => {
       agentName: 'Live Tamper Agent',
       requestedScopes: ['read:orders'],
       requestedDomains: ['https://live-tamper.agent.example.com'],
+      passphrase: 'live-tamper-passphrase',
     });
 
     try {

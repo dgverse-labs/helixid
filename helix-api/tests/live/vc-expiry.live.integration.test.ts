@@ -10,7 +10,7 @@ import {
   type LiveApi,
 } from '../utils/liveApi.js';
 
-describe('VC Revocation Live Integration', () => {
+describe('VC Expiry Live Integration', () => {
   let api: LiveApi;
 
   beforeAll(async () => {
@@ -22,16 +22,25 @@ describe('VC Revocation Live Integration', () => {
     await api?.stop();
   });
 
-  it('requires admin revocation and rejects VP verification after the VC is revoked', async () => {
+  it('rejects a VP carrying a VC that expired after signing', async () => {
     const client = new HelixClient(api.baseUrl);
     const http = supertest(api.baseUrl);
     const agent = await onboardLiveAgent(api, client, {
-      agentName: 'Live Revocation Agent',
+      agentName: 'Live Expiry Agent',
       requestedScopes: ['read:orders'],
-      requestedDomains: ['https://live-revocation.agent.example.com'],
+      requestedDomains: ['https://live-expiry.agent.example.com'],
+      passphrase: 'live-expiry-passphrase',
     });
 
     try {
+      const shortVc = await client.issueVC({
+        subjectDid: agent.did,
+        subjectType: 'agent',
+        privilegeScopes: ['read:orders'],
+        agentName: 'Live Expiry Agent',
+        expiresInSeconds: 1,
+      });
+
       const templateRes = await http.post('/v1/vp/template').send({
         agentDid: agent.did,
         userDid: 'did:hedera:testnet:live-user-placeholder',
@@ -39,25 +48,16 @@ describe('VC Revocation Live Integration', () => {
         vcType: 'HelixAgentCredential',
       });
       expect(templateRes.statusCode).toBe(201);
+      expect(templateRes.body.unsignedVP.verifiableCredential[0].id).toBe(shortVc.vcId);
 
       const signedVP = await new VPBuilder(templateRes.body.unsignedVP).sign(
         agent.privateKeyHex,
         `${agent.did}#key-1`,
       );
 
-      const unauthenticatedRevoke = await http.post(`/v1/vcs/${agent.vcId}/revoke`).send({});
-      expect(unauthenticatedRevoke.statusCode).toBe(403);
-      expect(unauthenticatedRevoke.body.error.code).toBe('ADMIN_AUTH_REQUIRED');
-
-      const revokeRes = await http
-        .post(`/v1/vcs/${agent.vcId}/revoke`)
-        .set('x-admin-api-key', api.adminApiKey)
-        .send({});
-      expect(revokeRes.statusCode).toBe(200);
-      expect(revokeRes.body.revoked).toBe(true);
-
-      const revokedDetails = await client.getVC(agent.vcId);
-      expect(revokedDetails.status).toBe('revoked');
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+      const details = await client.getVC(shortVc.vcId);
+      expect(details.status).toBe('expired');
 
       const verifyRes = await http.post('/v1/vp/verify').send({ signedVP });
       expect(verifyRes.statusCode).toBe(400);

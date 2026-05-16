@@ -101,14 +101,11 @@ export async function onboardLiveAgent(
   client: HelixClient,
   options: {
     agentName: string;
-    requestedScopes?: string[];
-    requestedDomains?: string[];
-    passphrase?: string;
+    requestedScopes: string[];
+    requestedDomains: string[];
+    passphrase: string;
   },
 ): Promise<LiveAgent> {
-  const requestedScopes = options.requestedScopes ?? ['read:orders', 'write:orders'];
-  const requestedDomains = options.requestedDomains ?? ['https://live.agent.example.com'];
-  const passphrase = options.passphrase ?? 'live-agent-passphrase';
   const dir = await mkdtemp(join(tmpdir(), 'helix-live-agent-'));
   const walletPath = join(dir, 'agent-wallet.json');
 
@@ -117,21 +114,21 @@ export async function onboardLiveAgent(
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       agentName: options.agentName,
-      requestedScopes,
-      requestedDomains,
+      requestedScopes: options.requestedScopes,
+      requestedDomains: options.requestedDomains,
     }),
   });
   expect(tokenRes.status).toBe(201);
   const { token } = (await tokenRes.json()) as { token: string };
 
-  const challenge = await client.requestOnboardingChallenge(token, requestedDomains);
+  const challenge = await client.requestOnboardingChallenge(token, options.requestedDomains);
   const onboarding = await client.completeOnboarding(
     challenge.challengeId,
     challenge.nonce,
-    passphrase,
+    options.passphrase,
     walletPath,
   );
-  const wallet = await new AgentWallet().load(passphrase, walletPath);
+  const wallet = await new AgentWallet().load(options.passphrase, walletPath);
 
   return {
     did: onboarding.agentDid,
