@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -6,8 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { expect } from 'vitest';
-import { HelixClient } from '../../../helix-sdk-js/src/client/HelixClient.js';
-import { AgentWallet } from '../../../helix-sdk-js/src/wallet/AgentWallet.js';
+import { AgentWallet, HelixClient } from '@helix-id/sdk-js';
 import { createTestPrisma } from './prisma.js';
 
 export const LIVE_HEDERA_TIMEOUT_MS = 240_000;
@@ -186,7 +185,7 @@ function readEnvFile(path: string): Record<string, string> {
 
 async function waitForHealth(
   baseUrl: string,
-  child: ChildProcessWithoutNullStreams,
+  child: ChildProcess,
   getLogs: () => string,
 ): Promise<void> {
   const deadline = Date.now() + 20_000;
@@ -205,7 +204,7 @@ async function waitForHealth(
   throw new Error(`Timed out waiting for API server:\n${getLogs()}`);
 }
 
-async function stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
+async function stopChild(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null || child.killed) return;
   child.kill('SIGTERM');
   const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));

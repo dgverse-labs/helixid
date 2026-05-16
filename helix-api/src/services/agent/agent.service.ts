@@ -22,6 +22,21 @@ import type { IDIDService } from '../did/IDIDService.js';
 import type { IVCService } from '../vc/IVCService.js';
 import type { IAgentService, ChallengeResult, ServiceEntry } from './IAgentService.js';
 
+type DIDVerificationMethodLike = {
+  type?: unknown;
+  publicKeyHex?: unknown;
+  publicKeyMultibase?: unknown;
+};
+
+type DIDDocumentLike = {
+  verificationMethod?: DIDVerificationMethodLike[];
+};
+
+type DIDResolveLike = DIDDocumentLike & {
+  document?: DIDDocumentLike;
+  didDocument?: DIDDocumentLike;
+};
+
 function hashToken(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex');
 }
@@ -39,16 +54,18 @@ function ensureServiceName(name: string): boolean {
 }
 
 function extractPublicKeyHex(doc: Awaited<ReturnType<IDIDService['resolveDID']>>): string {
-  const wrapped = doc as any;
+  const wrapped = doc as DIDResolveLike;
   const document = wrapped.document ?? wrapped.didDocument ?? wrapped;
-  const method = document.verificationMethod?.find((item: any) => item.type.includes('Ed25519'));
+  const method = document.verificationMethod?.find(
+    (item) => typeof item.type === 'string' && item.type.includes('Ed25519'),
+  );
   if (!method) {
     throw new ChallengeSignatureInvalidError();
   }
-  if (method.publicKeyHex) {
+  if (typeof method.publicKeyHex === 'string') {
     return method.publicKeyHex;
   }
-  if (method.publicKeyMultibase?.startsWith('z')) {
+  if (typeof method.publicKeyMultibase === 'string' && method.publicKeyMultibase.startsWith('z')) {
     const decoded = base58btcDecode(method.publicKeyMultibase.slice(1));
     return Buffer.from(decoded.slice(2)).toString('hex');
   }
@@ -390,6 +407,7 @@ export class AgentService implements IAgentService {
     },
     _requestId: string
   ): Promise<ServiceEntry> {
+    void _requestId;
     if (!ensureServiceName(input.serviceName) || !ensureHttps(input.verifiedDomain) || !ensureHttps(input.apiEndpoint)) {
       throw Object.assign(new Error('Invalid service data'), { code: 'VALIDATION_ERROR', httpStatus: 400 });
     }

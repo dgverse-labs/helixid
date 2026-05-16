@@ -38,6 +38,24 @@ describe('VCService Branch Coverage', () => {
     );
   });
 
+  describe('findActiveBySubjectDid', () => {
+    it('returns null when no active VC exists', async () => {
+        repository.findActiveBySubjectDid.mockResolvedValue([]);
+
+        await expect(service.findActiveBySubjectDid('did:1')).resolves.toBeNull();
+    });
+
+    it('returns the latest active VC and parses JSON strings', async () => {
+        repository.findActiveBySubjectDid.mockResolvedValue([
+          { vcJson: { id: 'vc-old' } },
+          { vcJson: JSON.stringify({ id: 'vc-new' }) },
+        ]);
+
+        await expect(service.findActiveBySubjectDid('did:1', 'HelixAgentCredential'))
+          .resolves.toEqual({ id: 'vc-new' });
+    });
+  });
+
   describe('issueVC branches', () => {
     it('throws STATUS_LIST_INDEX_EXHAUSTED if list full', async () => {
         didService.resolveDID.mockResolvedValue({});

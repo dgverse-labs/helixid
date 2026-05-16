@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HieroHederaClient } from '../../../src/hedera/HieroHederaClient.js';
 
 describe('HieroHederaClient', () => {
-  type Registrar = ConstructorParameters<typeof HieroHederaClient>[1];
+  type Registrar = NonNullable<ConstructorParameters<typeof HieroHederaClient>[1]>;
   let fakeClient: { setOperator: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> };
   let registrar: Registrar;
 
@@ -114,5 +114,13 @@ describe('HieroHederaClient', () => {
     expect(Client.forMainnet).toHaveBeenCalledOnce();
     expect(previewClient.close).toHaveBeenCalledOnce();
     expect(mainClient.close).toHaveBeenCalledOnce();
+  });
+
+  it('patches AccountId.fromString to accept object values', () => {
+    const parsed = AccountId.fromString({
+      toString: () => '0.0.456',
+    } as unknown as string);
+
+    expect(parsed.toString()).toBe('0.0.456');
   });
 });

@@ -52,6 +52,20 @@ describe('VcRepository Unit Tests', () => {
     expect(mockPrisma.vc.findMany).toHaveBeenCalled();
   });
 
+  it('filters active VCs by credential type', async () => {
+    mockPrisma.vc.findMany.mockResolvedValue([
+      { vcId: 'v1', vcJson: { type: ['VerifiableCredential', 'HelixAgentCredential'] } },
+      { vcId: 'v2', vcJson: '{"type":["VerifiableCredential"]}' },
+      { vcId: 'v3', vcJson: null },
+    ]);
+
+    const res = await repository.findActiveBySubjectDid('did:1', 'HelixAgentCredential');
+
+    expect(res).toEqual([
+      { vcId: 'v1', vcJson: { type: ['VerifiableCredential', 'HelixAgentCredential'] } },
+    ]);
+  });
+
   it('back-compat createVC works', async () => {
     await repository.createVC({ vcId: 'v1', subjectDid: 'd1', vcJson: '{}', expiresAt: new Date() });
     expect(mockPrisma.vc.create).toHaveBeenCalled();

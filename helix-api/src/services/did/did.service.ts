@@ -18,12 +18,25 @@ import {
   publicKeyToMultibase,
   HelixError,
   ErrorCode,
-  IAuditLogger,
-  DIDDocument,
-  ServiceEndpoint
+  type IAuditLogger,
+  type DIDDocument,
+  type ServiceEndpoint
 } from '@helix-id/core';
 import type { DidRepository } from '../../repositories/did.repository.js';
 import type { IHederaClient } from '../../hedera/IHederaClient.js';
+
+type DIDRecord = {
+  id: string;
+  didDocument: DIDDocument;
+  hederaTransactionId: string;
+  hederaTopicId?: string | null;
+  hederaSequenceNumber?: number | null;
+  deactivatedAt?: Date | null;
+};
+
+function toDIDDocument(value: unknown): DIDDocument {
+  return value as DIDDocument;
+}
 
 export interface DIDCreationProof {
   stateJson: string;
@@ -150,7 +163,7 @@ export class DIDService implements IDIDService {
     }
 
     // 4. Persist to DB
-    const record: any = await this.repository.createDid({
+    const record = await this.repository.createDid({
       id: did,
       subjectType,
       controller: document.controller,
@@ -159,7 +172,7 @@ export class DIDService implements IDIDService {
       hederaTransactionId: anchoring.transactionId,
       hederaTopicId: anchoring.topicId,
       hederaSequenceNumber: anchoring.sequenceNumber,
-      didDocument: document as any,
+      didDocument: document,
     });
 
     // 5. Audit log
@@ -175,7 +188,7 @@ export class DIDService implements IDIDService {
 
     return {
       did: record.id,
-      didDocument: record.didDocument as any,
+      didDocument: toDIDDocument(record.didDocument),
       hederaTransactionId: record.hederaTransactionId,
     };
   }
@@ -187,19 +200,19 @@ export class DIDService implements IDIDService {
   async resolveDID(did: string, options: { live?: boolean } | string = {}, requestId = 'req_unknown'): Promise<ResolveDIDResult> {
     const normalizedOptions = typeof options === 'string' ? {} : options;
     const normalizedRequestId = typeof options === 'string' ? options : requestId;
-    const record: any = await this.repository.findDidById(did);
+    const record = await this.repository.findDidById(did) as unknown as DIDRecord | null;
     if (!record) {
       throw new HelixError(ErrorCode.DID_NOT_FOUND, 'DID not found', 404);
     }
 
-    let document = record.didDocument;
+    let document = toDIDDocument(record.didDocument);
 
     if (normalizedOptions.live) {
       // In a real implementation, we would crawl HCS here.
       try {
-        const message = await this.hedera.fetchMessage(record.hederaTopicId, record.hederaSequenceNumber);
-        document = JSON.parse(message.contents);
-      } catch (err) {
+        const message = await this.hedera.fetchMessage(record.hederaTopicId ?? '', record.hederaSequenceNumber ?? 0);
+        document = toDIDDocument(JSON.parse(message.contents) as unknown);
+      } catch {
         // Fallback to cache if live resolution fails? 
         // Spec says resolutionType: hedera if live.
       }
@@ -215,8 +228,8 @@ export class DIDService implements IDIDService {
 
     return {
       did,
-      didDocument: document as any,
-      document: document as any,
+      didDocument: document,
+      document,
       deactivated: !!record.deactivatedAt,
       source: normalizedOptions.live ? 'hedera' : 'cache',
     };
@@ -232,7 +245,7 @@ export class DIDService implements IDIDService {
       throw new HelixError(ErrorCode.DID_DEACTIVATED, 'Cannot update a deactivated DID', 410);
     }
 
-    const updatedDoc = addServiceCore(record.didDocument as any, endpoint);
+    const updatedDoc = addServiceCore(toDIDDocument(record.didDocument), endpoint);
     
     // Anchor update
     const anchoring = await this.hedera.anchorDocument(JSON.stringify(updatedDoc));
@@ -241,7 +254,7 @@ export class DIDService implements IDIDService {
     await this.repository.updateDidDocument(did, updatedDoc, {
       updateType: 'add_service_endpoint',
       hederaTransactionId: anchoring.transactionId,
-      payload: endpoint as any,
+      payload: endpoint,
     });
 
     await this.audit.log({
@@ -266,14 +279,14 @@ export class DIDService implements IDIDService {
       throw new HelixError(ErrorCode.DID_DEACTIVATED, 'Cannot update a deactivated DID', 410);
     }
 
-    const updatedDoc = removeServiceCore(record.didDocument as any, endpointId);
+    const updatedDoc = removeServiceCore(toDIDDocument(record.didDocument), endpointId);
     
     const anchoring = await this.hedera.anchorDocument(JSON.stringify(updatedDoc));
 
     await this.repository.updateDidDocument(did, updatedDoc, {
       updateType: 'remove_service_endpoint',
       hederaTransactionId: anchoring.transactionId,
-      payload: { endpointId } as any,
+      payload: { endpointId },
     });
 
     await this.audit.log({

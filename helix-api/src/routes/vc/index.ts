@@ -12,11 +12,15 @@
 
 import { FastifyPluginAsync } from 'fastify';
 import { AdminAuthRequiredError } from '@helix-id/core';
-import { IVCService } from '../../services/vc/vc.service.js';
+import type { IVCService, IssueVCParams, RenewVCOptions } from '../../services/vc/vc.service.js';
 
 export interface VcRouteOptions {
   vcService: IVCService;
   adminApiKey?: string | undefined;
+}
+
+interface VCParams {
+  vcId: string;
 }
 
 /**
@@ -35,14 +39,14 @@ const vcRoutes: FastifyPluginAsync<VcRouteOptions> = async (fastify, options) =>
 
   // POST /v1/vcs - Issue a VC
   fastify.post('', async (request, reply) => {
-    const params = request.body as any;
+    const params = request.body as IssueVCParams;
     const result = await vcService.issueVC(params, request.id);
     return reply.status(201).send(result);
   });
 
   // GET /v1/vcs/:vcId - Get VC details
   fastify.get('/:vcId', async (request, reply) => {
-    const { vcId } = request.params as { vcId: string };
+    const { vcId } = request.params as VCParams;
     const result = await vcService.getVC(vcId, request.id);
     return reply.send(result);
   });
@@ -50,15 +54,15 @@ const vcRoutes: FastifyPluginAsync<VcRouteOptions> = async (fastify, options) =>
   // POST /v1/vcs/:vcId/revoke - Revoke a VC
   fastify.post('/:vcId/revoke', async (request, reply) => {
     requireAdmin(request);
-    const { vcId } = request.params as { vcId: string };
+    const { vcId } = request.params as VCParams;
     const result = await vcService.revokeVC(vcId, request.id);
     return reply.send(result);
   });
 
   // POST /v1/vcs/:vcId/renew - Renew a VC
   fastify.post('/:vcId/renew', async (request, reply) => {
-    const { vcId } = request.params as { vcId: string };
-    const overrides = request.body as any;
+    const { vcId } = request.params as VCParams;
+    const overrides = request.body as RenewVCOptions;
     const result = await vcService.renewVC(vcId, overrides, request.id);
     return reply.status(201).send(result);
   });

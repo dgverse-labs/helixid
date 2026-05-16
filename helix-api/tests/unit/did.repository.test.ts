@@ -15,7 +15,18 @@ import { DidRepository } from '../../src/repositories/did.repository.js';
 import type { PrismaClient } from '@prisma/client';
 
 describe('DidRepository', () => {
-  let mockPrisma: any;
+  let mockPrisma: {
+    did: {
+      create: ReturnType<typeof vi.fn>;
+      findUnique: ReturnType<typeof vi.fn>;
+      findFirst: ReturnType<typeof vi.fn>;
+      update: ReturnType<typeof vi.fn>;
+    };
+    didUpdate: {
+      create: ReturnType<typeof vi.fn>;
+    };
+    $transaction: ReturnType<typeof vi.fn>;
+  };
   let repo: DidRepository;
 
   beforeEach(() => {
@@ -35,9 +46,21 @@ describe('DidRepository', () => {
   });
 
   it('calls prisma.did.create', async () => {
-    const data: any = { id: 'did:helix:123', publicKey: 'hex' };
+    const data = {
+      id: 'did:helix:123',
+      subjectType: 'agent',
+      controller: 'did:helix:123',
+      publicKey: 'hex',
+      hederaTransactionId: 'tx',
+      didDocument: { id: 'did:helix:123' },
+    };
     await repo.createDid(data);
-    expect(mockPrisma.did.create).toHaveBeenCalledWith({ data });
+    expect(mockPrisma.did.create).toHaveBeenCalledWith({
+      data: {
+        ...data,
+        publicKeyMultibase: null,
+      },
+    });
   });
 
   it('finds DID by ID with updates', async () => {
@@ -50,7 +73,7 @@ describe('DidRepository', () => {
 
   it('updates DID document and creates update record in a transaction', async () => {
     const doc = { id: 'did:helix:123' };
-    const update: any = { updateType: 'add_service', hederaTransactionId: 'tx', payload: {} };
+    const update = { updateType: 'add_service', hederaTransactionId: 'tx', payload: {} };
     
     await repo.updateDidDocument('did:helix:123', doc, update);
     

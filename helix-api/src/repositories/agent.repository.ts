@@ -23,8 +23,8 @@ export interface ChallengeRecord {
   purpose: 'agent_onboarding' | 'user_verification';
   pendingPublicKeyHex: string | null;
   pendingDomains: string | null;
-  pendingDidCreateStateJson?: string | null;
-  pendingDidCreatePayloadHex?: string | null;
+  pendingDidCreateStateJson?: string | null | undefined;
+  pendingDidCreatePayloadHex?: string | null | undefined;
   expiresAt: Date;
   verifiedAt: Date | null;
   createdAt: Date;
@@ -48,7 +48,7 @@ function makeId(prefix: string): string {
   return `${prefix}:${Math.random().toString(16).slice(2, 14)}`;
 }
 
-function toChallengeRecord(row: any): ChallengeRecord {
+function toChallengeRecord(row: ChallengeRecord): ChallengeRecord {
   return {
     id: row.id,
     challengeId: row.challengeId,
@@ -64,6 +64,13 @@ function toChallengeRecord(row: any): ChallengeRecord {
     createdAt: row.createdAt,
     enrollmentTokenId: row.enrollmentTokenId,
   };
+}
+
+function requireChallengeRow(row: ChallengeRecord | undefined): ChallengeRecord {
+  if (!row) {
+    throw new Error('Challenge query returned no rows');
+  }
+  return row;
 }
 
 export class AgentRepository {
@@ -135,7 +142,7 @@ export class AgentRepository {
     data: Omit<ChallengeRecord, 'id' | 'verifiedAt' | 'createdAt'>
   ): Promise<ChallengeRecord> {
     if (this.prisma) {
-      const rows = await (this.prisma as PrismaRaw).$queryRawUnsafe<any[]>(
+      const rows = await (this.prisma as PrismaRaw).$queryRawUnsafe<ChallengeRecord[]>(
         `INSERT INTO "challenges" (
           "id",
           "challengeId",
@@ -162,7 +169,7 @@ export class AgentRepository {
         data.expiresAt,
         data.enrollmentTokenId,
       );
-      return toChallengeRecord(rows[0]);
+      return toChallengeRecord(requireChallengeRow(rows[0]));
     }
 
     const record: ChallengeRecord = {
@@ -177,7 +184,7 @@ export class AgentRepository {
 
   async findChallengeById(challengeId: string): Promise<ChallengeRecord | null> {
     if (this.prisma) {
-      const rows = await (this.prisma as PrismaRaw).$queryRawUnsafe<any[]>(
+      const rows = await (this.prisma as PrismaRaw).$queryRawUnsafe<ChallengeRecord[]>(
         `SELECT * FROM "challenges" WHERE "challengeId" = $1 LIMIT 1`,
         challengeId,
       );
@@ -189,12 +196,12 @@ export class AgentRepository {
 
   async markChallengeVerified(challengeId: string): Promise<ChallengeRecord> {
     if (this.prisma) {
-      const rows = await (this.prisma as PrismaRaw).$queryRawUnsafe<any[]>(
+      const rows = await (this.prisma as PrismaRaw).$queryRawUnsafe<ChallengeRecord[]>(
         `UPDATE "challenges" SET "verifiedAt" = $1 WHERE "challengeId" = $2 RETURNING *`,
         new Date(),
         challengeId,
       );
-      return toChallengeRecord(rows[0]);
+      return toChallengeRecord(requireChallengeRow(rows[0]));
     }
 
     const challenge = this.challenges.get(challengeId);

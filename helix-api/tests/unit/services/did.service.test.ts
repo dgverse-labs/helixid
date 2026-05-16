@@ -1,7 +1,7 @@
 // Copyright 2026 DgVerse LLP
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DIDService } from '../../../src/services/did/did.service.js';
-import { ErrorCode } from '@helix-id/core';
+import { ErrorCode, HelixError } from '@helix-id/core';
 
 describe('DIDService Branch Coverage', () => {
   let repository: any;
@@ -20,12 +20,77 @@ describe('DIDService Branch Coverage', () => {
     hedera = {
       anchorDocument: vi.fn(),
       fetchMessage: vi.fn(),
+      prepareDIDCreation: vi.fn(),
+      submitDIDCreation: vi.fn(),
     };
     audit = { log: vi.fn() };
     service = new DIDService(repository, hedera, audit);
   });
 
   describe('createDID branches', () => {
+    it('prepares DID creation with a multibase public key', async () => {
+        hedera.prepareDIDCreation.mockResolvedValue({ stateJson: '{}', signingPayloadHex: 'aa' });
+
+        const result = await service.prepareDIDCreation('a'.repeat(64));
+
+        expect(hedera.prepareDIDCreation).toHaveBeenCalledWith(expect.stringMatching(/^z/));
+        expect(result).toEqual({ stateJson: '{}', signingPayloadHex: 'aa' });
+    });
+
+    it('creates a DID from a signed Hiero creation proof and appends service endpoints', async () => {
+        const didDocument = {
+          id: 'did:hedera:testnet:agent_0.0.1',
+          controller: 'did:hedera:testnet:agent_0.0.1',
+          verificationMethod: [{ publicKeyMultibase: 'zAgent' }],
+        };
+        repository.findDidByPublicKey.mockResolvedValue(null);
+        hedera.submitDIDCreation.mockResolvedValue({
+          did: 'did:hedera:testnet:agent_0.0.1',
+          didDocument,
+          transactionId: 'tx-live',
+          topicId: '0.0.1',
+          sequenceNumber: 2,
+        });
+        repository.createDid.mockImplementation(async (data: any) => ({
+          id: data.id,
+          didDocument: data.didDocument,
+          hederaTransactionId: data.hederaTransactionId,
+        }));
+
+        const result = await service.createDID(
+          'a'.repeat(64),
+          'agent',
+          ['https://agent.example.com'],
+          'req-1',
+          { stateJson: '{"message":[1]}', signatureHex: 'aa' },
+        );
+
+        expect(hedera.submitDIDCreation).toHaveBeenCalledWith('{"message":[1]}', 'aa');
+        expect(repository.createDid).toHaveBeenCalledWith(expect.objectContaining({
+          id: 'did:hedera:testnet:agent_0.0.1',
+          hederaTransactionId: 'tx-live',
+          hederaTopicId: '0.0.1',
+          hederaSequenceNumber: 2,
+        }));
+        expect(result.didDocument.service).toEqual([
+          {
+            id: 'did:hedera:testnet:agent_0.0.1#domain-1',
+            type: 'LinkedDomains',
+            serviceEndpoint: 'https://agent.example.com',
+          },
+        ]);
+    });
+
+    it('preserves HelixError failures during anchoring', async () => {
+        repository.findDidByPublicKey.mockResolvedValue(null);
+        hedera.anchorDocument.mockRejectedValue(
+          new HelixError(ErrorCode.DID_ALREADY_EXISTS, 'known', 409),
+        );
+
+        await expect(service.createDID('a'.repeat(64), 'agent', [], 'req-1'))
+          .rejects.toMatchObject({ code: ErrorCode.DID_ALREADY_EXISTS });
+    });
+
     it('throws if already exists', async () => {
         repository.findDidByPublicKey.mockResolvedValue({ id: 'did:1' });
         await expect(service.createDID('pub', 'agent', [], 'req-1')).rejects.toMatchObject({ code: ErrorCode.DID_ALREADY_EXISTS });
@@ -77,9 +142,38 @@ describe('DIDService Branch Coverage', () => {
         repository.findDidById.mockResolvedValue({ deactivatedAt: new Date() });
         await expect(service.addServiceEndpoint('did:1', {} as any, 'req-1')).rejects.toMatchObject({ code: ErrorCode.DID_DEACTIVATED });
     });
+
+    it('adds an endpoint, anchors, persists, and audits', async () => {
+        const doc = {
+          id: 'did:1',
+          service: [],
+        };
+        const endpoint = { id: 'svc-1', type: 'DemoService', serviceEndpoint: 'https://svc.example.com' };
+        repository.findDidById.mockResolvedValue({ didDocument: doc, deactivatedAt: null });
+        hedera.anchorDocument.mockResolvedValue({ transactionId: 'tx-add' });
+
+        const result = await service.addServiceEndpoint('did:1', endpoint as any, 'req-1');
+
+        expect(result.service).toEqual([endpoint]);
+        expect(repository.updateDidDocument).toHaveBeenCalledWith('did:1', result, expect.objectContaining({
+          updateType: 'add_service_endpoint',
+          hederaTransactionId: 'tx-add',
+        }));
+        expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({
+          event: 'DID_UPDATED',
+          updateType: 'add_service_endpoint',
+        }));
+    });
   });
 
   describe('deactivateDID branches', () => {
+    it('throws if DID does not exist', async () => {
+        repository.findDidById.mockResolvedValue(null);
+
+        await expect(service.deactivateDID('did:missing', 'req-1'))
+          .rejects.toMatchObject({ code: ErrorCode.DID_NOT_FOUND });
+    });
+
     it('returns early if already deactivated', async () => {
         repository.findDidById.mockResolvedValue({ deactivatedAt: new Date() });
         await service.deactivateDID('did:1', 'req-1');

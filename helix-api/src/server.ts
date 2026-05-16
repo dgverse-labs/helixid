@@ -16,7 +16,7 @@ import { DidRepository } from './repositories/did.repository.js';
 import { VcRepository } from './repositories/vc.repository.js';
 import { VPRepository } from './repositories/vp.repository.js';
 import { AgentRepository } from './repositories/agent.repository.js';
-import { ServiceRegistryRepository } from './services/vp/ServiceRegistryRepository.js';
+import { ServiceRegistryRepository } from './repositories/service-registry.repository.js';
 import { DIDService } from './services/did/did.service.js';
 import { VCService } from './services/vc/vc.service.js';
 import { VPService } from './services/vp/vp.service.js';

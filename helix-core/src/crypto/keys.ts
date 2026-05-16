@@ -3,6 +3,7 @@ import { sha512 } from '@noble/hashes/sha512';
 import { randomBytes } from '@noble/hashes/utils';
 
 ed25519.etc.sha512Sync = (...m: Uint8Array[]): Uint8Array => sha512(ed25519.etc.concatBytes(...m));
+/* v8 ignore next */
 ed25519.etc.sha512Async = (...m: Uint8Array[]): Promise<Uint8Array> =>
   Promise.resolve(sha512(ed25519.etc.concatBytes(...m)));
 

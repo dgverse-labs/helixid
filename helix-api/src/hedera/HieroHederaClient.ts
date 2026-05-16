@@ -105,10 +105,13 @@ export class HieroHederaClient implements IHederaClient {
   }
 
   async anchorDocument(_payload: string): Promise<HederaTransactionResult> {
+    void _payload;
     throw new Error('Use prepareDIDCreation/submitDIDCreation for live did:hedera anchoring.');
   }
 
   async fetchMessage(_topicId: string, _sequenceNumber: number): Promise<HederaMessage> {
+    void _topicId;
+    void _sequenceNumber;
     throw new Error('Live Hedera message fetching is not implemented yet.');
   }
 

@@ -37,4 +37,15 @@ describe('DidRepository Unit Tests', () => {
     await repository.deactivateDid('did:1', now);
     expect(mockPrisma.did.update).toHaveBeenCalledWith(expect.objectContaining({ data: { deactivatedAt: now } }));
   });
+
+  it('supports lookup aliases and public key multibase lookup', async () => {
+    mockPrisma.did.findUnique.mockResolvedValue({ id: 'did:1' });
+    mockPrisma.did.findFirst
+      .mockResolvedValueOnce({ publicKey: 'abc' })
+      .mockResolvedValueOnce({ publicKeyMultibase: 'zabc' });
+
+    await expect(repository.findByDid('did:1')).resolves.toEqual({ id: 'did:1' });
+    await expect(repository.findDidByPublicKey('abc')).resolves.toEqual({ publicKey: 'abc' });
+    await expect(repository.findByPublicKeyMultibase('zabc')).resolves.toEqual({ publicKeyMultibase: 'zabc' });
+  });
 });

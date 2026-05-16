@@ -25,6 +25,7 @@
   "include": [
     "src/**/*",
     "tests/**/*",
+    "check_prisma.ts",
     "prisma.config.ts",
     "vitest.config.ts"
   ],

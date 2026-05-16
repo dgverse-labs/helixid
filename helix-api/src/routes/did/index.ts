@@ -11,11 +11,29 @@
 // limitations under the License.
 
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
-import { ErrorCode, HelixError } from '@helix-id/core';
-import { IDIDService } from '../../services/did/did.service.js';
+import { ErrorCode, HelixError, type ServiceEndpoint } from '@helix-id/core';
+import type { IDIDService } from '../../services/did/did.service.js';
 
 interface DIDRouteOptions {
   didService: IDIDService;
+}
+
+interface CreateDIDBody {
+  publicKeyHex: string;
+  subjectType: 'agent' | 'user';
+  domains?: string[];
+}
+
+interface DIDParams {
+  did: string;
+}
+
+interface ResolveDIDQuery {
+  live?: boolean;
+}
+
+interface DIDServiceEndpointParams extends DIDParams {
+  endpointId: string;
 }
 
 /**
@@ -74,7 +92,7 @@ const didRoutes: FastifyPluginAsync<DIDRouteOptions> = async (fastify: FastifyIn
       }
     },
     handler: async (request, reply) => {
-      const { publicKeyHex, subjectType, domains = [] } = request.body as any;
+      const { publicKeyHex, subjectType, domains = [] } = request.body as CreateDIDBody;
       const result = await didService.createDID(publicKeyHex, subjectType, domains, request.id);
       return reply.status(201).send({
         id: result.did,
@@ -126,10 +144,14 @@ const didRoutes: FastifyPluginAsync<DIDRouteOptions> = async (fastify: FastifyIn
         404: { $ref: 'NotFound#' }
       }
     },
-    handler: async (request, reply) => {
-      const { did } = request.params as any;
-      const { live } = request.query as any;
-      const result = await didService.resolveDID(did, { live }, request.id);
+    handler: async (request) => {
+      const { did } = request.params as DIDParams;
+      const { live } = request.query as ResolveDIDQuery;
+      const result = await didService.resolveDID(
+        did,
+        typeof live === 'boolean' ? { live } : {},
+        request.id,
+      );
       
       if (result.deactivated) {
         throw new HelixError(ErrorCode.DID_DEACTIVATED, 'DID is deactivated', 410, { did });
@@ -168,9 +190,9 @@ const didRoutes: FastifyPluginAsync<DIDRouteOptions> = async (fastify: FastifyIn
         410: { description: 'DID Deactivated', content: { 'application/json': { schema: { $ref: 'Error#' } } } }
       }
     },
-    handler: async (request, reply) => {
-      const { did } = request.params as any;
-      const endpoint = request.body as any;
+    handler: async (request) => {
+      const { did } = request.params as DIDParams;
+      const endpoint = request.body as ServiceEndpoint;
       const result = await didService.addServiceEndpoint(did, endpoint, request.id);
       return result;
     },
@@ -199,8 +221,8 @@ const didRoutes: FastifyPluginAsync<DIDRouteOptions> = async (fastify: FastifyIn
         410: { description: 'DID Deactivated', content: { 'application/json': { schema: { $ref: 'Error#' } } } }
       }
     },
-    handler: async (request, reply) => {
-      const { did, endpointId } = request.params as any;
+    handler: async (request) => {
+      const { did, endpointId } = request.params as DIDServiceEndpointParams;
       const result = await didService.removeServiceEndpoint(did, endpointId, request.id);
       return result;
     },
@@ -229,7 +251,7 @@ const didRoutes: FastifyPluginAsync<DIDRouteOptions> = async (fastify: FastifyIn
       }
     },
     handler: async (request, reply) => {
-      const { did } = request.params as any;
+      const { did } = request.params as DIDParams;
       await didService.deactivateDID(did, request.id);
       return reply.status(200).send({ did, deactivated: true });
     },

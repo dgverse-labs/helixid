@@ -5,6 +5,7 @@ import * as ed25519 from '@noble/ed25519';
 import { normalizeEd25519PrivateKey } from './keys.js';
 
 ed25519.etc.sha512Sync = (...m: Uint8Array[]): Uint8Array => sha512(ed25519.etc.concatBytes(...m));
+/* v8 ignore next */
 ed25519.etc.sha512Async = (...m: Uint8Array[]): Promise<Uint8Array> => Promise.resolve(sha512(ed25519.etc.concatBytes(...m)));
 
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';

@@ -14,6 +14,12 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
       include: ['src/**/*.ts'],
+      thresholds: {
+        lines: 95,
+        statements: 95,
+        branches: 90,
+        functions: 100,
+      },
       exclude: [
         'src/index.ts',
         'src/server.ts',
@@ -21,6 +27,7 @@ export default defineConfig({
         'src/loadEnv.ts',
         'src/**/index.ts',
         'src/hedera/mock/**',
+        'src/hedera/IHederaClient.ts',
         'src/repositories/index.ts',
         'src/services/agent/index.ts',
         'src/services/did/index.ts',

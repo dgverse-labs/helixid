@@ -220,5 +220,35 @@ describe('AgentService Branch Coverage', () => {
       const res = await service.verifyUserChallenge('c1', { signature: '0'.repeat(128) }, 'req-1');
       expect(res.vc?.id).toBe('vc-active');
     });
+
+    it('issues a user VC if none exists after challenge verification', async () => {
+      repository.findChallengeById.mockResolvedValue({
+        purpose: 'user_verification',
+        expiresAt: new Date(Date.now() + 10000),
+        nonce: '00'.repeat(32),
+        did: 'did:hedera:testnet:user-1'
+      });
+      didService.resolveDID.mockResolvedValue({
+        verificationMethod: [{ type: 'Ed25519VerificationKey2020', publicKeyHex: '00'.repeat(32) }]
+      });
+      vi.mocked(verifySignature).mockResolvedValue(true);
+      vcService.findActiveBySubjectDid.mockResolvedValue(null);
+      vcService.issueVC.mockResolvedValue({ vc: { id: 'new-vc' } });
+
+      const res = await service.verifyUserChallenge('c1', { signature: '0'.repeat(128) }, 'req-1');
+
+      expect(repository.markChallengeVerified).toHaveBeenCalledWith('c1');
+      expect(vcService.issueVC).toHaveBeenCalledWith({
+        subjectDid: 'did:hedera:testnet:user-1',
+        subjectType: 'user',
+        userId: 'did:hedera:testnet:user-1',
+        expiresInSeconds: 7_776_000
+      }, 'req-1');
+      expect(res).toEqual({
+        did: 'did:hedera:testnet:user-1',
+        verified: true,
+        vc: { id: 'new-vc' }
+      });
+    });
   });
 });

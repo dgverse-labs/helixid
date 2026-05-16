@@ -1,5 +1,6 @@
 // Copyright 2026 DgVerse LLP
 import { describe, expect, it, vi } from 'vitest';
+import type { FastifyError } from 'fastify';
 import { EnrollmentTokenNotFoundError } from '@helix-id/core';
 import { errorHandler } from '../../src/middleware/errorHandler.js';
 import { registerRequestLogger } from '../../src/middleware/requestLogger.js';
@@ -77,7 +78,7 @@ describe('middleware', () => {
     const request = makeRequest();
     const reply = makeReply();
 
-    errorHandler(new Error('database exploded'), request as never, reply as never);
+    errorHandler(new Error('database exploded') as FastifyError, request as never, reply as never);
 
     expect(reply.status).toHaveBeenCalledWith(500);
     expect(reply.send).toHaveBeenCalledWith({

@@ -1,13 +1,23 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
 build/
+coverage/
+prisma/generated/
+
+# Runtime and cache
+.turbo/
+tmp/
+*.log
+
+# Local environment files
 .env
 .env.local
 .env.production
 .env.test
 *.env
-coverage/
-*.log
+
+# OS and editor files
 .DS_Store
-.turbo/
-prisma/generated/

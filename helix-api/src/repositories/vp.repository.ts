@@ -16,6 +16,10 @@ export interface VpIdRecord {
   consumedAt: Date | null;
 }
 
+type UpdateManyResult = {
+  count: number;
+};
+
 export class VPRepository {
   constructor(private readonly db: PrismaClient = prisma) {}
 
@@ -48,7 +52,7 @@ export class VPRepository {
           consumedAt: new Date(),
         },
       });
-      return (result as any).count > 0;
+      return (result as UpdateManyResult).count > 0;
     } catch {
       return false;
     }

@@ -16,6 +16,7 @@ describe('HelixErrors', () => {
       () => new Errors.HederaResolutionFailedError(),
       () => new Errors.InternalError(),
       () => new Errors.ValidationError('bad input'),
+      () => new Errors.AdminAuthRequiredError(),
       () => new Errors.VCNotFoundError('vc-1'),
       () => new Errors.VCAlreadyRevokedError(),
       () => new Errors.VCExpiredError(),

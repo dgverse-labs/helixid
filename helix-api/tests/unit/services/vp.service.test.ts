@@ -3,17 +3,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { VPService, mapErrorToResponse } from '../../../src/services/vp/vp.service.js';
 import { 
     VPVerificationFailedError, 
-    VPAgentDIDNotFoundError,
-    VPInvalidStructureError,
-    VPNotFoundError,
-    VPAlreadyConsumedError,
-    VPExpiredError,
-    VCIssuerNotFoundError,
-    VCSignatureInvalidError,
-    VCRevokedError,
-    VCExpiredError
+    VPAgentDIDNotFoundError
 } from '@helix-id/core';
-import { ServiceNotFoundError } from '../../../src/services/vp/ServiceRegistryRepository.js';
+import { ServiceNotFoundError } from '../../../src/repositories/service-registry.repository.js';
 
 vi.mock('@helix-id/core', async () => {
   const actual = await vi.importActual('@helix-id/core') as any;
@@ -29,7 +21,7 @@ vi.mock('@helix-id/core', async () => {
   };
 });
 
-import { verifySignature, base58btcDecode } from '@helix-id/core';
+import { verifySignature } from '@helix-id/core';
 
 describe('VPService Branch Coverage', () => {
   let repository: any;
@@ -80,7 +72,7 @@ describe('VPService Branch Coverage', () => {
   describe('generateVPTemplate branches', () => {
     it('throws VPAgentDIDNotFoundError if agent DID resolution fails', async () => {
         didService.resolveDID.mockRejectedValue(new Error('fail'));
-        await expect(service.generateVPTemplate({ agentDid: 'd1', userDid: 'u1', targetService: 's1' }, 'req-1'))
+        await expect(service.generateVPTemplate({ agentDid: 'd1', userDid: 'u1', targetService: 's1', vcType: 'HelixAgentCredential' }, 'req-1'))
             .rejects.toThrow(VPAgentDIDNotFoundError);
     });
   });

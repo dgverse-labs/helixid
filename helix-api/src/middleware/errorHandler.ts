@@ -22,7 +22,7 @@ export function errorHandler(
   error: FastifyError,
   request: FastifyRequest,
   reply: FastifyReply,
-) {
+): FastifyReply {
   const requestId = (request.headers['x-request-id'] as string) || request.id;
 
   // Log the internal detail before returning (EH-5)
