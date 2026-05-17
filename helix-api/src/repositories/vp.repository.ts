@@ -16,9 +16,15 @@ export interface VpIdRecord {
   consumedAt: Date | null;
 }
 
+type UpdateManyResult = {
+  count: number;
+};
+
 export class VPRepository {
+  constructor(private readonly db: PrismaClient = prisma) {}
+
   async create(data: Omit<VpIdRecord, 'consumedAt'>): Promise<VpIdRecord> {
-    return prisma.vpId.create({
+    return this.db.vpId.create({
       data: {
         vpId: data.vpId,
         agentDid: data.agentDid,
@@ -30,14 +36,14 @@ export class VPRepository {
   }
 
   async findByVpId(vpId: string): Promise<VpIdRecord | null> {
-    return prisma.vpId.findUnique({
+    return this.db.vpId.findUnique({
       where: { vpId },
     });
   }
 
   async consumeAtomically(vpId: string): Promise<boolean> {
     try {
-      const result = await prisma.vpId.updateMany({
+      const result = await this.db.vpId.updateMany({
         where: {
           vpId,
           consumedAt: null,
@@ -46,7 +52,7 @@ export class VPRepository {
           consumedAt: new Date(),
         },
       });
-      return result.count > 0;
+      return (result as UpdateManyResult).count > 0;
     } catch {
       return false;
     }

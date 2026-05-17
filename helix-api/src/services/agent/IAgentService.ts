@@ -7,6 +7,7 @@ export interface ChallengeResult {
   challengeId: string;
   nonce: string;
   expiresAt: string;
+  didCreateSigningPayloadHex?: string;
 }
 
 export interface OnboardVerifyResult {
@@ -41,7 +42,7 @@ export interface IAgentService {
     requestId: string
   ): Promise<ChallengeResult>;
   processOnboardVerify(
-    input: { challengeId: string; signature: string },
+    input: { challengeId: string; signature: string; didCreateSignature?: string },
     requestId: string
   ): Promise<OnboardVerifyResult>;
   issueUserChallenge(input: { did: string; purpose: 'user_verification' }, requestId: string): Promise<ChallengeResult>;

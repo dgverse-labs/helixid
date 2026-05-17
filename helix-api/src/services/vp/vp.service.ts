@@ -6,7 +6,6 @@ import {
   VPAlreadyConsumedError,
   VPExpiredError,
   VPInvalidStructureError,
-  VPMultipleActiveVCError,
   VPNoActiveVCError,
   VPNotFoundError,
   VPVerificationFailedError,
@@ -24,23 +23,49 @@ import {
 import type { IDIDService } from '../did/IDIDService.js';
 import type { IVCService } from '../vc/IVCService.js';
 import type { VPRepository } from '../../repositories/vp.repository.js';
-import { ServiceNotFoundError, type ServiceRegistryRepository } from './ServiceRegistryRepository.js';
+import { ServiceNotFoundError, type ServiceRegistryRepository } from '../../repositories/service-registry.repository.js';
 import type { IVPService, VPTemplateParams, VPTemplateResult, VPVerificationResult } from './IVPService.js';
+
+type DIDVerificationMethodLike = {
+  type?: unknown;
+  publicKeyHex?: unknown;
+  publicKeyMultibase?: unknown;
+};
+
+type DIDDocumentLike = {
+  verificationMethod?: DIDVerificationMethodLike[];
+};
+
+type DIDResolveLike = DIDDocumentLike & {
+  document?: DIDDocumentLike;
+  didDocument?: DIDDocumentLike;
+};
+
+type HelixHttpErrorLike = {
+  code: string;
+  httpStatus: number;
+  message: string;
+};
 
 function makeVpId(): string {
   return `vp:helix:${randomBytes(12).toString('hex')}`;
 }
 
 function extractPublicKeyHex(doc: Awaited<ReturnType<IDIDService['resolveDID']>>): string {
-  const method = doc.verificationMethod?.find((item) => item.type.includes('Ed25519'));
+  const wrapped = doc as DIDResolveLike;
+  const document = wrapped.document ?? wrapped.didDocument ?? wrapped;
+  const method = document.verificationMethod?.find(
+    (item) => typeof item.type === 'string' && item.type.includes('Ed25519'),
+  );
   if (!method) {
     throw new VPAgentDIDNotFoundError();
   }
-  if (method.publicKeyHex) {
+  if (typeof method.publicKeyHex === 'string') {
     return method.publicKeyHex;
   }
-  if (method.publicKeyMultibase?.startsWith('z')) {
-    return Buffer.from(base58btcDecode(method.publicKeyMultibase.slice(1))).toString('hex');
+  if (typeof method.publicKeyMultibase === 'string' && method.publicKeyMultibase.startsWith('z')) {
+    const decoded = base58btcDecode(method.publicKeyMultibase.slice(1));
+    return Buffer.from(decoded.slice(2)).toString('hex');
   }
   throw new VPAgentDIDNotFoundError();
 }
@@ -48,12 +73,6 @@ function extractPublicKeyHex(doc: Awaited<ReturnType<IDIDService['resolveDID']>>
 function decodeBase58ProofValue(proofValue: string): Uint8Array {
   const rawProofValue = proofValue.startsWith('z') ? proofValue.slice(1) : proofValue;
   return base58btcDecode(rawProofValue);
-}
-
-function shouldSkipVCSignatureVerification(vc: { issuer?: string; proof?: { verificationMethod?: string } }): boolean {
-  const issuer = vc.issuer ?? '';
-  const verificationMethod = vc.proof?.verificationMethod ?? '';
-  return issuer.startsWith('did:hedera:') || verificationMethod.startsWith('did:hedera:');
 }
 
 export class VPService implements IVPService {
@@ -149,9 +168,8 @@ export class VPService implements IVPService {
       const { proof, ...payloadWithoutProof } = parsed.data;
       const hash = hashCanonicalPayload(payloadWithoutProof);
       const proofBytes = decodeBase58ProofValue(proof.proofValue);
-      const signature = new Uint8Array(proofBytes);
-      const publicKey = Buffer.from(publicKeyHex, 'hex');
-      const validSignature = await verifySignature(hash, signature as any, publicKey as any);
+      const signatureHex = Buffer.from(proofBytes).toString('hex');
+      const validSignature = await verifySignature(hash, signatureHex, publicKeyHex);
       if (!validSignature) {
         throw new Error('signature_invalid');
       }
@@ -173,27 +191,25 @@ export class VPService implements IVPService {
       }
 
       // Step 7: Verify the VC signature (issuer signed the credential).
-      // Hedera DID resolution is not implemented yet, so we only enforce VC
-      // signature verification for issuers we can fully verify locally.
-      if (vc.proof?.proofValue && vc.issuer && !shouldSkipVCSignatureVerification(vc)) {
-        let issuerDidDocument: Awaited<ReturnType<IDIDService['resolveDID']>>;
-        try {
-          issuerDidDocument = await this.didService.resolveDID(vc.issuer as string);
-        } catch {
-          throw new VCIssuerNotFoundError();
-        }
-        
-        const issuerPublicKeyHex = extractPublicKeyHex(issuerDidDocument);
-        const { proof: vcProof, ...vcPayload } = vc as Record<string, unknown> & { proof: NonNullable<typeof vc.proof> };
-        const vcHash = hashCanonicalPayload(vcPayload);
-        const vcProofBytes = decodeBase58ProofValue(vcProof.proofValue!);
-        const vcSignature = new Uint8Array(vcProofBytes);
-        const issuerPublicKey = Buffer.from(issuerPublicKeyHex, 'hex');
+      if (!vc.issuer || !vc.proof?.proofValue) {
+        throw new VCSignatureInvalidError('The Verifiable Credential proof is missing');
+      }
+      let issuerDidDocument: Awaited<ReturnType<IDIDService['resolveDID']>>;
+      try {
+        issuerDidDocument = await this.didService.resolveDID(vc.issuer as string);
+      } catch {
+        throw new VCIssuerNotFoundError();
+      }
 
-        const validVCSignature = await verifySignature(vcHash, vcSignature as any, issuerPublicKey as any);
-        if (!validVCSignature) {
-          throw new VCSignatureInvalidError();
-        }
+      const issuerPublicKeyHex = extractPublicKeyHex(issuerDidDocument);
+      const { proof: vcProof, ...vcPayload } = vc as Record<string, unknown> & { proof: NonNullable<typeof vc.proof> };
+      const vcHash = hashCanonicalPayload(vcPayload);
+      const vcProofBytes = decodeBase58ProofValue(vcProof.proofValue!);
+      const vcSignatureHex = Buffer.from(vcProofBytes).toString('hex');
+
+      const validVCSignature = await verifySignature(vcHash, vcSignatureHex, issuerPublicKeyHex);
+      if (!validVCSignature) {
+        throw new VCSignatureInvalidError();
       }
 
       // Step 8: Check VC revocation status in DB
@@ -230,7 +246,6 @@ export class VPService implements IVPService {
     } catch (error) {
       const internalReason =
         error instanceof Error ? `${error.message}${'code' in error ? ` [code=${(error as { code?: string }).code}]` : ''}` : String(error);
-      console.error(`[VP Verification] Failed for vpId=${vpId}: ${internalReason}`);
       this.auditLogger.log(AuditEvents.VP_REJECTED, {
         requestId,
         vpId,
@@ -246,17 +261,12 @@ export class VPService implements IVPService {
 }
 
 export function mapErrorToResponse(error: unknown): { statusCode: number; code: string; message: string } {
-  if (error instanceof VPAgentDIDNotFoundError || error instanceof VPNoActiveVCError || error instanceof VPMultipleActiveVCError) {
-    return { statusCode: error.httpStatus, code: error.code, message: error.message };
+  if (error && typeof error === 'object' && 'code' in error && 'httpStatus' in error) {
+    const typed = error as HelixHttpErrorLike;
+    return { statusCode: typed.httpStatus, code: typed.code, message: typed.message };
   }
   if (error instanceof ServiceNotFoundError) {
     return { statusCode: 404, code: ErrorCodes.SERVICE_NOT_FOUND, message: error.message };
-  }
-  if (error instanceof VCSignatureInvalidError || error instanceof VCExpiredError || error instanceof VCRevokedError || error instanceof VCIssuerNotFoundError) {
-    return { statusCode: error.httpStatus, code: error.code, message: error.message };
-  }
-  if (error instanceof VPVerificationFailedError) {
-    return { statusCode: 400, code: error.code, message: error.message };
   }
   return { statusCode: 500, code: 'INTERNAL_ERROR', message: 'Internal server error' };
 }

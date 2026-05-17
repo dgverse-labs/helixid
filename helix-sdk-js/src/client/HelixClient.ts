@@ -1,59 +1,209 @@
-import { randomBytes } from 'node:crypto';
-import { getPublicKey } from '@noble/ed25519';
-import { signBytes } from '@helix-id/core';
+import {
+  generateKeyPair,
+  getBit,
+  signBytes,
+  type DIDDocument,
+  type KeyPair,
+  type ServiceEndpoint,
+  type SignedVC,
+} from '@helix-id/core';
 import { HttpAdapter } from '../http/HttpAdapter.js';
 import { AgentWallet } from '../wallet/AgentWallet.js';
 
 interface PendingKeyPair {
   publicKey: string;
   privateKey: string;
+  didCreateSigningPayloadHex?: string | undefined;
 }
 
 interface HttpAdapterLike {
-  post<T>(path: string, body: unknown): Promise<T>;
+  post<T>(path: string, body?: unknown): Promise<T>;
   get?<T>(path: string): Promise<T>;
+  delete?<T>(path: string): Promise<T>;
 }
+
+export interface CreateDIDOptions {
+  subjectType: 'agent' | 'user';
+  domains?: string[];
+}
+
+export interface CreateDIDResult {
+  did: string;
+  keyPair: KeyPair;
+  didDocument: DIDDocument;
+  hederaTransactionId: string;
+}
+
+export interface IssueVCOptions {
+  subjectDid: string;
+  subjectType: 'agent' | 'user';
+  privilegeScopes?: string[];
+  agentName?: string;
+  userId?: string;
+  expiresInSeconds?: number;
+}
+
+export interface VCResponse {
+  vcId: string;
+  vc?: Record<string, unknown>;
+  status?: string;
+  statusListIndex?: number;
+  expiresAt?: string;
+  [key: string]: unknown;
+}
+
+export interface StatusListCredentialResponse {
+  credentialSubject: {
+    encodedList: string;
+  };
+  [key: string]: unknown;
+}
+
+type DIDResolveResponse = {
+  didDocument?: DIDDocument;
+  document?: DIDDocument;
+} & DIDDocument;
 
 export class HelixClient {
   private http: HttpAdapterLike;
   private readonly wallet = new AgentWallet();
   private pendingKeyPair: PendingKeyPair | null = null;
 
-  constructor(baseUrl: string) {
-    this.http = new HttpAdapter(baseUrl);
+  constructor(baseUrl: string);
+  constructor(http: HttpAdapter, baseUrl: string);
+  constructor(first: string | HttpAdapter, _baseUrl?: string) {
+    void _baseUrl;
+    this.http = typeof first === 'string' ? new HttpAdapter(first) : first;
+  }
+
+  async createDID(options: CreateDIDOptions): Promise<CreateDIDResult> {
+    const keyPair = generateKeyPair();
+    const response = await this.http.post<{
+      id?: string;
+      did?: string;
+      didDocument: DIDDocument;
+      hederaTransactionId: string;
+    }>('/v1/dids', {
+      publicKeyHex: keyPair.publicKey,
+      subjectType: options.subjectType,
+      domains: options.domains ?? [],
+    });
+    return {
+      did: response.did ?? response.id ?? response.didDocument.id,
+      didDocument: response.didDocument,
+      hederaTransactionId: response.hederaTransactionId,
+      keyPair,
+    };
+  }
+
+  async resolveDID(
+    did: string,
+    options?: { live?: boolean },
+  ): Promise<{ did: string; didDocument: DIDDocument; source: 'cache' | 'hedera' }> {
+    const query = options?.live ? '?live=true' : '';
+    if (!this.http.get) throw new Error('GET not implemented by adapter');
+    const response = await this.http.get<DIDResolveResponse>(`/v1/dids/${encodeURIComponent(did)}${query}`);
+    const didDocument = response.didDocument ?? response.document ?? response;
+    return {
+      did,
+      didDocument,
+      source: options?.live ? 'hedera' : 'cache',
+    };
+  }
+
+  async addServiceEndpoint(did: string, endpoint: ServiceEndpoint): Promise<{ did: string; didDocument: DIDDocument }> {
+    const didDocument = await this.http.post<DIDDocument>(`/v1/dids/${encodeURIComponent(did)}/services`, endpoint);
+    return { did, didDocument };
+  }
+
+  async removeServiceEndpoint(did: string, endpointId: string): Promise<{ did: string; didDocument: DIDDocument }> {
+    if (!this.http.delete) throw new Error('DELETE not implemented by adapter');
+    const didDocument = await this.http.delete<DIDDocument>(
+      `/v1/dids/${encodeURIComponent(did)}/services/${encodeURIComponent(endpointId)}`,
+    );
+    return { did, didDocument };
+  }
+
+  async deactivateDID(did: string, reason: string): Promise<{ did: string; deactivated: true }> {
+    await this.http.post(`/v1/dids/${encodeURIComponent(did)}/deactivate`, { reason });
+    return { did, deactivated: true };
+  }
+
+  async issueVC(options: IssueVCOptions): Promise<{
+    vcId: string;
+    vc: Record<string, unknown>;
+    statusListIndex: number;
+    expiresAt: string;
+  }> {
+    return this.http.post('/v1/vcs', {
+      expiresInSeconds: 7_776_000,
+      ...options,
+    });
+  }
+
+  async getVC(vcId: string): Promise<VCResponse> {
+    if (!this.http.get) throw new Error('GET not implemented by adapter');
+    return this.http.get(`/v1/vcs/${encodeURIComponent(vcId)}`);
+  }
+
+  async revokeVC(vcId: string): Promise<VCResponse> {
+    return this.http.post(`/v1/vcs/${encodeURIComponent(vcId)}/revoke`);
+  }
+
+  async renewVC(vcId: string, overrides: { privilegeScopes?: string[]; expiresInSeconds?: number } = {}): Promise<VCResponse> {
+    return this.http.post(`/v1/vcs/${encodeURIComponent(vcId)}/renew`, overrides);
+  }
+
+  async getStatusList(listId: string): Promise<StatusListCredentialResponse> {
+    if (!this.http.get) throw new Error('GET not implemented by adapter');
+    return this.http.get(`/v1/status-list/${encodeURIComponent(listId)}`);
+  }
+
+  async checkVCStatus(vc: SignedVC): Promise<'active' | 'revoked' | 'expired'> {
+    if (new Date(vc.expirationDate).getTime() <= Date.now()) {
+      return 'expired';
+    }
+    const { statusListCredential, statusListIndex } = vc.credentialStatus;
+    if (!this.http.get) throw new Error('GET not implemented by adapter');
+    const listCredential = await this.http.get<StatusListCredentialResponse>(statusListCredential);
+    const encodedList = listCredential.credentialSubject.encodedList;
+    return getBit(encodedList, Number(statusListIndex)) === 1 ? 'revoked' : 'active';
   }
 
   async requestOnboardingChallenge(
     enrollmentToken: string,
-    domains: string[] = []
-  ): Promise<{ challengeId: string; nonce: string; expiresAt: string }> {
-    const privateKey = randomBytes(32).toString('hex');
-    const publicKey = Buffer.from(await getPublicKey(privateKey)).toString('hex');
-    this.pendingKeyPair = { publicKey, privateKey };
-    return this.http.post('/v1/onboard', {
+    domains: string[] = [],
+  ): Promise<{ challengeId: string; nonce: string; expiresAt: string; didCreateSigningPayloadHex?: string }> {
+    const keyPair = generateKeyPair();
+    this.pendingKeyPair = { publicKey: keyPair.publicKey, privateKey: keyPair.privateKey };
+    const challenge = await this.http.post<{
+      challengeId: string;
+      nonce: string;
+      expiresAt: string;
+      didCreateSigningPayloadHex?: string;
+    }>('/v1/onboard', {
       enrollmentToken,
-      publicKeyHex: publicKey,
-      domains
+      publicKeyHex: keyPair.publicKey,
+      domains,
     });
+    this.pendingKeyPair.didCreateSigningPayloadHex = challenge.didCreateSigningPayloadHex;
+    return challenge;
   }
 
   async completeOnboarding(
     challengeId: string,
     nonce: string,
     walletPassphrase: string,
-    walletFilePath: string
+    walletFilePath: string,
   ): Promise<{ agentDid: string; vcId: string; walletSaved: true }> {
-    if (!this.pendingKeyPair) {
-      throw new Error('No pending onboarding keypair');
-    }
-
+    if (!this.pendingKeyPair) throw new Error('No pending onboarding keypair');
     const signature = await signBytes(Buffer.from(nonce, 'hex'), this.pendingKeyPair.privateKey);
+    const didCreateSignature = await this.signPendingDidCreatePayload(challengeId);
     const result = await this.http.post<{
       agentDid: string;
       vc: Record<string, unknown>;
       vcId: string;
-    }>('/v1/onboard/verify', { challengeId, signature });
-
+    }>('/v1/onboard/verify', { challengeId, signature, didCreateSignature });
     await this.wallet.save(
       {
         did: result.agentDid,
@@ -62,12 +212,11 @@ export class HelixClient {
         vcId: result.vcId,
         vcJson: JSON.stringify(result.vc),
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       },
       walletPassphrase,
-      walletFilePath
+      walletFilePath,
     );
-
     this.pendingKeyPair = null;
     return { agentDid: result.agentDid, vcId: result.vcId, walletSaved: true };
   }
@@ -78,23 +227,19 @@ export class HelixClient {
 
   async verifyUserChallenge(
     challengeId: string,
-    signature: string
+    signature: string,
   ): Promise<{ did: string; verified: true; vc?: Record<string, unknown> }> {
     return this.http.post(`/v1/challenges/${challengeId}/verify`, { signature });
   }
 
   async listServices(): Promise<Array<Record<string, unknown>>> {
-    if (!this.http.get) {
-      throw new Error('GET not implemented by adapter');
-    }
+    if (!this.http.get) throw new Error('GET not implemented by adapter');
     const response = await this.http.get<{ services: Array<Record<string, unknown>> }>('/v1/services');
     return response.services;
   }
 
   async getService(serviceName: string): Promise<Record<string, unknown>> {
-    if (!this.http.get) {
-      throw new Error('GET not implemented by adapter');
-    }
+    if (!this.http.get) throw new Error('GET not implemented by adapter');
     return this.http.get(`/v1/services/${serviceName}`);
   }
 
@@ -104,5 +249,16 @@ export class HelixClient {
 
   __getPendingKeyPairForTest(): PendingKeyPair | null {
     return this.pendingKeyPair;
+  }
+
+  private async signPendingDidCreatePayload(_challengeId: string): Promise<string | undefined> {
+    void _challengeId;
+    if (!this.pendingKeyPair?.didCreateSigningPayloadHex) {
+      return undefined;
+    }
+    return signBytes(
+      Buffer.from(this.pendingKeyPair.didCreateSigningPayloadHex, 'hex'),
+      this.pendingKeyPair.privateKey,
+    );
   }
 }

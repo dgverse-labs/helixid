@@ -1,0 +1,141 @@
+
+> @helix-id/api@0.1.0 test /Users/harishharidas/Documents/projects/dgverse/helixid/helix-api
+> vitest run --coverage --passWithNoTests
+
+
+ RUN  v2.1.9 /Users/harishharidas/Documents/projects/dgverse/helixid/helix-api
+      Coverage enabled with v8
+
+stderr | tests/security/vp.security.test.ts > VP security API > rejects replay same signed VP twice (first 200, second 400)
+[VP Verification] Failed for vpId=vp:helix:4851a3121ef48d3047344526: VP was already consumed [code=VP_ALREADY_CONSUMED]
+
+stderr | tests/security/vp.security.test.ts > VP security API > handles concurrent replay reliably (Promise.all -> one 200, one 400)
+[VP Verification] Failed for vpId=vp:helix:23f61bc94e1625844ca6b821: VP was already consumed [code=VP_ALREADY_CONSUMED]
+
+stderr | tests/security/vp.security.test.ts > VP security API > rejects tampered VP payload
+[VP Verification] Failed for vpId=vp:helix:02917e89a99d627a2bdb97ad: signature_invalid
+
+stderr | tests/security/vp.security.test.ts > VP security API > rejects wrong private key signature
+[VP Verification] Failed for vpId=vp:helix:ffac00ef3aa39e2e1ee6aef8: signature_invalid
+
+stderr | tests/security/vp.security.test.ts > VP security API > rejects expired VP (DB expiry forced)
+[VP Verification] Failed for vpId=vp:helix:7ab9cc176d44393e66613b9a: VP has expired [code=VP_EXPIRED]
+
+stderr | tests/security/vp.security.test.ts > VP security API > rejects revoked VC (mock status)
+[VP Verification] Failed for vpId=vp:helix:821386657e0c762811165faf: The Verifiable Credential has been revoked [code=VC_REVOKED]
+
+stderr | tests/security/vp.security.test.ts > VP security API > rejects expired VC (mock status)
+[VP Verification] Failed for vpId=vp:helix:ec2d01dcc374624c63759df7: The Verifiable Credential has expired [code=VC_EXPIRED]
+
+stderr | tests/security/vp.security.test.ts > VP security API > rejects unknown vpId
+[VP Verification] Failed for vpId=vp:helix:fake123: VP not found [code=VP_NOT_FOUND]
+
+ ✓ tests/security/vp.security.test.ts (8 tests) 194ms
+stdout | tests/integration/vc.integration.test.ts > VC API Integration > POST /v1/vcs > issues an agent VC successfully
+{"timestamp":"2026-05-14T04:23:10.930Z","event":"DID_RESOLVED","requestId":"req-1","did":"did:hedera:testnet:testsubject","source":"cache"}
+
+stdout | tests/integration/vc.integration.test.ts > VC API Integration > POST /v1/vcs > issues an agent VC successfully
+{"event":"VC_ISSUED","timestamp":"2026-05-14T04:23:10.939Z","requestId":"req-1","vcId":"vc:helix:2f6d1a79a30046d093bd0d21","subjectDid":"did:hedera:testnet:testsubject","subjectType":"agent","privilegeScopes":["read:orders"],"expiresAt":"2026-08-12T04:23:10.939Z","statusListIndex":0}
+
+stdout | tests/integration/vc.integration.test.ts > VC API Integration > GET /v1/vcs/:vcId > resolves an existing VC
+{"timestamp":"2026-05-14T04:23:10.990Z","event":"DID_RESOLVED","requestId":"req-3","did":"did:hedera:testnet:testsubject","source":"cache"}
+
+stdout | tests/integration/vc.integration.test.ts > VC API Integration > GET /v1/vcs/:vcId > resolves an existing VC
+{"event":"VC_ISSUED","timestamp":"2026-05-14T04:23:10.992Z","requestId":"req-3","vcId":"vc:helix:b5e98981cda64aa7a49432ad","subjectDid":"did:hedera:testnet:testsubject","subjectType":"user","expiresAt":"2026-08-12T04:23:10.992Z","statusListIndex":0}
+
+stdout | tests/integration/vc.integration.test.ts > VC API Integration > POST /v1/vcs/:vcId/revoke > revokes a VC and updates the status list
+{"timestamp":"2026-05-14T04:23:10.998Z","event":"DID_RESOLVED","requestId":"req-5","did":"did:hedera:testnet:testsubject","source":"cache"}
+
+stdout | tests/integration/vc.integration.test.ts > VC API Integration > POST /v1/vcs/:vcId/revoke > revokes a VC and updates the status list
+{"event":"VC_ISSUED","timestamp":"2026-05-14T04:23:11.000Z","requestId":"req-5","vcId":"vc:helix:ee46da45825a4c2a847600c0","subjectDid":"did:hedera:testnet:testsubject","subjectType":"user","expiresAt":"2026-08-12T04:23:11.000Z","statusListIndex":0}
+
+stdout | tests/integration/vc.integration.test.ts > VC API Integration > POST /v1/vcs/:vcId/revoke > revokes a VC and updates the status list
+{"event":"VC_REVOKED","timestamp":"2026-05-14T04:23:11.009Z","requestId":"req-6","vcId":"vc:helix:ee46da45825a4c2a847600c0","subjectDid":"did:hedera:testnet:testsubject"}
+
+stdout | tests/integration/vc.integration.test.ts > VC API Integration > GET /v1/status-list/:listId > serves the status list credential with caching headers
+{"timestamp":"2026-05-14T04:23:11.013Z","event":"DID_RESOLVED","requestId":"req-8","did":"did:hedera:testnet:testsubject","source":"cache"}
+
+stdout | tests/integration/vc.integration.test.ts > VC API Integration > GET /v1/status-list/:listId > serves the status list credential with caching headers
+{"event":"VC_ISSUED","timestamp":"2026-05-14T04:23:11.017Z","requestId":"req-8","vcId":"vc:helix:920c5a394b8347d5b1cdb418","subjectDid":"did:hedera:testnet:testsubject","subjectType":"user","expiresAt":"2026-08-12T04:23:11.017Z","statusListIndex":0}
+
+ ✓ tests/integration/vc.integration.test.ts (5 tests) 213ms
+stdout | tests/integration/did.integration.test.ts > DID API Integration > POST /v1/dids > creates a new DID and anchors it to Hedera
+{"timestamp":"2026-05-14T04:23:11.428Z","event":"DID_CREATED","requestId":"req-1","did":"did:hedera:testnet:61c8a080d205cf42efc4959d3c5dbda5","subjectType":"agent","hederaTransactionId":"mock-tx-1","publicKeyMultibase":"z6MktvR2rpApAhYBCxS7qJJrzxN24Z94gyjyRmXxHebSNKdc"}
+
+stdout | tests/integration/did.integration.test.ts > DID API Integration > POST /v1/dids > returns 409 when the same public key is used twice
+{"timestamp":"2026-05-14T04:23:11.438Z","event":"DID_CREATED","requestId":"req-2","did":"did:hedera:testnet:6458677ecf0551af27ffa3fc7e162d5e","subjectType":"agent","hederaTransactionId":"mock-tx-1","publicKeyMultibase":"z6MksFjyEh46RgALGh3NMSJgAenV69FCWx7yL9Lov2tAG6Dh"}
+
+stdout | tests/integration/did.integration.test.ts > DID API Integration > POST /v1/dids > returns 409 when the same public key is used twice
+{"timestamp":"2026-05-14T04:23:11.440Z","event":"DID_CREATION_FAILED","requestId":"req-3","reason":"DID already exists for this public key"}
+
+stdout | tests/integration/did.integration.test.ts > DID API Integration > GET /v1/dids/:did > resolves an existing DID
+{"timestamp":"2026-05-14T04:23:11.448Z","event":"DID_CREATED","requestId":"req-5","did":"did:hedera:testnet:84cdd0b93293c447352904de4e62ec88","subjectType":"user","hederaTransactionId":"mock-tx-1","publicKeyMultibase":"z6Mkt4NP1rBTLPopM1RyAzT86xDHicv2fUR9nYGntCyrNR3a"}
+
+stdout | tests/integration/did.integration.test.ts > DID API Integration > GET /v1/dids/:did > resolves an existing DID
+{"timestamp":"2026-05-14T04:23:11.453Z","event":"DID_RESOLVED","requestId":"req-6","did":"did:hedera:testnet:84cdd0b93293c447352904de4e62ec88","source":"cache"}
+
+stdout | tests/integration/did.integration.test.ts > DID API Integration > POST /v1/dids/:did/services > adds a service endpoint and re-anchors
+{"timestamp":"2026-05-14T04:23:11.464Z","event":"DID_CREATED","requestId":"req-8","did":"did:hedera:testnet:a5a5beb3875778fcae683e6ff9fec38f","subjectType":"agent","hederaTransactionId":"mock-tx-1","publicKeyMultibase":"z6MkpiBiiwHbjhch29xYm9XYdEqmRTa3kDFFFT6da3W8icFe"}
+
+stdout | tests/integration/did.integration.test.ts > DID API Integration > POST /v1/dids/:did/services > adds a service endpoint and re-anchors
+{"timestamp":"2026-05-14T04:23:11.480Z","event":"DID_UPDATED","requestId":"req-9","did":"did:hedera:testnet:a5a5beb3875778fcae683e6ff9fec38f","updateType":"add_service_endpoint","hederaTransactionId":"mock-tx-2"}
+
+ ✓ tests/integration/did.integration.test.ts (6 tests) 212ms
+ ✓ tests/integration/vp.integration.test.ts (5 tests) 156ms
+stdout | tests/security/vc.security.test.ts > VC Security > SECURITY: issued VC proof value verifies against signing public key
+{"timestamp":"2026-05-14T04:23:12.174Z","event":"DID_RESOLVED","requestId":"req-1","did":"did:helix:securitysubject","source":"cache"}
+
+stdout | tests/security/vc.security.test.ts > VC Security > SECURITY: issued VC proof value verifies against signing public key
+{"event":"VC_ISSUED","timestamp":"2026-05-14T04:23:12.180Z","requestId":"req-1","vcId":"vc:helix:56bc4075c957497fb473c369","subjectDid":"did:helix:securitysubject","subjectType":"user","expiresAt":"2026-08-12T04:23:12.180Z","statusListIndex":0}
+
+stdout | tests/security/vc.security.test.ts > VC Security > SECURITY: tampered VC fails verification
+{"timestamp":"2026-05-14T04:23:12.215Z","event":"DID_RESOLVED","requestId":"req-2","did":"did:helix:securitysubject","source":"cache"}
+
+stdout | tests/security/vc.security.test.ts > VC Security > SECURITY: tampered VC fails verification
+{"event":"VC_ISSUED","timestamp":"2026-05-14T04:23:12.219Z","requestId":"req-2","vcId":"vc:helix:a121b08ec86c4905bfc59349","subjectDid":"did:helix:securitysubject","subjectType":"agent","privilegeScopes":["read:orders"],"expiresAt":"2026-08-12T04:23:12.219Z","statusListIndex":0}
+
+stdout | tests/security/vc.security.test.ts > VC Security > SECURITY: concurrent issuance assigns unique status indices
+{"timestamp":"2026-05-14T04:23:12.227Z","event":"DID_RESOLVED","requestId":"req-3","did":"did:helix:securitysubject","source":"cache"}
+
+stdout | tests/security/vc.security.test.ts > VC Security > SECURITY: concurrent issuance assigns unique status indices
+{"event":"VC_ISSUED","timestamp":"2026-05-14T04:23:12.231Z","requestId":"req-3","vcId":"vc:helix:3c724185f3484457933dba03","subjectDid":"did:helix:securitysubject","subjectType":"user","expiresAt":"2026-08-12T04:23:12.231Z","statusListIndex":0}
+
+stdout | tests/security/vc.security.test.ts > VC Security > SECURITY: concurrent issuance assigns unique status indices
+{"timestamp":"2026-05-14T04:23:12.233Z","event":"DID_RESOLVED","requestId":"req-5","did":"did:helix:securitysubject","source":"cache"}
+
+stdout | tests/security/vc.security.test.ts > VC Security > SECURITY: concurrent issuance assigns unique status indices
+{"timestamp":"2026-05-14T04:23:12.234Z","event":"DID_RESOLVED","requestId":"req-4","did":"did:helix:securitysubject","source":"cache"}
+
+stdout | tests/security/vc.security.test.ts > VC Security > SECURITY: concurrent issuance assigns unique status indices
+{"timestamp":"2026-05-14T04:23:12.235Z","event":"DID_RESOLVED","requestId":"req-6","did":"did:helix:securitysubject","source":"cache"}
+{"timestamp":"2026-05-14T04:23:12.235Z","event":"DID_RESOLVED","requestId":"req-7","did":"did:helix:securitysubject","source":"cache"}
+
+stdout | tests/security/vc.security.test.ts > VC Security > SECURITY: concurrent issuance assigns unique status indices
+{"event":"VC_ISSUED","timestamp":"2026-05-14T04:23:12.237Z","requestId":"req-6","vcId":"vc:helix:9ece50ed360f4d558b60400c","subjectDid":"did:helix:securitysubject","subjectType":"user","expiresAt":"2026-08-12T04:23:12.237Z","statusListIndex":2}
+
+stdout | tests/security/vc.security.test.ts > VC Security > SECURITY: concurrent issuance assigns unique status indices
+{"event":"VC_ISSUED","timestamp":"2026-05-14T04:23:12.239Z","requestId":"req-5","vcId":"vc:helix:d0ec5a25cc1944d6860ae8bd","subjectDid":"did:helix:securitysubject","subjectType":"user","expiresAt":"2026-08-12T04:23:12.239Z","statusListIndex":1}
+{"event":"VC_ISSUED","timestamp":"2026-05-14T04:23:12.241Z","requestId":"req-4","vcId":"vc:helix:e5d7c7726e4d456d98ee2166","subjectDid":"did:helix:securitysubject","subjectType":"user","expiresAt":"2026-08-12T04:23:12.241Z","statusListIndex":3}
+{"event":"VC_ISSUED","timestamp":"2026-05-14T04:23:12.243Z","requestId":"req-7","vcId":"vc:helix:d20887f672334ac2aa19a9d5","subjectDid":"did:helix:securitysubject","subjectType":"user","expiresAt":"2026-08-12T04:23:12.243Z","statusListIndex":4}
+
+ ❯ tests/security/vc.security.test.ts (3 tests) 207ms
+ ✓ tests/integration/agent.integration.test.ts (5 tests) 61ms
+ ❯ tests/security/did.security.test.ts (4 tests | 4 skipped) 50ms
+ ✓ tests/unit/did.service.test.ts (3 tests) 5ms
+ ❯ tests/integration/story4.realistic.test.ts (2 tests | 1 failed) 776ms
+   × Story 4 Realistic Agent And User Flows > issues and verifies a real challenge response for an existing DID 25ms
+     → Subject DID not found
+ ✓ tests/integration/story1.realistic.test.ts (1 test) 969ms
+ ✓ tests/integration/story2.realistic.test.ts (1 test) 929ms
+
+⎯⎯⎯⎯ Unhandled Rejection ⎯⎯⎯⎯⎯
+Error: ENOENT: no such file or directory, open '/Users/harishharidas/Documents/projects/dgverse/helixid/helix-api/coverage/.tmp/coverage-10.json'
+ ❯ open node:internal/fs/promises:640:25
+ ❯ Object.writeFile node:internal/fs/promises:1257:14
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { errno: -2, code: 'ENOENT', syscall: 'open', path: '/Users/harishharidas/Documents/projects/dgverse/helixid/helix-api/coverage/.tmp/coverage-10.json' }
+
+
+
+ ELIFECYCLE  Test failed. See above for more details.

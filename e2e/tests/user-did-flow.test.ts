@@ -4,10 +4,10 @@
 // You may obtain a copy of the License at
 //    http://www.apache.org/licenses/LICENSE-2.0
 
-import { describe } from 'vitest';
+import { describe, it } from 'vitest';
 
 // User DID Flow E2E — full flow against Docker Compose stack.
 // Implemented in Story 4.
 describe('User DID Flow', () => {
-  // Tests will be added in Story 4
+  it.todo('runs the full user DID flow against the Docker Compose stack');
 });

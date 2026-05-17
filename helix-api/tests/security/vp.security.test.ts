@@ -1,20 +1,69 @@
 import { describe, expect, it, beforeEach, afterAll, beforeAll } from 'vitest';
 import { randomBytes } from 'node:crypto';
-import { VPBuilder } from '../../../helix-sdk-js/src/vp/VPBuilder.js';
+import { VPBuilder } from '@helix-id/sdk-js';
 import Fastify, { FastifyInstance } from 'fastify';
 import { getPublicKey } from '@noble/ed25519';
+import { base58btcEncode, hashCanonicalPayload, signBytes, type AuditEvent, type AuditEventType } from '@helix-id/core';
 
-import { VPRepository, prisma } from '../../src/repositories/vp.repository.js';
-import { ServiceRegistryRepository } from '../../src/services/vp/ServiceRegistryRepository.js';
+import { VPRepository, type VpIdRecord } from '../../src/repositories/vp.repository.js';
+import { ServiceRegistryRepository } from '../../src/repositories/service-registry.repository.js';
 import { VPService } from '../../src/services/vp/vp.service.js';
 import { MockDIDService } from '../mocks/MockDIDService.js';
 import { MockVCService } from '../mocks/MockVCService.js';
 import vpRoutes from '../../src/routes/vp/index.js';
 
 class TestAuditLogger {
-  public readonly events: Array<{ event: string; payload: Record<string, unknown> }> = [];
-  log(event: string, payload: Record<string, unknown>): void {
-    this.events.push({ event, payload });
+  public readonly events: Array<{ event: AuditEvent; payload: Record<string, unknown> }> = [];
+
+  log(event: AuditEvent): void;
+  log(event: AuditEventType, payload: Record<string, unknown> & { requestId: string; timestamp?: string }): void;
+  log(
+    event: AuditEvent | AuditEventType,
+    payload?: Record<string, unknown> & { requestId: string; timestamp?: string },
+  ): void {
+    if (typeof event === 'string') {
+      this.events.push({
+        event: {
+          event,
+          timestamp: payload?.timestamp ?? new Date().toISOString(),
+          requestId: payload?.requestId ?? 'test-request',
+          ...payload,
+        },
+        payload: payload ?? {},
+      });
+      return;
+    }
+    this.events.push({ event, payload: event });
+  }
+}
+
+class InMemoryVPRepository extends VPRepository {
+  private readonly records = new Map<string, VpIdRecord>();
+
+  override async create(data: Omit<VpIdRecord, 'consumedAt'>): Promise<VpIdRecord> {
+    const record = { ...data, consumedAt: null };
+    this.records.set(record.vpId, record);
+    return record;
+  }
+
+  override async findByVpId(vpId: string): Promise<VpIdRecord | null> {
+    return this.records.get(vpId) ?? null;
+  }
+
+  override async consumeAtomically(vpId: string): Promise<boolean> {
+    const record = this.records.get(vpId);
+    if (!record || record.consumedAt) return false;
+    record.consumedAt = new Date();
+    return true;
+  }
+
+  expire(vpId: string): void {
+    const record = this.records.get(vpId);
+    if (record) record.expiresAt = new Date(Date.now() - 1000);
+  }
+
+  clear(): void {
+    this.records.clear();
   }
 }
 
@@ -23,6 +72,7 @@ describe('VP security API', () => {
   let didService: MockDIDService;
   let vcService: MockVCService;
   let auditLogger: TestAuditLogger;
+  let repository: InMemoryVPRepository;
 
   const privateKeyHex = randomBytes(32).toString('hex');
   const wrongPrivateKeyHex = randomBytes(32).toString('hex');
@@ -39,9 +89,10 @@ describe('VP security API', () => {
     });
     vcService = new MockVCService();
     auditLogger = new TestAuditLogger();
+    repository = new InMemoryVPRepository();
 
     const service = new VPService(
-      new VPRepository(),
+      repository,
       didService,
       vcService,
       new ServiceRegistryRepository(['amazon']),
@@ -49,7 +100,7 @@ describe('VP security API', () => {
     );
     await app.register(vpRoutes, { prefix: '/v1/vp', vpService: service });
     await app.ready();
-    await prisma.vpId.deleteMany();
+    repository.clear();
   });
 
   afterAll(async () => {
@@ -60,13 +111,28 @@ describe('VP security API', () => {
     auditLogger.events.length = 0;
     didService.setShouldThrow(false);
     vcService.setStatus('active');
-    vcService.setActiveVC({
+    vcService.setActiveVC(await signTestVC({
       id: 'vc:test:sec1',
       type: ['VerifiableCredential', 'HelixAgentCredential'],
+      issuer: defaultDid,
       expirationDate: new Date(Date.now() + 60_000).toISOString(),
       credentialSubject: { privilegeScopes: ['read'] }
-    });
+    }));
   });
+
+  async function signTestVC(vc: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const signatureHex = await signBytes(hashCanonicalPayload(vc), privateKeyHex);
+    return {
+      ...vc,
+      proof: {
+        type: 'Ed25519Signature2020',
+        created: new Date().toISOString(),
+        verificationMethod: `${defaultDid}#key-1`,
+        proofPurpose: 'assertionMethod',
+        proofValue: base58btcEncode(Buffer.from(signatureHex, 'hex')),
+      },
+    };
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getSignedVP = async (mutateTmpl?: (t: any) => any, useWrongKey = false): Promise<any> => {
@@ -129,11 +195,7 @@ describe('VP security API', () => {
 
   it('rejects expired VP (DB expiry forced)', async () => {
     const signedVP = await getSignedVP();
-    // manipulate DB explicitly
-    await prisma.vpId.updateMany({
-      where: { vpId: signedVP.id },
-      data: { expiresAt: new Date(Date.now() - 1000) }
-    });
+    repository.expire(signedVP.id);
 
     const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP } });
     expectOpaqueFailure(res);

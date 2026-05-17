@@ -1,0 +1,176 @@
+// Copyright 2026 DgVerse LLP
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { VCService } from '../../../src/services/vc/vc.service.js';
+import { 
+  ErrorCode,
+  createStatusList
+} from '@helix-id/core';
+
+describe('VCService Branch Coverage', () => {
+  let repository: any;
+  let didService: any;
+  let auditLogger: any;
+  let service: VCService;
+  const validStatusList = createStatusList();
+
+  beforeEach(() => {
+    repository = {
+      createVc: vi.fn(),
+      findByVcId: vi.fn(),
+      findActiveBySubjectDid: vi.fn(),
+      updateRevocation: vi.fn(),
+      createStatusList: vi.fn(),
+      findStatusListById: vi.fn(),
+      claimNextIndex: vi.fn(),
+      revokeVc: vi.fn(),
+      markAsRenewed: vi.fn(),
+      findActiveStatusList: vi.fn(),
+    };
+    didService = { resolveDID: vi.fn() };
+    auditLogger = { log: vi.fn() };
+    service = new VCService(
+      repository,
+      didService,
+      auditLogger,
+      'a'.repeat(64),
+      'did:hedera:testnet:testissuer',
+      'http://localhost',
+    );
+  });
+
+  describe('findActiveBySubjectDid', () => {
+    it('returns null when no active VC exists', async () => {
+        repository.findActiveBySubjectDid.mockResolvedValue([]);
+
+        await expect(service.findActiveBySubjectDid('did:1')).resolves.toBeNull();
+    });
+
+    it('returns the latest active VC and parses JSON strings', async () => {
+        repository.findActiveBySubjectDid.mockResolvedValue([
+          { vcJson: { id: 'vc-old' } },
+          { vcJson: JSON.stringify({ id: 'vc-new' }) },
+        ]);
+
+        await expect(service.findActiveBySubjectDid('did:1', 'HelixAgentCredential'))
+          .resolves.toEqual({ id: 'vc-new' });
+    });
+  });
+
+  describe('issueVC branches', () => {
+    it('throws STATUS_LIST_INDEX_EXHAUSTED if list full', async () => {
+        didService.resolveDID.mockResolvedValue({});
+        repository.findStatusListById.mockResolvedValue({ id: 'l1', nextIndex: 131072 });
+        await expect(service.issueVC({ subjectDid: 'did:1', subjectType: 'user', userId: 'u1' }, 'req-1'))
+          .rejects.toMatchObject({ code: ErrorCode.STATUS_LIST_INDEX_EXHAUSTED });
+    });
+
+    it('throws VALIDATION_ERROR for user with scopes', async () => {
+        didService.resolveDID.mockResolvedValue({});
+        await expect(service.issueVC({ subjectDid: 'did:1', subjectType: 'user', userId: 'u1', privilegeScopes: ['read'] }, 'req-1'))
+          .rejects.toMatchObject({ code: ErrorCode.VALIDATION_ERROR });
+    });
+
+    it('throws VALIDATION_ERROR for agent without scopes or name', async () => {
+        didService.resolveDID.mockResolvedValue({});
+        await expect(service.issueVC({ subjectDid: 'did:1', subjectType: 'agent', agentName: '' }, 'req-1'))
+          .rejects.toMatchObject({ code: ErrorCode.VALIDATION_ERROR });
+    });
+  });
+
+  describe('revokeVC branches', () => {
+    it('throws VC_NOT_FOUND if record missing', async () => {
+        repository.findByVcId.mockResolvedValue(null);
+        await expect(service.revokeVC('v1', 'req-1')).rejects.toMatchObject({ code: ErrorCode.VC_NOT_FOUND });
+    });
+
+    it('throws VC_ALREADY_REVOKED if already revoked', async () => {
+        repository.findByVcId.mockResolvedValue({ revokedAt: new Date() });
+        await expect(service.revokeVC('v1', 'req-1')).rejects.toMatchObject({ code: ErrorCode.VC_ALREADY_REVOKED });
+    });
+  });
+
+  describe('renewVC branches', () => {
+    it('throws VC_NOT_FOUND if old VC missing', async () => {
+        repository.findByVcId.mockResolvedValue(null);
+        await expect(service.renewVC('v1', {}, 'req-1')).rejects.toMatchObject({ code: ErrorCode.VC_NOT_FOUND });
+    });
+
+    it('throws VC_ALREADY_REVOKED if old VC revoked', async () => {
+        repository.findByVcId.mockResolvedValue({ revokedAt: new Date() });
+        await expect(service.renewVC('v1', {}, 'req-1')).rejects.toMatchObject({ code: ErrorCode.VC_ALREADY_REVOKED });
+    });
+
+    it('renews VC successfully', async () => {
+        const oldVc = { 
+            vcId: 'v1', 
+            subjectDid: 'd1', 
+            subjectType: 'user', 
+            userId: 'u1', 
+            statusListId: 'l1', 
+            statusListIndex: 0,
+            vcJson: { credentialSubject: { userId: 'u1' } },
+            expiresAt: new Date(Date.now() + 100000)
+        };
+        repository.findByVcId.mockResolvedValue(oldVc);
+        didService.resolveDID.mockResolvedValue({});
+        repository.findStatusListById.mockResolvedValue({ id: 'l1', nextIndex: 1, encodedList: validStatusList });
+        repository.claimNextIndex.mockResolvedValue({ list: { id: 'l1' }, claimedIndex: 1 });
+        repository.createVc.mockResolvedValue({ vcId: 'v2', vcJson: {} });
+        
+        const res = await service.renewVC('v1', {}, 'req-1');
+        expect(res.vcId).toMatch(/^vc:helix:[0-9a-f]{24}$/);
+        expect(repository.markAsRenewed).toHaveBeenCalledWith('v1', res.vcId);
+    });
+  });
+
+  describe('getVC/getVCStatus branches', () => {
+    it('handles not found in getVC', async () => {
+        repository.findByVcId.mockResolvedValue(null);
+        await expect(service.getVC('v1', 'req-1')).rejects.toMatchObject({ code: ErrorCode.VC_NOT_FOUND });
+    });
+
+    it('returns active status', async () => {
+        repository.findByVcId.mockResolvedValue({ 
+          vcId: 'v1', 
+          expiresAt: new Date(Date.now() + 10000), 
+          vcJson: { credentialSubject: {} } 
+        });
+        const res = await service.getVCStatus('v1');
+        expect(res).toBe('active');
+        const details = await service.getVC('v1', 'req-1');
+        expect(details.status).toBe('active');
+    });
+
+    it('returns revoked status', async () => {
+        repository.findByVcId.mockResolvedValue({ 
+          vcId: 'v1', 
+          revokedAt: new Date(), 
+          expiresAt: new Date(Date.now() + 10000), 
+          vcJson: { credentialSubject: {} } 
+        });
+        const res = await service.getVCStatus('v1');
+        expect(res).toBe('revoked');
+        const details = await service.getVC('v1', 'req-1');
+        expect(details.status).toBe('revoked');
+    });
+
+    it('returns expired status', async () => {
+        repository.findByVcId.mockResolvedValue({ 
+          vcId: 'v1', 
+          expiresAt: new Date(Date.now() - 10000), 
+          vcJson: { credentialSubject: {} } 
+        });
+        const res = await service.getVCStatus('v1');
+        expect(res).toBe('expired');
+        const details = await service.getVC('v1', 'req-1');
+        expect(details.status).toBe('expired');
+    });
+  });
+
+  describe('getStatusList branches', () => {
+    it('throws STATUS_LIST_NOT_FOUND if missing', async () => {
+        repository.findStatusListById.mockResolvedValue(null);
+        await expect(service.getStatusList('l1')).rejects.toMatchObject({ code: ErrorCode.STATUS_LIST_NOT_FOUND });
+    });
+  });
+});

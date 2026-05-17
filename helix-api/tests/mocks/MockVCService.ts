@@ -1,4 +1,4 @@
-import type { IVCService, IssueVCInput, VCStatus } from '../../src/services/vc/IVCService.js';
+import type { IVCService, IssueVCInput, IssueVCResult, VCStatus } from '../../src/services/vc/IVCService.js';
 
 export class MockVCService implements IVCService {
   private status: VCStatus = 'active';
@@ -30,11 +30,18 @@ export class MockVCService implements IVCService {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async issueVC(input: IssueVCInput): Promise<Record<string, unknown>> {
-    return {
+  async issueVC(input: IssueVCInput, _requestId: string): Promise<IssueVCResult> {
+    const vc = {
       id: 'vc:mock:issued',
       type: ['VerifiableCredential', input.subjectType === 'agent' ? 'HelixAgentCredential' : 'HelixUserCredential'],
-      credentialSubject: { id: input.subjectDid }
+      credentialSubject: { id: input.subjectDid },
+      expirationDate: new Date(Date.now() + input.expiresInSeconds * 1000).toISOString(),
+    };
+    return {
+      vcId: 'vc:mock:issued',
+      vc,
+      statusListIndex: 0,
+      expiresAt: vc.expirationDate,
     };
   }
 }

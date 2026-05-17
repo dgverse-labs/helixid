@@ -9,6 +9,68 @@ datasource db {
   provider = "postgresql"
 }
 
+model Did {
+  id                   String      @id
+  subjectType          String
+  controller           String
+  publicKey            String
+  publicKeyMultibase   String?
+  hederaTopicId        String      @default("")
+  hederaSequenceNumber Int         @default(0)
+  hederaTransactionId  String
+  didDocument          Json
+  deactivatedAt        DateTime?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  updates              DidUpdate[]
+  vcs                  Vc[]
+
+  @@index([id])
+  @@index([publicKey])
+  @@map("dids")
+}
+
+model DidUpdate {
+  id                  String   @id @default(cuid())
+  didId               String
+  updateType          String
+  hederaTransactionId String
+  payload             Json
+  createdAt           DateTime @default(now())
+  did                 Did      @relation(fields: [didId], references: [id])
+
+  @@map("did_updates")
+}
+
+model Vc {
+  id               String    @id @default(cuid())
+  vcId             String    @unique
+  subjectDid       String
+  subjectType      String
+  vcJson           Json
+  privilegeScopes  Json?
+  statusListIndex  Int
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  renewedByVcId    String?
+  createdAt        DateTime  @default(now())
+  did              Did       @relation(fields: [subjectDid], references: [id])
+
+  @@index([subjectDid])
+  @@index([vcId])
+  @@map("vcs")
+}
+
+model StatusListEntry {
+  id          String   @id @default(cuid())
+  listId      String   @unique
+  encodedList String
+  nextIndex   Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@map("status_list_entries")
+}
+
 model VpId {
   id            String   @id @default(cuid())
   vpId          String   @unique
@@ -45,6 +107,8 @@ model Challenge {
   purpose             String
   pendingPublicKeyHex String?
   pendingDomains      String?
+  pendingDidCreateStateJson String?
+  pendingDidCreatePayloadHex String?
   expiresAt           DateTime
   verifiedAt          DateTime?
   createdAt           DateTime         @default(now())
@@ -68,32 +132,16 @@ model ServiceRegistry {
 
   @@map("service_registry")
 }
-model VerifiableCredential {
-  id              String   @id @default(cuid())
-  vcId            String   @unique
-  subjectDid      String
-  issuerDid       String
-  type            String   // Comma-separated or JSON array string
-  status          String   @default("active") // active, revoked, expired
-  vcJson          String   @db.Text
-  expiresAt       DateTime
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
 
-  @@index([subjectDid])
-  @@map("vcs")
-}
+model AuditLog {
+  id          String   @id @default(cuid())
+  timestamp   DateTime @default(now())
+  eventType   String
+  requestId   String
+  payloadJson String
+  createdAt   DateTime @default(now())
 
-model Did {
-  id                  String   @id @default(cuid())
-  did                 String   @unique
-  publicKeyHex        String
-  subjectType         String   // agent, user
-  hederaTransactionId String?
-  metadata            String?  @db.Text
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-
-  @@index([did])
-  @@map("dids")
+  @@index([eventType])
+  @@index([requestId])
+  @@map("audit_log")
 }

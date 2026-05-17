@@ -59,11 +59,15 @@ describe('agent integration', () => {
     expect(step1.statusCode).toBe(200);
     const step1Body = step1.json();
     const signature = await signBytes(Buffer.from(step1Body.nonce, 'hex'), TEST_PRIVATE_KEY_HEX);
+    const didCreateSignature = await signBytes(
+      Buffer.from(step1Body.didCreateSigningPayloadHex, 'hex'),
+      TEST_PRIVATE_KEY_HEX
+    );
 
     const step2 = await app.inject({
       method: 'POST',
       url: '/v1/onboard/verify',
-      payload: { challengeId: step1Body.challengeId, signature }
+      payload: { challengeId: step1Body.challengeId, signature, didCreateSignature }
     });
     expect(step2.statusCode).toBe(201);
     expect(step2.json().agentDid).toContain('did:hedera:testnet:');
@@ -87,7 +91,7 @@ describe('agent integration', () => {
       url: '/v1/onboard',
       payload: { enrollmentToken: token, publicKeyHex: 'd'.repeat(64), domains: [] }
     });
-    expect(second.statusCode).toBe(400);
+    expect(second.statusCode).toBe(409);
     expect(second.json().error.code).toBe('ENROLLMENT_TOKEN_ALREADY_USED');
   });
 

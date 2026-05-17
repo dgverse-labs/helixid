@@ -24,7 +24,10 @@
   },
   "include": [
     "src/**/*",
-    "prisma.config.ts"
+    "tests/**/*",
+    "check_prisma.ts",
+    "prisma.config.ts",
+    "vitest.config.ts"
   ],
   "exclude": [
     "node_modules",

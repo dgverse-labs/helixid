@@ -6,6 +6,7 @@ import {
   ChallengeExpiredError,
   ChallengeNotFoundError,
   ChallengeSignatureInvalidError,
+  ErrorCode,
   EnrollmentTokenAlreadyUsedError,
   EnrollmentTokenExpiredError,
   EnrollmentTokenNotFoundError,
@@ -20,6 +21,21 @@ import type { AgentRepository } from '../../repositories/agent.repository.js';
 import type { IDIDService } from '../did/IDIDService.js';
 import type { IVCService } from '../vc/IVCService.js';
 import type { IAgentService, ChallengeResult, ServiceEntry } from './IAgentService.js';
+
+type DIDVerificationMethodLike = {
+  type?: unknown;
+  publicKeyHex?: unknown;
+  publicKeyMultibase?: unknown;
+};
+
+type DIDDocumentLike = {
+  verificationMethod?: DIDVerificationMethodLike[];
+};
+
+type DIDResolveLike = DIDDocumentLike & {
+  document?: DIDDocumentLike;
+  didDocument?: DIDDocumentLike;
+};
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex');
@@ -38,15 +54,20 @@ function ensureServiceName(name: string): boolean {
 }
 
 function extractPublicKeyHex(doc: Awaited<ReturnType<IDIDService['resolveDID']>>): string {
-  const method = doc.verificationMethod?.find((item) => item.type.includes('Ed25519'));
+  const wrapped = doc as DIDResolveLike;
+  const document = wrapped.document ?? wrapped.didDocument ?? wrapped;
+  const method = document.verificationMethod?.find(
+    (item) => typeof item.type === 'string' && item.type.includes('Ed25519'),
+  );
   if (!method) {
     throw new ChallengeSignatureInvalidError();
   }
-  if (method.publicKeyHex) {
+  if (typeof method.publicKeyHex === 'string') {
     return method.publicKeyHex;
   }
-  if (method.publicKeyMultibase?.startsWith('z')) {
-    return Buffer.from(base58btcDecode(method.publicKeyMultibase.slice(1))).toString('hex');
+  if (typeof method.publicKeyMultibase === 'string' && method.publicKeyMultibase.startsWith('z')) {
+    const decoded = base58btcDecode(method.publicKeyMultibase.slice(1));
+    return Buffer.from(decoded.slice(2)).toString('hex');
   }
   throw new ChallengeSignatureInvalidError();
 }
@@ -124,6 +145,16 @@ export class AgentService implements IAgentService {
       throw new EnrollmentTokenAlreadyUsedError();
     }
 
+    let didCreateRequest;
+    try {
+      didCreateRequest = await this.didService.prepareDIDCreation(input.publicKeyHex);
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : 'Hedera DID creation request failed';
+      throw Object.assign(new Error(message), { code: ErrorCode.HEDERA_ANCHOR_FAILED, httpStatus: 502 });
+    }
     const challengeId = `chal:${randomBytes(8).toString('hex')}`;
     const nonce = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + this.challengeTtlSeconds * 1000);
@@ -134,6 +165,8 @@ export class AgentService implements IAgentService {
       purpose: 'agent_onboarding',
       pendingPublicKeyHex: input.publicKeyHex,
       pendingDomains: JSON.stringify(input.domains ?? []),
+      pendingDidCreateStateJson: didCreateRequest.stateJson,
+      pendingDidCreatePayloadHex: didCreateRequest.signingPayloadHex,
       expiresAt,
       enrollmentTokenId: tokenRecord.id
     });
@@ -151,11 +184,16 @@ export class AgentService implements IAgentService {
       expiresAt: expiresAt.toISOString()
     });
 
-    return { challengeId, nonce, expiresAt: expiresAt.toISOString() };
+    return {
+      challengeId,
+      nonce,
+      expiresAt: expiresAt.toISOString(),
+      didCreateSigningPayloadHex: didCreateRequest.signingPayloadHex,
+    };
   }
 
   async processOnboardVerify(
-    input: { challengeId: string; signature: string },
+    input: { challengeId: string; signature: string; didCreateSignature?: string },
     requestId: string
   ): Promise<{ agentDid: string; vc: Record<string, unknown>; hederaTransactionId: string; vcId: string }> {
     const challenge = await this.repository.findChallengeById(input.challengeId);
@@ -179,6 +217,9 @@ export class AgentService implements IAgentService {
     if (!validSignature) {
       throw new ChallengeSignatureInvalidError();
     }
+    if (challenge.pendingDidCreateStateJson && !/^[0-9a-f]{128}$/i.test(input.didCreateSignature ?? '')) {
+      throw new ChallengeSignatureInvalidError('DID creation signature is invalid');
+    }
 
     const enrollmentToken = challenge.enrollmentTokenId
       ? await this.repository.findEnrollmentTokenById(challenge.enrollmentTokenId)
@@ -190,10 +231,19 @@ export class AgentService implements IAgentService {
         challenge.pendingPublicKeyHex ?? '',
         'agent',
         JSON.parse(challenge.pendingDomains ?? '[]') as string[],
-        requestId
+        requestId,
+        challenge.pendingDidCreateStateJson && input.didCreateSignature
+          ? {
+              stateJson: challenge.pendingDidCreateStateJson,
+              signatureHex: input.didCreateSignature,
+            }
+          : undefined
       );
-    } catch {
-      throw new AgentAlreadyOnboardedError();
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === ErrorCode.DID_ALREADY_EXISTS) {
+        throw new AgentAlreadyOnboardedError();
+      }
+      throw error;
     }
 
     const scopes = enrollmentToken ? JSON.parse(enrollmentToken.requestedScopes) as string[] : ['read:orders'];
@@ -210,6 +260,13 @@ export class AgentService implements IAgentService {
     );
 
     await this.repository.markChallengeVerified(input.challengeId);
+    this.auditLogger.log(AuditEvents.CHALLENGE_VERIFIED, {
+      requestId,
+      challengeId: input.challengeId,
+      did: didResult.did,
+      purpose: 'agent_onboarding',
+      success: true
+    });
     this.auditLogger.log(AuditEvents.AGENT_ONBOARDED, {
       requestId,
       agentDid: didResult.did,
@@ -219,9 +276,9 @@ export class AgentService implements IAgentService {
 
     return {
       agentDid: didResult.did,
-      vc,
+      vc: vc.vc,
       hederaTransactionId: didResult.hederaTransactionId,
-      vcId: String(vc.id ?? 'vc:unknown')
+      vcId: vc.vcId
     };
   }
 
@@ -284,7 +341,7 @@ export class AgentService implements IAgentService {
     await this.repository.markChallengeVerified(challengeId);
     let vc = await this.vcService.findActiveBySubjectDid(challenge.did);
     if (!vc) {
-      vc = await this.vcService.issueVC(
+      const issued = await this.vcService.issueVC(
         {
           subjectDid: challenge.did,
           subjectType: 'user',
@@ -293,6 +350,7 @@ export class AgentService implements IAgentService {
         },
         requestId
       );
+      vc = issued.vc;
     }
     this.auditLogger.log(AuditEvents.CHALLENGE_VERIFIED, {
       requestId,
@@ -349,6 +407,7 @@ export class AgentService implements IAgentService {
     },
     _requestId: string
   ): Promise<ServiceEntry> {
+    void _requestId;
     if (!ensureServiceName(input.serviceName) || !ensureHttps(input.verifiedDomain) || !ensureHttps(input.apiEndpoint)) {
       throw Object.assign(new Error('Invalid service data'), { code: 'VALIDATION_ERROR', httpStatus: 400 });
     }

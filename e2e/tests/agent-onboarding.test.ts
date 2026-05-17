@@ -4,11 +4,11 @@
 // You may obtain a copy of the License at
 //    http://www.apache.org/licenses/LICENSE-2.0
 
-import { describe } from 'vitest';
+import { describe, it } from 'vitest';
 
 // Agent Onboarding E2E — full flow against Docker Compose stack.
 // Runs on merge to main only — not on every PR.
 // Implemented in Story 4.
 describe('Agent Onboarding', () => {
-  // Tests will be added in Story 4
+  it.todo('runs the full agent onboarding flow against the Docker Compose stack');
 });

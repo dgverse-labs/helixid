@@ -43,5 +43,12 @@ module.exports = {
       files: ['helix-sdk-js/**/*.ts'],
       parserOptions: { project: ['./helix-sdk-js/tsconfig.json'] },
     },
+    {
+      files: ['**/tests/**/*.ts', '**/*.test.ts', 'vitest.config.ts'],
+      rules: {
+        '@typescript-eslint/no-explicit-any': 'off',
+        '@typescript-eslint/explicit-function-return-type': 'off',
+      },
+    },
   ],
 };

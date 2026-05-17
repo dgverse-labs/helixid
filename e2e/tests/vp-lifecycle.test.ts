@@ -4,11 +4,11 @@
 // You may obtain a copy of the License at
 //    http://www.apache.org/licenses/LICENSE-2.0
 
-import { describe } from 'vitest';
+import { describe, it } from 'vitest';
 
 // VP Lifecycle E2E — full flow against Docker Compose stack.
 // Covers template generation → SDK signing → verification.
 // Implemented in Story 3.
 describe('VP Lifecycle', () => {
-  // Tests will be added in Story 3
+  it.todo('runs template generation, SDK signing, and verification against the Docker Compose stack');
 });
