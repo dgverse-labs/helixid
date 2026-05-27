@@ -230,14 +230,14 @@ All tests mock `HelixClient` and `AgentWallet`.
 
 ## Story 7 Acceptance Criteria
 
-- [ ] `@helix-id/mcp` server middleware verifies VP or session JWT on every tool call — missing auth returns MCP error
-- [ ] `@helix-id/mcp` client helper attaches signed VP to tool call `Authorization` header
-- [ ] `@helix-id/langchain` middleware intercepts `handleToolStart` and injects VP into tool input
-- [ ] `@helix-id/langchain` tool wrapper works on individual tools without full chain setup
-- [ ] Both active packages have `README.md` with working install + usage examples
-- [ ] All unit tests pass — no real API calls in any middleware test (mocked clients throughout)
-- [ ] Private key never appears in any middleware output, log, or test fixture
-- [ ] `decisions.md` entries for `@modelcontextprotocol/sdk` and `@langchain/core`
-- [ ] `turbo.json` updated to include `packages/*` in build and test pipeline
-- [ ] CrewAI remains parked and is not added to build/test scope in this story
+- [x] `@helix-id/mcp` server middleware verifies VP or session JWT on every tool call — missing auth returns MCP error
+- [x] `@helix-id/mcp` client helper attaches signed VP to tool call `Authorization` header
+- [x] `@helix-id/langchain` middleware intercepts `handleToolStart` and injects VP into tool input
+- [x] `@helix-id/langchain` tool wrapper works on individual tools without full chain setup
+- [x] Both active packages have `README.md` with working install + usage examples
+- [x] All unit tests pass — no real API calls in any middleware test (mocked clients throughout)
+- [x] Private key never appears in any middleware output, log, or test fixture
+- [x] `decisions.md` entries for `@modelcontextprotocol/sdk` and `@langchain/core`
+- [x] `turbo.json` updated to include `packages/*` in build and test pipeline
+- [x] CrewAI remains parked and is not added to build/test scope in this story
 - [ ] `pnpm audit` clean across both active packages

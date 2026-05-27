@@ -140,4 +140,28 @@ and every deviation from the constitution is recorded here.
 
 ---
 
+## 2026-05-28 — Optional Peer Dependencies for Framework Adapters
+
+**Decision:** Story 7 framework adapter packages declare framework SDKs as optional peers: `@modelcontextprotocol/sdk` for `@helix-id/mcp` and `@langchain/core` for `@helix-id/langchain`.
+
+**Reason:** The adapters are intentionally thin and structural. They should not force every Helix ID install to pull MCP or LangChain dependencies, but applications using those frameworks still get explicit peer dependency metadata.
+
+**Alternatives considered:** Hard dependencies — rejected because it bloats installs and couples unrelated adapter packages. No dependency metadata — rejected because package consumers need clear compatibility signals.
+
+**Approved by:** [founder]
+
+---
+
+## 2026-05-27 — ioredis for Optional L2 Cache
+
+**Decision:** `ioredis` is used by `helix-api` for the optional Redis-backed L2 cache.
+
+**Reason:** Story 8 adds a two-layer read cache. L1 is in-process and dependency-free; L2 is optional Redis for multi-instance deployments. `ioredis` has mature TypeScript support and a stable Redis command surface.
+
+**Alternatives considered:** `redis` official client — viable, but `ioredis` has a simpler established API for the small get/set/del surface needed here.
+
+**Approved by:** [founder]
+
+---
+
 _Add new entries above this line. Date format: YYYY-MM-DD. Never delete or modify existing entries._

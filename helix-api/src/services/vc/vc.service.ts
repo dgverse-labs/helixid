@@ -37,6 +37,8 @@ import { VcRepository } from '../../repositories/vc.repository.js';
 import type { IDIDService } from '../did/did.service.js';
 import type { IVPService } from '../vp/IVPService.js';
 import type { ApiAuditLogger } from '../../audit/index.js';
+import type { ICache } from '../../cache/ICache.js';
+import { NoopCache } from '../../cache/NoopCache.js';
 
 type CredentialSubject = {
   agentName?: string;
@@ -138,6 +140,8 @@ export class VCService implements IVCService {
     private readonly signingKeyHex: string,
     private readonly issuerDid: string,
     private readonly apiBaseUrl: string,
+    private readonly statusListCache: ICache<string> = new NoopCache<string>(),
+    private readonly statusListCacheTtlSeconds = 60,
   ) {}
 
   setVPService(vpService: IVPService): void {
@@ -414,6 +418,7 @@ export class VCService implements IVCService {
     const newEncoded = setBit(list.encodedList, record.statusListIndex, 1);
     
     const updatedRecord = await this.vcRepo.revokeVc(vcId, this.DEFAULT_STATUS_LIST_ID, newEncoded);
+    await this.statusListCache.delete(this.DEFAULT_STATUS_LIST_ID);
 
     await this.audit.log({
       event: 'VC_REVOKED',
@@ -468,10 +473,21 @@ export class VCService implements IVCService {
   }
 
   async getStatusList(listId: string): Promise<ReturnType<typeof buildStatusListCredential>> {
+    const cached = await this.statusListCache.get(listId);
+    if (cached) {
+      return buildStatusListCredential(
+        listId,
+        cached,
+        this.issuerDid,
+        this.apiBaseUrl
+      );
+    }
+
     const list = await this.vcRepo.findStatusListById(listId);
     if (!list) {
       throw new HelixError(ErrorCode.STATUS_LIST_NOT_FOUND, 'Status list not found', 404);
     }
+    await this.statusListCache.set(listId, list.encodedList, this.statusListCacheTtlSeconds);
 
     return buildStatusListCredential(
       listId,

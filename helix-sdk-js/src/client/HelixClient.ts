@@ -220,6 +220,15 @@ export class HelixClient {
     });
   }
 
+  async createVPTemplate(options: {
+    agentDid: string;
+    userDid: string;
+    targetService: string;
+    vcType?: string;
+  }): Promise<{ unsignedVP: UnsignedVP; vpId: string; expiresAt: string }> {
+    return this.http.post('/v1/vp/template', options);
+  }
+
   async fetchSessionPublicKey(): Promise<string> {
     if (!this.http.get) throw new Error('GET not implemented by adapter');
     const response = await this.http.get<SessionPublicKeyResponse>('/v1/sessions/public-key');

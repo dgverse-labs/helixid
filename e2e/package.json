@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "vitest run --passWithNoTests",
+    "test:non-live": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },

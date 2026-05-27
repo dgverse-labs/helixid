@@ -13,6 +13,12 @@
 import { z } from 'zod';
 import { derivePublicKey, isSupportedEd25519PrivateKeyHex } from '../crypto/keys.js';
 
+const BooleanEnvSchema = z.preprocess((value) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') return value.toLowerCase() === 'true';
+  return value;
+}, z.boolean());
+
 export const ConfigSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
@@ -45,6 +51,15 @@ export const ConfigSchema = z.object({
   CHALLENGE_TTL_SECONDS: z.coerce.number().int().min(30).max(600).default(300),
   VP_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(300),
   JWT_SESSION_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(600),
+
+  // Cache
+  CACHE_ENABLED: BooleanEnvSchema.default(true),
+  CACHE_L2_ENABLED: BooleanEnvSchema.default(true),
+  REDIS_URL: z.string().url().optional(),
+  DID_CACHE_L1_TTL_SECONDS: z.coerce.number().int().min(1).max(3600).default(300),
+  DID_CACHE_L2_TTL_SECONDS: z.coerce.number().int().min(1).max(86400).default(900),
+  STATUS_LIST_CACHE_L1_TTL_SECONDS: z.coerce.number().int().min(1).max(3600).default(60),
+  STATUS_LIST_CACHE_L2_TTL_SECONDS: z.coerce.number().int().min(1).max(86400).default(300),
 
   // Audit
   AUDIT_LOG_DESTINATION: z.enum(['stdout', 'file', 'both']).default('stdout'),

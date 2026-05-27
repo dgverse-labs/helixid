@@ -14,7 +14,9 @@
     "helix-api/src/**/*.ts",
     "helix-api/tests/**/*.ts",
     "helix-sdk-js/src/**/*.ts",
-    "helix-sdk-js/tests/**/*.ts"
+    "helix-sdk-js/tests/**/*.ts",
+    "packages/*/src/**/*.ts",
+    "packages/*/tests/**/*.ts"
   ],
   "exclude": ["node_modules", "**/dist"]
 }

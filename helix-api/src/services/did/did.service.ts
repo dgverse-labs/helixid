@@ -24,6 +24,8 @@ import {
 } from '@helix-id/core';
 import type { DidRepository } from '../../repositories/did.repository.js';
 import type { IHederaClient } from '../../hedera/IHederaClient.js';
+import type { ICache } from '../../cache/ICache.js';
+import { NoopCache } from '../../cache/NoopCache.js';
 
 type DIDRecord = {
   id: string;
@@ -90,7 +92,9 @@ export class DIDService implements IDIDService {
   constructor(
     private repository: DidRepository,
     private hedera: IHederaClient,
-    private audit: IAuditLogger
+    private audit: IAuditLogger,
+    private cache: ICache<DIDDocument> = new NoopCache<DIDDocument>(),
+    private cacheTtlSeconds = 300,
   ) {}
 
   /**
@@ -174,6 +178,7 @@ export class DIDService implements IDIDService {
       hederaSequenceNumber: anchoring.sequenceNumber,
       didDocument: document,
     });
+    await this.cache.set(did, document, this.cacheTtlSeconds);
 
     // 5. Audit log
     await this.audit.log({
@@ -200,9 +205,42 @@ export class DIDService implements IDIDService {
   async resolveDID(did: string, options: { live?: boolean } | string = {}, requestId = 'req_unknown'): Promise<ResolveDIDResult> {
     const normalizedOptions = typeof options === 'string' ? {} : options;
     const normalizedRequestId = typeof options === 'string' ? options : requestId;
+    if (!normalizedOptions.live) {
+      const cached = await this.cache.get(did);
+      if (cached) {
+        const activeRecord = await this.repository.findDidById(did) as unknown as DIDRecord | null;
+        if (!activeRecord) {
+          await this.cache.delete(did);
+          throw new HelixError(ErrorCode.DID_NOT_FOUND, 'DID not found', 404);
+        }
+        if (activeRecord.deactivatedAt) {
+          await this.cache.delete(did);
+          throw new HelixError(ErrorCode.DID_DEACTIVATED, 'DID is deactivated', 410, { did });
+        }
+        await this.audit.log({
+          timestamp: new Date().toISOString(),
+          event: 'DID_RESOLVED',
+          requestId: normalizedRequestId,
+          did,
+          source: 'cache',
+        });
+        return {
+          did,
+          didDocument: cached,
+          document: cached,
+          deactivated: false,
+          source: 'cache',
+        };
+      }
+    }
+
     const record = await this.repository.findDidById(did) as unknown as DIDRecord | null;
     if (!record) {
       throw new HelixError(ErrorCode.DID_NOT_FOUND, 'DID not found', 404);
+    }
+    if (record.deactivatedAt) {
+      await this.cache.delete(did);
+      throw new HelixError(ErrorCode.DID_DEACTIVATED, 'DID is deactivated', 410, { did });
     }
 
     let document = toDIDDocument(record.didDocument);
@@ -216,6 +254,9 @@ export class DIDService implements IDIDService {
         // Fallback to cache if live resolution fails? 
         // Spec says resolutionType: hedera if live.
       }
+    }
+    if (!normalizedOptions.live) {
+      await this.cache.set(did, document, this.cacheTtlSeconds);
     }
 
     await this.audit.log({
@@ -256,6 +297,7 @@ export class DIDService implements IDIDService {
       hederaTransactionId: anchoring.transactionId,
       payload: endpoint,
     });
+    await this.cache.delete(did);
 
     await this.audit.log({
       timestamp: new Date().toISOString(),
@@ -288,6 +330,7 @@ export class DIDService implements IDIDService {
       hederaTransactionId: anchoring.transactionId,
       payload: { endpointId },
     });
+    await this.cache.delete(did);
 
     await this.audit.log({
       timestamp: new Date().toISOString(),
@@ -323,6 +366,7 @@ export class DIDService implements IDIDService {
     }
 
     await this.repository.deactivateDid(did, deactivatedAt);
+    await this.cache.delete(did);
 
     await this.audit.log({
       timestamp: new Date().toISOString(),

@@ -106,6 +106,27 @@ describe('HelixClient Full Unit Tests', () => {
     });
   });
 
+  it('requests VP templates through the public SDK method', async () => {
+    mockHttp.post.mockResolvedValue({
+      unsignedVP: { id: 'vp:helix:test' },
+      vpId: 'vp:helix:test',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    await expect(client.createVPTemplate({
+      agentDid: 'did:hedera:testnet:agent',
+      userDid: 'did:hedera:testnet:user',
+      targetService: 'orders',
+      vcType: 'HelixAgentCredential',
+    })).resolves.toMatchObject({ vpId: 'vp:helix:test' });
+    expect(mockHttp.post).toHaveBeenCalledWith('/v1/vp/template', {
+      agentDid: 'did:hedera:testnet:agent',
+      userDid: 'did:hedera:testnet:user',
+      targetService: 'orders',
+      vcType: 'HelixAgentCredential',
+    });
+  });
+
   it('fetches and locally verifies JWT session tokens', async () => {
     const keys = generateKeyPair();
     mockHttp.get.mockResolvedValue({

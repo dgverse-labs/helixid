@@ -10,6 +10,11 @@
       "outputs": ["coverage/**"],
       "env": ["DATABASE_URL", "NODE_ENV", "HEDERA_NETWORK"]
     },
+    "test:non-live": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "env": ["DATABASE_URL", "NODE_ENV", "HEDERA_NETWORK"]
+    },
     "lint": {
       "dependsOn": [],
       "outputs": []

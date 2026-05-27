@@ -4,9 +4,10 @@ import './loadEnv.js';
 import crypto from 'node:crypto';
 import Fastify from 'fastify';
 import pg from 'pg';
+import { Redis } from 'ioredis';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { buildDIDDocument, derivePublicKey, loadConfigFromEnv } from '@helix-id/core';
+import { buildDIDDocument, derivePublicKey, loadConfigFromEnv, type DIDDocument } from '@helix-id/core';
 
 import { errorHandler } from './middleware/errorHandler.js';
 import { ApiAuditLogger } from './audit/index.js';
@@ -17,6 +18,7 @@ import { VcRepository } from './repositories/vc.repository.js';
 import { VPRepository } from './repositories/vp.repository.js';
 import { AgentRepository } from './repositories/agent.repository.js';
 import { ServiceRegistryRepository } from './repositories/service-registry.repository.js';
+import { createDidCache, createStatusListCache } from './cache/cacheFactory.js';
 import { DIDService } from './services/did/did.service.js';
 import { VCService } from './services/vc/vc.service.js';
 import { VPService } from './services/vp/vp.service.js';
@@ -39,6 +41,7 @@ if (config.NODE_ENV !== 'test' && /test/i.test(databaseName)) {
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
+const redis = config.CACHE_L2_ENABLED && config.REDIS_URL ? new Redis(config.REDIS_URL) : null;
 
 const auditLogger = new ApiAuditLogger(prisma, config);
 const didRepository = new DidRepository(prisma);
@@ -52,8 +55,16 @@ await ensureIssuerDidCached();
 const hederaClient = process.env['HEDERA_MOCK'] === 'true'
   ? new MockHederaClient()
   : new HieroHederaClient(config);
+const didCache = createDidCache<DIDDocument>(config, redis);
+const statusListCache = createStatusListCache<string>(config, redis);
 
-const didService = new DIDService(didRepository, hederaClient, auditLogger);
+const didService = new DIDService(
+  didRepository,
+  hederaClient,
+  auditLogger,
+  didCache,
+  config.DID_CACHE_L1_TTL_SECONDS,
+);
 const vcService = new VCService(
   vcRepository,
   didService,
@@ -61,6 +72,8 @@ const vcService = new VCService(
   config.HELIX_SIGNING_KEY,
   config.HELIX_ISSUER_DID,
   config.API_BASE_URL,
+  statusListCache,
+  config.STATUS_LIST_CACHE_L1_TTL_SECONDS,
 );
 const vpService = new VPService(vpRepository, didService, vcService, serviceRegistry, auditLogger, config.VP_TTL_SECONDS, {
   signingKey: config.HELIX_JWT_SIGNING_KEY,
@@ -143,6 +156,7 @@ await app.register(agentRoutes, { prefix: '/v1', agentService });
 const shutdown = async (): Promise<void> => {
   app.log.info('Helix ID API shutting down...');
   await app.close();
+  redis?.disconnect();
   await prisma.$disconnect();
   process.exit(0);
 };
