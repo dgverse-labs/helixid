@@ -48,14 +48,15 @@ const vpRoutes: FastifyPluginAsync<VPRouteOptions> = async (fastify, options) =>
         type: 'object',
         required: ['signedVP'],
         properties: {
-          signedVP: { type: 'object' }
+          signedVP: { type: 'object' },
+          session: { type: 'boolean', default: false }
         }
       }
     }
   }, async (request, reply) => {
     try {
-      const body = request.body as { signedVP: Parameters<IVPService['verifyVP']>[0] };
-      const result = await options.vpService.verifyVP(body.signedVP, request.id);
+      const body = request.body as { signedVP: Parameters<IVPService['verifyVP']>[0]; session?: boolean };
+      const result = await options.vpService.verifyVP(body.signedVP, request.id, { issueSession: body.session === true });
       return reply.code(200).send(result);
     } catch (error) {
       const mapped = mapErrorToResponse(error);

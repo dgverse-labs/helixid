@@ -90,7 +90,9 @@ describe('VP integration API', () => {
       didService,
       vcService,
       new ServiceRegistryRepository(['amazon']),
-      auditLogger
+      auditLogger,
+      300,
+      { signingKey: privateKeyHex, issuerDid: defaultDid, ttlSeconds: 600 }
     );
     await app.register(vpRoutes, { prefix: '/v1/vp', vpService: service });
     await app.ready();
@@ -200,5 +202,28 @@ describe('VP integration API', () => {
 
     const dbRecord = await repository.findByVpId(template.vpId);
     expect(dbRecord?.consumedAt).not.toBeNull();
+  });
+
+  it('POST /v1/vp/verify with session true returns a JWT session', async () => {
+    const tmplRes = await app.inject({
+      method: 'POST',
+      url: '/v1/vp/template',
+      payload: { agentDid: defaultDid, userDid: 'did:hedera:testnet:user1', targetService: 'amazon', vcType: 'HelixAgentCredential' }
+    });
+    const template = tmplRes.json();
+    const signedVP = await new VPBuilder(template.unsignedVP).sign(privateKeyHex, `${defaultDid}#key-1`);
+
+    const verifyRes = await app.inject({
+      method: 'POST',
+      url: '/v1/vp/verify',
+      payload: { signedVP, session: true }
+    });
+
+    expect(verifyRes.statusCode).toBe(200);
+    expect(verifyRes.json().session).toMatchObject({
+      publicKeyEndpoint: '/v1/sessions/public-key',
+    });
+    expect(verifyRes.json().session.token).toMatch(/^[^.]+\.[^.]+\.[^.]+$/);
+    expect(auditLogger.events.some((entry) => entry.event.event === 'JWT_ISSUED')).toBe(true);
   });
 });

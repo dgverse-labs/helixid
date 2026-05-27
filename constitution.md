@@ -12,17 +12,15 @@ This document is the single source of truth for all architectural, structural, s
 4. Technology Stack
 5. Security Axioms
 6. API Contract Rules
-7. Inter-Boundary Contracts
-8. helix-core Communication Model
-9. Error Handling Philosophy
-10. Environment Variables
-11. Database
-12. Hedera Interaction Rules
-13. Audit Log Contract
-14. Dependency Policy
-15. Testing Constraints and Coverage
-16. Definition of Done
-17. Boundaries Reference
+7. helix-core Communication Model
+8. Error Handling Philosophy
+9. Environment Variables
+10. Database
+11. Hedera Interaction Rules
+12. Audit Log Contract
+13. Dependency Policy
+14. Testing Constraints and Coverage
+15. Definition of Done
 
 ---
 
@@ -32,14 +30,9 @@ Helix ID is an agent identity and trust infrastructure platform. It issues crypt
 
 Open core model. The core platform is Apache 2.0 licensed and self-hostable. SaaS and Enterprise tiers extend it with managed infrastructure, advanced policy engines, and compliance tooling.
 
-Four boundaries govern all scope decisions:
+The core system is organized around product domains: DID and Hedera integration, VC issuance and lifecycle management, VP creation and verification, JWT session bridging, agent/user onboarding, service registry, audit, and SDK ergonomics. Domain ownership is expressed through package structure and service interfaces, not through numbered labels.
 
-| Boundary | Responsibility |
-|---|---|
-| B1 — DID & Hedera Integration | DID lifecycle, Hedera anchoring, DID resolution |
-| B2 — VC Issuance & Management | VC schema, issuance, revocation, renewal, status list |
-| B3 — VP Creation & Verification | VP template, signing, verification, replay protection |
-| B4 — Agent & User Flows | Onboarding, user DID, challenge-response, service registry |
+The JWT Session Bridge may mint short-lived stateless JWT sessions only after full VP verification succeeds and the VP's `vpId` has been consumed.
 
 ---
 
@@ -51,8 +44,10 @@ helix-id/
 ├── helix-api/           # Fastify HTTP API — self-hostable, stateful operations
 ├── helix-sdk-js/        # TypeScript/JS SDK — HelixClient, local signing, wallet management
 ├── helix-sdk-py/        # (Future) Python SDK — mirrors JS SDK, OpenAPI spec as shared truth
+├── packages/            # Framework adapters only — MCP, LangChain, future CrewAI, etc.
 ├── helix-contracts/     # (Future) Custom HCS message schemas — scaffolded, empty until that work begins
 ├── e2e/                 # End-to-end tests — full flow tests against live Docker Compose stack
+├── scripts/             # Developer setup utilities — no application runtime logic
 ├── docker-compose.yml   # Local development stack — API + PostgreSQL + mock HCS
 ├── docker-compose.test.yml  # CI test stack
 ├── .env.example         # Environment variable template — all variables documented here
@@ -65,7 +60,9 @@ helix-id/
 Rules:
 
 - No application logic lives at the workspace root
+- Root scripts are permitted only for developer setup, validation, and repository maintenance. They must not contain API runtime logic.
 - helix-core has no monorepo siblings as dependencies — it is a pure library
+- packages/* is reserved for thin framework adapters. These packages may depend on helix-sdk-js, helix-core types, or the future helix-sdk-py, but they must not introduce new trust semantics, API endpoints, or core primitives.
 - helix-contracts is scaffolded but empty until custom HCS message schema work begins (note: DID anchoring uses the Hiero DID SDK from Story 1 — helix-contracts is for future custom message types beyond DIDs)
 - turbo.json lives at the workspace root and is the task graph definition — no application logic
 - Each package has its own package.json, tsconfig.json, and README.md
@@ -80,8 +77,8 @@ Rules:
 helix-core/
 ├── src/
 │   ├── config/          # Env variable schema and validated config module
-│   ├── crypto/          # DID generation, VP signing, signature verification, key utils
-│   ├── schemas/         # VC schema definitions (agent VC, user VC, privilege scopes)
+│   ├── crypto/          # DID generation, VP/JWT signing, signature verification, key utils
+│   ├── schemas/         # VC, VP, JWT schema definitions and privilege scopes
 │   ├── errors/          # Shared error types and error codes
 │   ├── audit/           # Audit log interface (contract only — implementations elsewhere)
 │   ├── status-list/     # W3C StatusList2021 bitstring logic
@@ -98,16 +95,18 @@ helix-core/
 ```
 helix-api/
 ├── src/
-│   ├── routes/          # Fastify route handlers — one file per boundary
+│   ├── routes/          # Fastify route handlers — grouped by product domain
 │   │   ├── did/
 │   │   ├── vc/
 │   │   ├── vp/
-│   │   └── agent/
+│   │   ├── agent/
+│   │   └── sessions/
 │   ├── services/        # Business logic — called by routes, calls repositories
 │   │   ├── did/
 │   │   ├── vc/
 │   │   ├── vp/
-│   │   └── agent/
+│   │   ├── agent/
+│   │   └── sessions/
 │   ├── repositories/    # Database access — Prisma queries, no business logic
 │   ├── hedera/          # IHederaClient interface + Hiero DID SDK implementation
 │   ├── middleware/       # Auth, error handling, request logging
@@ -165,6 +164,22 @@ helix-sdk-py/
 └── README.md
 ```
 
+### packages/* Framework Adapters
+
+```
+packages/
+├── mcp/                 # MCP adapter — VP/session verification and VP attachment for tool calls
+├── langchain/           # LangChain/LangGraph adapter — VP attachment for tool invocations
+└── crewai/              # Future CrewAI adapter — parked until helix-sdk-py exists
+```
+
+Rules:
+
+- Framework adapters are ergonomic wrappers around the SDK and existing API only.
+- They must not contain credential issuance, VP verification semantics, DID anchoring logic, or policy decisions that belong in helix-api, helix-core, or the SDK.
+- TypeScript adapters use `@helix-id/sdk-js` and `@helix-id/core` workspace packages.
+- Python adapters must use `helix-sdk-py` once available. They must not hand-roll VP signing, canonicalization, or verification semantics inside framework adapters.
+
 ### e2e
 
 ```
@@ -201,7 +216,7 @@ e2e/
 | Schema validation | Fastify JSON Schema + Zod | Route validation via JSON Schema; business logic validation via Zod |
 | ORM | Prisma | Type-safe queries, migration management, schema as code |
 | Database | PostgreSQL | ACID guarantees required for vpId consumption and token burning (security operations) |
-| Cache | None in core | Not needed at open core scale; Redis is a SaaS-tier concern for multi-instance deployments |
+| Cache | L1 in-process + optional Redis L2 in helix-api | Performance layer over PostgreSQL/Hedera reads; optional Redis supports multi-instance deployments |
 
 ### Monorepo and Build
 
@@ -275,6 +290,16 @@ These rules are non-negotiable. No user story, no implementation shortcut, no ex
 
 **SA-10 — No security test may be skipped.** Security tests in tests/security/ may not be marked skip, todo, or xit. CI enforces this via grep. A skipped security test is a build failure.
 
+**SA-11 — JWT sessions are derived from verified VPs only.** A JWT session may be issued only after full VP verification succeeds and `vpId` has been consumed. JWTs are short-lived, stateless, signed by `HELIX_JWT_SIGNING_KEY`, and never replace VC or VP issuance semantics. `HELIX_JWT_SIGNING_KEY` never leaves API runtime and raw JWT token strings must not be logged or audited.
+
+**SA-12 — Delegation never increases authority.** A delegated VC may contain only scopes that are a subset of the delegator's active VC scopes. Any requested scope outside the parent scope set is rejected.
+
+**SA-13 — Delegation depth is explicit and enforced.** Root agent VCs default to `maxDelegationDepth = 0`. Delegation is impossible unless the agent owner explicitly allows it. Each child VC increments `delegationDepth`; delegation fails when `delegationDepth >= maxDelegationDepth`.
+
+**SA-14 — Helix ID is the only VC signer.** Agents may request delegation by proving authority with a signed VP, but agents never sign VCs. Root and delegated VCs are issued and signed only by Helix ID.
+
+**SA-15 — A broken parent breaks the chain.** If any parent or intermediary VC in a delegation chain is expired, revoked, missing, tampered, invalidly signed, or linked incorrectly, the leaf VP must fail verification.
+
 ---
 
 ## 6. API Contract Rules
@@ -289,38 +314,11 @@ These rules are non-negotiable. No user story, no implementation shortcut, no ex
 
 **AC-5 — The SDK is the intended client.** The API is designed for HelixClient as its primary consumer. Raw HTTP access is supported and documented but not the primary design target. This means the API can assume well-formed requests matching the SDK's behavior — it does not need to defend against arbitrary malformed input beyond standard validation.
 
----
-
-## 7. Inter-Boundary Contracts
-
-Boundaries are not isolated microservices — they are logical separations within a single API process. They communicate through internal service interfaces, not HTTP. The contracts below define what each boundary exposes internally.
-
-**B1 exposes to B2 and B4:**
-
-- `resolveDID(did: string) → DIDDocument`
-- `anchorDID(document: DIDDocument) → HederaTransactionId`
-- `updateDID(did: string, update: DIDUpdate) → HederaTransactionId`
-
-**B2 exposes to B3 and B4:**
-
-- `issueVC(subject: VCSubject) → SignedVC`
-- `getVCStatus(vcId: string) → VCStatus`
-- `revokeVC(vcId: string) → void`
-- `renewVC(vcId: string) → SignedVC`
-
-**B3 exposes to B4:**
-
-- `generateVPTemplate(request: VPRequest) → UnsignedVP`
-- `consumeVpId(vpId: string) → void`
-- `verifyVP(signedVP: SignedVP) → VerificationResult`
-
-B4 owns no shared internal surface. It is the consumer of B1, B2, and B3. Its outputs are HTTP responses to the SDK.
-
-Rule: A boundary may not import directly from another boundary's implementation files. It may only call the interface methods listed above. This is enforced by ESLint import rules.
+**AC-6 — Session endpoints live under `/v1/sessions`.** The JWT public key endpoint is `GET /v1/sessions/public-key`. VP verification may accept an optional `session` field as an additive change, but session issuance must remain attached to successful VP verification.
 
 ---
 
-## 8. helix-core Communication Model
+## 7. helix-core Communication Model
 
 helix-core is a pure library package. The dependency graph has exactly one direction.
 
@@ -344,12 +342,13 @@ What lives in helix-core and why it must be there:
 | Shared error types and codes | API returns errors; SDK parses them. Same codes on both sides |
 | Audit log interface | API and SDK have separate implementations but must log the same event types |
 | StatusList2021 bitstring logic | API writes the list; SDK and external verifiers read it |
+| JWT schema + crypto utilities | API issues JWT sessions; SDK and external services verify them locally using the same Ed25519 and base64url logic |
 
 helix-sdk-py does not import from helix-core. It maintains its own Python-native type definitions in helix_sdk/schemas.py. The OpenAPI spec in helix-core is the truth that both the JS and Python SDKs are validated against in CI — not a shared import.
 
 ---
 
-## 9. Error Handling Philosophy
+## 8. Error Handling Philosophy
 
 **EH-1 — Error code with structured error body.** Every error response from the API returns a structured JSON body. HTTP status codes convey category; the body conveys specifics.
 
@@ -375,7 +374,7 @@ helix-sdk-py does not import from helix-core. It maintains its own Python-native
 
 ---
 
-## 10. Environment Variables
+## 9. Environment Variables
 
 **EV-1 — Config module in helix-core is the single entry point.** No package reads process.env directly. Every package imports the validated config object from helix-core/src/config/. If a variable is missing or malformed, the process exits at startup with a clear error — not at runtime three calls deep.
 
@@ -391,16 +390,22 @@ helix-sdk-py does not import from helix-core. It maintains its own Python-native
 |---|---|
 | Hedera | HEDERA_NETWORK, HEDERA_OPERATOR_ID, HEDERA_OPERATOR_KEY, HEDERA_TOPIC_ID |
 | Database | DATABASE_URL |
-| Helix ID signing | HELIX_SIGNING_KEY (private key for VC issuance) |
+| Cache | CACHE_ENABLED, CACHE_L2_ENABLED, REDIS_URL, DID_CACHE_L1_TTL_SECONDS, DID_CACHE_L2_TTL_SECONDS, STATUS_LIST_CACHE_L1_TTL_SECONDS, STATUS_LIST_CACHE_L2_TTL_SECONDS |
+| Helix ID signing | HELIX_SIGNING_KEY (private key for VC issuance), HELIX_ISSUER_DID |
+| JWT session signing | HELIX_JWT_SIGNING_KEY, HELIX_JWT_PUBLIC_KEY |
 | API | PORT, API_BASE_URL |
-| Token expiry | ENROLLMENT_TOKEN_TTL_SECONDS, CHALLENGE_TTL_SECONDS, VP_TTL_SECONDS |
+| Token expiry | ENROLLMENT_TOKEN_TTL_SECONDS, CHALLENGE_TTL_SECONDS, VP_TTL_SECONDS, JWT_SESSION_TTL_SECONDS |
 | Audit | AUDIT_LOG_DESTINATION (stdout / file / both), AUDIT_LOG_PATH |
 | Environment | NODE_ENV |
 | E2E / Testing | HEDERA_E2E_TESTNET |
 
+The developer setup script may generate `HELIX_JWT_SIGNING_KEY` and `HELIX_JWT_PUBLIC_KEY`. Live Hedera DID creation for issuer setup is separate work and must not be faked locally.
+
+Cache variables are optional. `CACHE_ENABLED` defaults to true. L1 in-process cache is enabled by default with conservative TTLs. Redis L2 is enabled only when `CACHE_L2_ENABLED=true` and `REDIS_URL` is set.
+
 ---
 
-## 11. Database
+## 10. Database
 
 **DB-1 — PostgreSQL is the only supported database.** SQLite is not supported. Concurrent write safety is required for vpId consumption and enrollment token burning. These are security operations that require ACID guarantees.
 
@@ -409,6 +414,8 @@ helix-sdk-py does not import from helix-core. It maintains its own Python-native
 **DB-3 — Schema migrations are code-reviewed like application code.** Migration files live in helix-api/prisma/migrations/. Destructive migrations (dropping columns, tables) require explicit approval note in the PR description.
 
 **DB-4 — No business logic in repositories.** Repository files contain Prisma queries only. Business logic lives in service files. Services call repositories; routes call services.
+
+**DB-5 — PostgreSQL remains the durable API-side DID and VC state index.** Caches may sit in front of read paths for performance, but they do not replace PostgreSQL persistence or Hedera DID anchoring.
 
 ### Core Tables
 
@@ -424,9 +431,21 @@ helix-sdk-py does not import from helix-core. It maintains its own Python-native
 | service_registry | Verified service endpoints and metadata |
 | audit_log | Append-only audit event log |
 
+The JWT Session Bridge adds no database table. JWTs are stateless; replay protection remains anchored in `vp_ids`.
+
+### Cache Rules
+
+**CR-1 — Cache is a performance layer only.** L1/L2 cache entries must never become the source of authority for security state. DID documents and status lists may be cached, but verification semantics remain governed by DID active state, VC expiry, VC revocation, and chain validation.
+
+**CR-2 — Stale cache must not validate revoked or deactivated authority.** Helix ID's own verification path must not accept a stale cached DID after deactivation or stale cached status list after VC revocation. Either invalidate immediately or check the durable DB state before accepting cached data in security-critical paths.
+
+**CR-3 — L2 cache is optional.** Open core supports Redis as an optional shared cache when `CACHE_L2_ENABLED=true` and `REDIS_URL` is configured. The system must run correctly with L1-only cache.
+
+**CR-4 — Cache keys must not contain secrets.** Cache keys and values must not include private keys, encrypted private keys, raw JWTs, raw enrollment tokens, or database connection strings. Raw VP payloads before verification must not be cached.
+
 ---
 
-## 12. Hedera Interaction Rules
+## 11. Hedera Interaction Rules
 
 **HR-1 — Testnet by default.** All development, testing, and CI environments use Hedera testnet. HEDERA_NETWORK defaults to testnet. The config module rejects mainnet unless NODE_ENV=production is explicitly set.
 
@@ -447,7 +466,7 @@ interface IHederaClient {
 
 ---
 
-## 13. Audit Log Contract
+## 12. Audit Log Contract
 
 Every security-relevant event must produce an audit log entry. This is not optional — it is a correctness requirement on par with tests.
 
@@ -470,6 +489,8 @@ Every security-relevant event must produce an audit log entry. This is not optio
 | VP template issued | vpId, agentDid, userDid, targetService, expiresAt |
 | VP verified | vpId, agentDid, result, timestamp |
 | VP rejected | vpId, reason (internal log only — never in HTTP response), timestamp |
+| JWT session issued | jti, agentDid, userDid, targetService, vpId, expiresAt |
+| JWT session rejected | jti or requestId, reason (internal log only), timestamp |
 | Agent onboarded | agentDid, agentName, hederaTransactionId |
 | User DID verified | userDid, timestamp |
 | Status list updated | listId, index, newBitValue, timestamp |
@@ -479,6 +500,8 @@ Every security-relevant event must produce an audit log entry. This is not optio
 - Private keys (agent or Helix ID)
 - Raw VC payloads in plaintext
 - Raw VP payloads before verification
+- Raw JWT session tokens
+- HELIX_JWT_SIGNING_KEY
 - Database connection strings
 - Enrollment token raw values after generation (log the tokenIdHash only)
 
@@ -490,7 +513,7 @@ Every security-relevant event must produce an audit log entry. This is not optio
 
 ---
 
-## 14. Dependency Policy
+## 13. Dependency Policy
 
 Dependencies are not prohibited, but every addition is a decision that must be documented.
 
@@ -505,13 +528,15 @@ Dependencies are not prohibited, but every addition is a decision that must be d
 
 **DP-3 — Crypto libraries have a stricter gate.** Only @noble/curves, @noble/hashes (JS) and cryptography PyCA (Python) are approved for cryptographic operations. Any addition to this list requires explicit amendment to this constitution, not just a decisions.md entry.
 
+**DP-3a — JWT libraries are not approved for Story 5.** `jsonwebtoken`, `jose`, and equivalent JWT abstraction libraries are not permitted for the JWT Session Bridge unless this constitution is amended. JWT signing and verification must use approved crypto primitives and explicit base64url/JWS handling in helix-core.
+
 **DP-4 — Dev dependencies are not exempt.** A malicious build tool is as dangerous as a malicious runtime dependency. The same checks apply.
 
 **DP-5 — pnpm audit and pip-audit run in CI on every PR.** High or critical severity findings block merge. Exceptions require a documented reason and a filed issue for remediation.
 
 ---
 
-## 15. Testing Constraints and Coverage
+## 14. Testing Constraints and Coverage
 
 ### Philosophy
 
@@ -528,7 +553,7 @@ Tests in Helix ID are security proofs as much as correctness proofs. A passing t
 
 **Integration tests**
 
-- One boundary end-to-end against real dependencies
+- One product flow or service area end-to-end against real dependencies
 - helix-api integration tests run against real PostgreSQL (Docker Compose) and IHederaClient test double
 - SDK integration tests run against a locally running helix-api instance
 - Framework: Vitest + Supertest (JS/TS), Pytest (Python)
@@ -562,6 +587,11 @@ Every item on this list must have a corresponding test. This is a checklist, not
 - [ ] Concurrent VP verification with same vpId — exactly one must succeed
 - [ ] Raw enrollment token must never appear in audit log — only tokenIdHash
 - [ ] Challenge replay — same challengeId submitted twice after verification — must be rejected
+- [ ] Request JWT session with invalid VP — no JWT must be issued
+- [ ] Tamper JWT payload after signing — verification must fail
+- [ ] Verify JWT with wrong public key — verification must fail
+- [ ] Verify JWT past expiry — must be rejected
+- [ ] Raw JWT session token and HELIX_JWT_SIGNING_KEY must never appear in audit log
 
 ### Coverage Minimums
 
@@ -584,14 +614,14 @@ Every item on this list must have a corresponding test. This is a checklist, not
 
 ---
 
-## 16. Definition of Done
+## 15. Definition of Done
 
 A user story is done when all of the following are true:
 
 - [ ] OpenAPI spec updated in helix-core/src/openapi/ before or alongside implementation
 - [ ] Implementation matches the spec exactly — no undocumented fields, no missing fields
 - [ ] Unit tests written and passing
-- [ ] Integration tests written and passing (where applicable to the story's boundary)
+- [ ] Integration tests written and passing where the story touches HTTP, persistence, or cross-service behavior
 - [ ] Security tests written if the story touches any item in the security test checklist
 - [ ] Audit log entries defined and verified to be emitted for all events in AL-1 that the story triggers
 - [ ] Error cases documented — every non-2xx response the story can produce has an error code in helix-core
@@ -603,28 +633,4 @@ A user story is done when all of the following are true:
 
 ---
 
-## 17. Boundaries Reference
-
-Quick reference for scope decisions. If a piece of work touches something in a boundary's scope, it belongs to that boundary's routes, services, and tests.
-
-### Boundary 1 — DID & Hedera Integration
-
-DID document creation (agent + user) using did:hedera method via Hiero DID SDK, Hedera HCS anchoring, DID resolution from Hedera Mirror Node, DID update (domains, service endpoints), public key management in DID document.
-
-DID format: `did:hedera:testnet:<identifier>`
-
-### Boundary 2 — VC Issuance & Management
-
-VC schema design (agent VC, user VC, privilege scopes), VC issuance API, VC storage, StatusList2021 generation and management, VC revocation, VC renewal, expiry validation.
-
-### Boundary 3 — VP Creation & Verification
-
-VP template generation API (unsigned VP with vpId, nonce, expiry), SDK signing logic (buildAndSignVP — local signing, private key never transmitted), VP verification API (signature check, DID resolution, vpId consumption), vpId lifecycle, nonce generation and validation, self-verify specification documentation.
-
-### Boundary 4 — Agent & User Flows
-
-Agent onboarding API (enrollment token generation, keypair binding, challenge-response), user DID creation API, user verification API (challenge-response flow), agent wallet schema (encrypted local storage), service registry (add/remove/query), user confirmation flow integration.
-
----
-
-_Constitution version 1.1 — Turborepo and Hiero DID SDK amendments applied. Further amendments require a PR touching this file with explicit note in the PR description that the constitution is being amended._
+_Constitution version 1.5 — optional L1/L2 cache rules added for helix-api read paths. Further amendments require a PR touching this file with explicit note in the PR description that the constitution is being amended._

@@ -1,3 +1,4 @@
+import type { SignedVP } from '@helix-id/core';
 import type { IVCService, IssueVCInput, IssueVCResult, VCStatus } from '../../src/services/vc/IVCService.js';
 
 export class MockVCService implements IVCService {
@@ -29,6 +30,11 @@ export class MockVCService implements IVCService {
     return this.status;
   }
 
+  async findRecordByVcId(vcId: string): Promise<{ vcId: string; vc: Record<string, unknown>; status: VCStatus } | null> {
+    if (!this.activeVC || this.activeVC['id'] !== vcId) return null;
+    return { vcId, vc: this.activeVC, status: this.status };
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async issueVC(input: IssueVCInput, _requestId: string): Promise<IssueVCResult> {
     const vc = {
@@ -42,6 +48,35 @@ export class MockVCService implements IVCService {
       vc,
       statusListIndex: 0,
       expiresAt: vc.expirationDate,
+    };
+  }
+
+  async delegateVC(
+    _input: {
+      delegatorVP: SignedVP;
+      delegateeAgentDid: string;
+      requestedScopes: string[];
+      expiresInSeconds?: number;
+    },
+    _requestId: string,
+  ): Promise<{
+    vcId: string;
+    delegateeAgentDid: string;
+    delegatedFrom: string;
+    delegationDepth: number;
+    scopes: string[];
+    expiresAt: string;
+    vc: Record<string, unknown>;
+  }> {
+    const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
+    return {
+      vcId: 'vc:mock:delegated',
+      delegateeAgentDid: _input.delegateeAgentDid,
+      delegatedFrom: 'did:hedera:testnet:delegator',
+      delegationDepth: 1,
+      scopes: _input.requestedScopes,
+      expiresAt,
+      vc: { id: 'vc:mock:delegated', expirationDate: expiresAt },
     };
   }
 }

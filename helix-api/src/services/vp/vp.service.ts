@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import {
   AuditEvents,
+  AgentVCSchema,
   ErrorCodes,
   VPAgentDIDNotFoundError,
   VPAlreadyConsumedError,
@@ -15,9 +16,13 @@ import {
   VCIssuerNotFoundError,
   base58btcDecode,
   hashCanonicalPayload,
+  issueJWT,
   signedVPSchema,
+  validateChainIntegrity,
   verifySignature,
   type IAuditLogger,
+  type AgentVC,
+  type HelixJWTPayload,
   type SignedVP
 } from '@helix-id/core';
 import type { IDIDService } from '../did/IDIDService.js';
@@ -47,6 +52,12 @@ type HelixHttpErrorLike = {
   message: string;
 };
 
+interface JWTSessionOptions {
+  signingKey: string;
+  issuerDid: string;
+  ttlSeconds: number;
+}
+
 function makeVpId(): string {
   return `vp:helix:${randomBytes(12).toString('hex')}`;
 }
@@ -75,6 +86,15 @@ function decodeBase58ProofValue(proofValue: string): Uint8Array {
   return base58btcDecode(rawProofValue);
 }
 
+function extractScopes(vc: { credentialSubject?: unknown }): string[] {
+  const subject = vc.credentialSubject;
+  if (!subject || typeof subject !== 'object') {
+    return [];
+  }
+  const scopes = (subject as { privilegeScopes?: unknown }).privilegeScopes;
+  return Array.isArray(scopes) ? scopes.filter((scope): scope is string => typeof scope === 'string') : [];
+}
+
 export class VPService implements IVPService {
   constructor(
     private readonly vpRepository: VPRepository,
@@ -82,7 +102,8 @@ export class VPService implements IVPService {
     private readonly vcService: IVCService,
     private readonly serviceRegistry: ServiceRegistryRepository,
     private readonly auditLogger: IAuditLogger,
-    private readonly vpTtlSeconds = 300
+    private readonly vpTtlSeconds = 300,
+    private readonly jwtSessionOptions?: JWTSessionOptions
   ) {}
 
   async generateVPTemplate(params: VPTemplateParams, requestId: string): Promise<VPTemplateResult> {
@@ -133,7 +154,11 @@ export class VPService implements IVPService {
     return { unsignedVP, vpId, expiresAt: expiresAt.toISOString() };
   }
 
-  async verifyVP(signedVP: SignedVP, requestId: string): Promise<VPVerificationResult> {
+  async verifyVP(
+    signedVP: SignedVP,
+    requestId: string,
+    options: { issueSession?: boolean } = {},
+  ): Promise<VPVerificationResult> {
     let vpId = 'unknown';
     try {
       const parsed = signedVPSchema.safeParse(signedVP);
@@ -178,6 +203,7 @@ export class VPService implements IVPService {
         id?: string;
         issuer?: string;
         expirationDate?: string;
+        credentialSubject?: unknown;
         proof?: { proofValue?: string; verificationMethod?: string; type?: string; created?: string; proofPurpose?: string };
         [key: string]: unknown;
       };
@@ -221,6 +247,19 @@ export class VPService implements IVPService {
         throw new VCExpiredError();
       }
 
+      const agentParse = AgentVCSchema.safeParse(vc);
+      if (agentParse.success && (agentParse.data.credentialSubject.delegationDepth ?? 0) > 0) {
+        const chain = await this.reconstructDelegationChain(agentParse.data, requestId);
+        await this.verifyDelegationChain(chain, requestId);
+        this.auditLogger.log(AuditEvents.CHAIN_VERIFIED, {
+          requestId,
+          leafVcId: agentParse.data.id,
+          chainDepth: chain.length - 1,
+          agentDid: parsed.data.holder,
+          result: 'success',
+        });
+      }
+
       const consumed = await this.vpRepository.consumeAtomically(vpId);
       if (!consumed) {
         throw new VPAlreadyConsumedError();
@@ -235,14 +274,52 @@ export class VPService implements IVPService {
         verifiedAt
       });
 
-      // Step 10: Return from the cryptographically trusted parsed VP payload, not the DB record
-      return {
+      const result: VPVerificationResult = {
         valid: true,
         agentDid: parsed.data.holder,
         userDid: parsed.data.delegatedBy,
         targetService: parsed.data.targetService,
         verifiedAt
       };
+
+      if (options.issueSession) {
+        if (!this.jwtSessionOptions) {
+          throw new Error('jwt_session_not_configured');
+        }
+        const nowSeconds = Math.floor(Date.now() / 1000);
+        const expiresAtSeconds = nowSeconds + this.jwtSessionOptions.ttlSeconds;
+        const scopes = extractScopes(vc);
+        const payload: HelixJWTPayload = {
+          iss: this.jwtSessionOptions.issuerDid,
+          sub: parsed.data.holder,
+          iat: nowSeconds,
+          exp: expiresAtSeconds,
+          jti: `jwt:${randomBytes(16).toString('hex')}`,
+          userDid: parsed.data.delegatedBy,
+          targetService: parsed.data.targetService,
+          scopes,
+          vpId,
+        };
+        const token = issueJWT(payload, this.jwtSessionOptions.signingKey);
+        const sessionExpiresAt = new Date(expiresAtSeconds * 1000).toISOString();
+        this.auditLogger.log(AuditEvents.JWT_ISSUED, {
+          requestId,
+          jti: payload.jti,
+          agentDid: payload.sub,
+          userDid: payload.userDid,
+          targetService: payload.targetService,
+          vpId,
+          expiresAt: sessionExpiresAt,
+        });
+        result.session = {
+          token,
+          expiresAt: sessionExpiresAt,
+          publicKeyEndpoint: '/v1/sessions/public-key',
+        };
+      }
+
+      // Step 10: Return from the cryptographically trusted parsed VP payload, not the DB record
+      return result;
     } catch (error) {
       const internalReason =
         error instanceof Error ? `${error.message}${'code' in error ? ` [code=${(error as { code?: string }).code}]` : ''}` : String(error);
@@ -256,6 +333,107 @@ export class VPService implements IVPService {
         throw error;
       }
       throw new VPVerificationFailedError();
+    }
+  }
+
+  private async reconstructDelegationChain(leafVC: AgentVC, requestId: string): Promise<AgentVC[]> {
+    const chain: AgentVC[] = [leafVC];
+    let parentVcId = leafVC.credentialSubject.parentVcId;
+    while (parentVcId) {
+      const parent = await this.vcService.findRecordByVcId(parentVcId);
+      if (!parent) {
+        this.auditLogger.log(AuditEvents.CHAIN_REJECTED, {
+          requestId,
+          leafVcId: leafVC.id,
+          internalReason: 'parent_vc_not_found',
+          timestamp: new Date().toISOString(),
+        });
+        throw new Error('parent_vc_not_found');
+      }
+      if (parent.status === 'revoked') {
+        this.auditLogger.log(AuditEvents.CHAIN_REJECTED, {
+          requestId,
+          leafVcId: leafVC.id,
+          internalReason: 'vc_revoked',
+          parentVcId,
+          timestamp: new Date().toISOString(),
+        });
+        throw new Error('vc_revoked');
+      }
+      if (parent.status === 'expired') {
+        this.auditLogger.log(AuditEvents.CHAIN_REJECTED, {
+          requestId,
+          leafVcId: leafVC.id,
+          internalReason: 'vc_expired',
+          parentVcId,
+          timestamp: new Date().toISOString(),
+        });
+        throw new Error('vc_expired');
+      }
+      const parsedParent = AgentVCSchema.safeParse(parent.vc);
+      if (!parsedParent.success) {
+        this.auditLogger.log(AuditEvents.CHAIN_REJECTED, {
+          requestId,
+          leafVcId: leafVC.id,
+          internalReason: 'parent_vc_invalid_structure',
+          parentVcId,
+          timestamp: new Date().toISOString(),
+        });
+        throw new Error('parent_vc_invalid_structure');
+      }
+      chain.unshift(parsedParent.data);
+      parentVcId = parsedParent.data.credentialSubject.parentVcId;
+    }
+    return chain;
+  }
+
+  private async verifyDelegationChain(chain: AgentVC[], requestId: string): Promise<void> {
+    try {
+      validateChainIntegrity(chain);
+      for (const vc of chain) {
+        if (new Date(vc.expirationDate).getTime() <= Date.now()) {
+          throw new Error('vc_expired');
+        }
+        const status = await this.vcService.getVCStatus(vc.id);
+        if (status === 'revoked') {
+          throw new Error('vc_revoked');
+        }
+        if (status === 'expired') {
+          throw new Error('vc_expired');
+        }
+        await this.verifyVCSignedByIssuer(vc);
+        await this.didService.resolveDID(vc.credentialSubject.id);
+      }
+    } catch (error) {
+      const leafVcId = chain.at(-1)?.id;
+      this.auditLogger.log(AuditEvents.CHAIN_REJECTED, {
+        requestId,
+        leafVcId,
+        internalReason: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString(),
+      });
+      throw error;
+    }
+  }
+
+  private async verifyVCSignedByIssuer(vc: AgentVC): Promise<void> {
+    if (!vc.issuer || !vc.proof?.proofValue) {
+      throw new VCSignatureInvalidError('The Verifiable Credential proof is missing');
+    }
+    let issuerDidDocument: Awaited<ReturnType<IDIDService['resolveDID']>>;
+    try {
+      issuerDidDocument = await this.didService.resolveDID(vc.issuer);
+    } catch {
+      throw new VCIssuerNotFoundError();
+    }
+    const issuerPublicKeyHex = extractPublicKeyHex(issuerDidDocument);
+    const { proof, ...payload } = vc;
+    const vcHash = hashCanonicalPayload(payload);
+    const proofBytes = decodeBase58ProofValue(proof.proofValue);
+    const signatureHex = Buffer.from(proofBytes).toString('hex');
+    const valid = await verifySignature(vcHash, signatureHex, issuerPublicKeyHex);
+    if (!valid) {
+      throw new VCSignatureInvalidError();
     }
   }
 }

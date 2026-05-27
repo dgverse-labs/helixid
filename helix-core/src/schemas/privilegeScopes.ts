@@ -7,6 +7,8 @@ export const ALLOWED_PRIVILEGE_SCOPES = [
   'write:payments',
   'read:inventory',
   'write:inventory',
+  'read:catalog',
+  'write:catalog',
 ] as const;
 
 export type PrivilegeScope = (typeof ALLOWED_PRIVILEGE_SCOPES)[number];

@@ -34,7 +34,7 @@ export interface ServiceEntry {
 
 export interface IAgentService {
   generateEnrollmentToken(
-    input: { agentName: string; requestedScopes: string[]; requestedDomains?: string[] },
+    input: { agentName: string; requestedScopes: string[]; requestedDomains?: string[]; maxDelegationDepth?: number },
     requestId: string
   ): Promise<EnrollmentTokenResult>;
   processOnboardStep1(

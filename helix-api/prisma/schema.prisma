@@ -53,11 +53,16 @@ model Vc {
   expiresAt        DateTime
   revokedAt        DateTime?
   renewedByVcId    String?
+  delegatedFrom    String?
+  delegationDepth  Int?
+  maxDelegationDepth Int?
+  parentVcId       String?
   createdAt        DateTime  @default(now())
   did              Did       @relation(fields: [subjectDid], references: [id])
 
   @@index([subjectDid])
   @@index([vcId])
+  @@index([parentVcId])
   @@map("vcs")
 }
 
@@ -91,6 +96,7 @@ model EnrollmentToken {
   agentName        String
   requestedScopes  String
   requestedDomains String
+  maxDelegationDepth Int         @default(0)
   expiresAt        DateTime
   usedAt           DateTime?
   createdAt        DateTime    @default(now())

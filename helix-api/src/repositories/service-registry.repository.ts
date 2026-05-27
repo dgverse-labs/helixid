@@ -8,7 +8,7 @@ export class ServiceNotFoundError extends Error {
 export class ServiceRegistryRepository {
   private readonly services: Set<string>;
 
-  constructor(seedServices: string[] = ['amazon']) {
+  constructor(seedServices: string[] = ['amazon', 'helix-delegation']) {
     this.services = new Set(seedServices);
   }
 

@@ -28,7 +28,13 @@ import {
   ChallengeSignatureInvalidError,
   AgentAlreadyOnboardedError,
   ServiceNotFoundError,
-  ServiceAlreadyExistsError
+  ServiceAlreadyExistsError,
+  DelegationNotPermittedError,
+  DelegationDepthExceededError,
+  DelegationScopeEscalationError,
+  DelegationChainInvalidError,
+  DelegationParentVCNotFoundError,
+  DelegationParentVCRevokedError
 } from '@helix-id/core';
 
 /**
@@ -74,6 +80,18 @@ export function mapApiError(body: unknown): HelixError {
       return new ServiceNotFoundError(message);
     case ErrorCode.SERVICE_ALREADY_EXISTS:
       return new ServiceAlreadyExistsError(message);
+    case ErrorCode.DELEGATION_NOT_PERMITTED:
+      return new DelegationNotPermittedError(message);
+    case ErrorCode.DELEGATION_DEPTH_EXCEEDED:
+      return new DelegationDepthExceededError(message);
+    case ErrorCode.DELEGATION_SCOPE_ESCALATION:
+      return new DelegationScopeEscalationError(message);
+    case ErrorCode.DELEGATION_CHAIN_INVALID:
+      return new DelegationChainInvalidError(message);
+    case ErrorCode.DELEGATION_PARENT_VC_NOT_FOUND:
+      return new DelegationParentVCNotFoundError(message);
+    case ErrorCode.DELEGATION_PARENT_VC_REVOKED:
+      return new DelegationParentVCRevokedError(message);
     default:
       // Fallback to base HelixError for unknown codes
       return new HelixError(

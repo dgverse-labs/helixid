@@ -70,6 +70,11 @@ describe('HelixClient Branch Coverage', () => {
         const c2 = new HelixClient({ post: vi.fn() } as any, 'http://localhost');
         await expect(c2.getStatusList('l1')).rejects.toThrow('GET not implemented by adapter');
     });
+
+    it('throws for fetchSessionPublicKey if GET missing', async () => {
+        const c2 = new HelixClient({ post: vi.fn() } as any, 'http://localhost');
+        await expect(c2.fetchSessionPublicKey()).rejects.toThrow('GET not implemented by adapter');
+    });
   });
 
   describe('checkVCStatus branches', () => {

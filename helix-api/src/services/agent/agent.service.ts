@@ -83,7 +83,7 @@ export class AgentService implements IAgentService {
   ) {}
 
   async generateEnrollmentToken(
-    input: { agentName: string; requestedScopes: string[]; requestedDomains?: string[] },
+    input: { agentName: string; requestedScopes: string[]; requestedDomains?: string[]; maxDelegationDepth?: number },
     requestId: string
   ): Promise<{ token: string; expiresAt: string }> {
     const token = `enroll:${randomBytes(12).toString('hex')}`;
@@ -94,6 +94,7 @@ export class AgentService implements IAgentService {
       agentName: input.agentName,
       requestedScopes: JSON.stringify(input.requestedScopes),
       requestedDomains: JSON.stringify(input.requestedDomains ?? []),
+      maxDelegationDepth: input.maxDelegationDepth ?? 0,
       expiresAt
     });
     this.auditLogger.log(AuditEvents.ENROLLMENT_TOKEN_GENERATED, {
@@ -254,6 +255,8 @@ export class AgentService implements IAgentService {
         subjectType: 'agent',
         privilegeScopes: scopes,
         agentName,
+        delegationDepth: 0,
+        maxDelegationDepth: enrollmentToken?.maxDelegationDepth ?? 0,
         expiresInSeconds: this.enrollmentTokenTtlSeconds * 100
       },
       requestId

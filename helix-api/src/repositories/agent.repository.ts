@@ -10,6 +10,7 @@ export interface EnrollmentTokenRecord {
   agentName: string;
   requestedScopes: string;
   requestedDomains: string;
+  maxDelegationDepth?: number;
   expiresAt: Date;
   usedAt: Date | null;
   createdAt: Date;
@@ -73,6 +74,18 @@ function requireChallengeRow(row: ChallengeRecord | undefined): ChallengeRecord 
   return row;
 }
 
+function requireEnrollmentTokenRow(row: EnrollmentTokenRecord | undefined): EnrollmentTokenRecord {
+  if (!row) {
+    throw new Error('Enrollment token query returned no rows');
+  }
+  return row;
+}
+
+function hasRealRaw(prisma: PrismaClient): boolean {
+  return typeof (prisma as Partial<PrismaRaw>).$queryRawUnsafe === 'function'
+    && typeof (prisma as { $connect?: unknown }).$connect === 'function';
+}
+
 export class AgentRepository {
   private readonly enrollmentTokens = new Map<string, EnrollmentTokenRecord>();
   private readonly challenges = new Map<string, ChallengeRecord>();
@@ -81,17 +94,35 @@ export class AgentRepository {
   constructor(private readonly prisma?: PrismaClient) {}
 
   async createEnrollmentToken(
-    data: Omit<EnrollmentTokenRecord, 'id' | 'usedAt' | 'createdAt'>
+    data: Omit<EnrollmentTokenRecord, 'id' | 'usedAt' | 'createdAt' | 'maxDelegationDepth'> & { maxDelegationDepth?: number }
   ): Promise<EnrollmentTokenRecord> {
     if (this.prisma) {
-      return this.prisma.enrollmentToken.create({
-        data
-      });
+      const record = await this.prisma.enrollmentToken.create({
+        data: {
+          tokenHash: data.tokenHash,
+          agentName: data.agentName,
+          requestedScopes: data.requestedScopes,
+          requestedDomains: data.requestedDomains,
+          expiresAt: data.expiresAt,
+        }
+      }) as EnrollmentTokenRecord;
+      if ((data.maxDelegationDepth ?? 0) > 0 && hasRealRaw(this.prisma)) {
+        const rows = await (this.prisma as PrismaRaw).$queryRawUnsafe<EnrollmentTokenRecord[]>(
+          `UPDATE "enrollment_tokens" SET "maxDelegationDepth" = $1 WHERE "id" = $2 RETURNING *`,
+          data.maxDelegationDepth ?? 0,
+          record.id,
+        );
+        return requireEnrollmentTokenRow(rows[0]);
+      }
+      return data.maxDelegationDepth === undefined
+        ? record
+        : { ...record, maxDelegationDepth: data.maxDelegationDepth ?? record.maxDelegationDepth ?? 0 };
     }
 
     const record: EnrollmentTokenRecord = {
       id: makeId('et'),
       ...data,
+      maxDelegationDepth: data.maxDelegationDepth ?? 0,
       usedAt: null,
       createdAt: new Date()
     };
@@ -100,16 +131,30 @@ export class AgentRepository {
   }
 
   async findEnrollmentTokenByHash(tokenHash: string): Promise<EnrollmentTokenRecord | null> {
+    if (this.prisma && hasRealRaw(this.prisma)) {
+      const rows = await (this.prisma as PrismaRaw).$queryRawUnsafe<EnrollmentTokenRecord[]>(
+        `SELECT * FROM "enrollment_tokens" WHERE "tokenHash" = $1 LIMIT 1`,
+        tokenHash,
+      );
+      return rows[0] ? rows[0] : null;
+    }
     if (this.prisma) {
-      return this.prisma.enrollmentToken.findUnique({ where: { tokenHash } });
+      return this.prisma.enrollmentToken.findUnique({ where: { tokenHash } }) as Promise<EnrollmentTokenRecord | null>;
     }
 
     return this.enrollmentTokens.get(tokenHash) ?? null;
   }
 
   async findEnrollmentTokenById(id: string): Promise<EnrollmentTokenRecord | null> {
+    if (this.prisma && hasRealRaw(this.prisma)) {
+      const rows = await (this.prisma as PrismaRaw).$queryRawUnsafe<EnrollmentTokenRecord[]>(
+        `SELECT * FROM "enrollment_tokens" WHERE "id" = $1 LIMIT 1`,
+        id,
+      );
+      return rows[0] ? rows[0] : null;
+    }
     if (this.prisma) {
-      return this.prisma.enrollmentToken.findUnique({ where: { id } });
+      return this.prisma.enrollmentToken.findUnique({ where: { id } }) as Promise<EnrollmentTokenRecord | null>;
     }
 
     for (const token of this.enrollmentTokens.values()) {

@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { expect } from 'vitest';
 import { AgentWallet, HelixClient } from '@helix-id/sdk-js';
+import { derivePublicKey, generateKeyPair } from '@helix-id/core';
 import { createTestPrisma } from './prisma.js';
 
 export const LIVE_HEDERA_TIMEOUT_MS = 240_000;
@@ -52,6 +53,17 @@ export async function startLiveApi(): Promise<LiveApi> {
     apiEnv['HELIX_ADMIN_API_KEY'] ?? workspaceEnv['HELIX_ADMIN_API_KEY'] ?? process.env['HELIX_ADMIN_API_KEY'] ?? 'test-admin-key-0001';
   const issuerDid = apiEnv['HELIX_ISSUER_DID'] ?? workspaceEnv['HELIX_ISSUER_DID'] ?? process.env['HELIX_ISSUER_DID'];
   const databaseUrl = testEnv['DATABASE_URL'] ?? process.env['DATABASE_URL'];
+  const generatedJwtKeyPair = generateKeyPair();
+  const jwtSigningKey =
+    apiEnv['HELIX_JWT_SIGNING_KEY'] ??
+    workspaceEnv['HELIX_JWT_SIGNING_KEY'] ??
+    process.env['HELIX_JWT_SIGNING_KEY'] ??
+    generatedJwtKeyPair.privateKey;
+  const jwtPublicKey =
+    apiEnv['HELIX_JWT_PUBLIC_KEY'] ??
+    workspaceEnv['HELIX_JWT_PUBLIC_KEY'] ??
+    process.env['HELIX_JWT_PUBLIC_KEY'] ??
+    derivePublicKey(jwtSigningKey);
   assertTestDatabaseUrl(databaseUrl);
 
   const env = {
@@ -63,6 +75,9 @@ export async function startLiveApi(): Promise<LiveApi> {
     HEDERA_TOPIC_ID: apiEnv['HEDERA_TOPIC_ID'] ?? workspaceEnv['HEDERA_TOPIC_ID'] ?? process.env['HEDERA_TOPIC_ID'],
     HELIX_SIGNING_KEY: apiEnv['HELIX_SIGNING_KEY'] ?? workspaceEnv['HELIX_SIGNING_KEY'] ?? process.env['HELIX_SIGNING_KEY'],
     HELIX_ISSUER_DID: issuerDid,
+    HELIX_JWT_SIGNING_KEY: jwtSigningKey,
+    HELIX_JWT_PUBLIC_KEY: jwtPublicKey,
+    JWT_SESSION_TTL_SECONDS: apiEnv['JWT_SESSION_TTL_SECONDS'] ?? workspaceEnv['JWT_SESSION_TTL_SECONDS'] ?? process.env['JWT_SESSION_TTL_SECONDS'] ?? '600',
     HELIX_ADMIN_API_KEY: adminApiKey,
     NODE_ENV: 'test',
     PORT: String(port),
@@ -103,6 +118,7 @@ export async function onboardLiveAgent(
     requestedScopes: string[];
     requestedDomains: string[];
     passphrase: string;
+    maxDelegationDepth?: number;
   },
 ): Promise<LiveAgent> {
   const dir = await mkdtemp(join(tmpdir(), 'helix-live-agent-'));
@@ -115,6 +131,7 @@ export async function onboardLiveAgent(
       agentName: options.agentName,
       requestedScopes: options.requestedScopes,
       requestedDomains: options.requestedDomains,
+      ...(options.maxDelegationDepth === undefined ? {} : { maxDelegationDepth: options.maxDelegationDepth }),
     }),
   });
   expect(tokenRes.status).toBe(201);

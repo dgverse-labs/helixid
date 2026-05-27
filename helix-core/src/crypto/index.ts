@@ -16,3 +16,4 @@ export {
   toCanonicalJson,
   verifySignature,
 } from './vp.js';
+export * from './jwt.js';

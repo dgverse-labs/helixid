@@ -1,14 +1,19 @@
 import {
   generateKeyPair,
   getBit,
+  verifyJWT,
   signBytes,
   type DIDDocument,
+  type HelixJWTPayload,
   type KeyPair,
   type ServiceEndpoint,
   type SignedVC,
+  type SignedVP,
+  type UnsignedVP,
 } from '@helix-id/core';
 import { HttpAdapter } from '../http/HttpAdapter.js';
 import { AgentWallet } from '../wallet/AgentWallet.js';
+import { VPBuilder } from '../vp/VPBuilder.js';
 
 interface PendingKeyPair {
   publicKey: string;
@@ -57,6 +62,44 @@ export interface StatusListCredentialResponse {
     encodedList: string;
   };
   [key: string]: unknown;
+}
+
+export interface VPVerificationResult {
+  valid: true;
+  agentDid: string;
+  userDid: string;
+  targetService: string;
+  verifiedAt: string;
+  session?: {
+    token: string;
+    expiresAt: string;
+    publicKeyEndpoint: string;
+  };
+}
+
+export interface DelegateVCOptions {
+  delegateeAgentDid: string;
+  requestedScopes: string[];
+  expiresInSeconds?: number;
+  walletPassphrase: string;
+  walletFilePath: string;
+}
+
+export interface DelegateVCResult {
+  vcId: string;
+  delegateeAgentDid: string;
+  delegatedFrom: string;
+  delegationDepth: number;
+  scopes: string[];
+  expiresAt: string;
+  vc: Record<string, unknown>;
+}
+
+export interface SessionPublicKeyResponse {
+  publicKeyHex: string;
+  publicKeyMultibase: string;
+  alg: 'EdDSA';
+  crv: 'Ed25519';
 }
 
 type DIDResolveResponse = {
@@ -168,6 +211,44 @@ export class HelixClient {
     const listCredential = await this.http.get<StatusListCredentialResponse>(statusListCredential);
     const encodedList = listCredential.credentialSubject.encodedList;
     return getBit(encodedList, Number(statusListIndex)) === 1 ? 'revoked' : 'active';
+  }
+
+  async verifyVP(signedVP: SignedVP, options: { session?: boolean } = {}): Promise<VPVerificationResult> {
+    return this.http.post('/v1/vp/verify', {
+      signedVP,
+      ...(options.session === true ? { session: true } : {}),
+    });
+  }
+
+  async fetchSessionPublicKey(): Promise<string> {
+    if (!this.http.get) throw new Error('GET not implemented by adapter');
+    const response = await this.http.get<SessionPublicKeyResponse>('/v1/sessions/public-key');
+    return response.publicKeyHex;
+  }
+
+  verifySessionToken(token: string, publicKeyHex: string): HelixJWTPayload {
+    return verifyJWT(token, publicKeyHex);
+  }
+
+  async delegate(options: DelegateVCOptions): Promise<DelegateVCResult> {
+    const wallet = await new AgentWallet().load(options.walletPassphrase, options.walletFilePath);
+    const template = await this.http.post<{
+      unsignedVP: UnsignedVP;
+      vpId: string;
+      expiresAt: string;
+    }>('/v1/vp/template', {
+      agentDid: wallet.did,
+      userDid: options.delegateeAgentDid,
+      targetService: 'helix-delegation',
+      vcType: 'HelixAgentCredential',
+    });
+    const signedVP = await new VPBuilder(template.unsignedVP).sign(wallet.privateKeyHex, `${wallet.did}#key-1`);
+    return this.http.post('/v1/vcs/delegate', {
+      delegatorVP: signedVP,
+      delegateeAgentDid: options.delegateeAgentDid,
+      requestedScopes: options.requestedScopes,
+      ...(options.expiresInSeconds === undefined ? {} : { expiresInSeconds: options.expiresInSeconds }),
+    });
   }
 
   async requestOnboardingChallenge(

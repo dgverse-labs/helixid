@@ -1,7 +1,7 @@
 // Copyright 2026 DgVerse LLP
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { HelixClient } from '../../../src/client/HelixClient.js';
-import { createStatusList } from '@helix-id/core';
+import { createStatusList, generateKeyPair, issueJWT } from '@helix-id/core';
 
 describe('HelixClient Full Unit Tests', () => {
   let mockHttp: any;
@@ -92,5 +92,47 @@ describe('HelixClient Full Unit Tests', () => {
     mockHttp.get.mockResolvedValue({});
     await client.getService('s1');
     expect(mockHttp.get).toHaveBeenCalledWith('/v1/services/s1');
+  });
+
+  it('verifies VP through API with optional session flag', async () => {
+    mockHttp.post.mockResolvedValue({ valid: true });
+    await client.verifyVP({ id: 'vp:helix:test' } as any);
+    expect(mockHttp.post).toHaveBeenCalledWith('/v1/vp/verify', { signedVP: { id: 'vp:helix:test' } });
+
+    await client.verifyVP({ id: 'vp:helix:test' } as any, { session: true });
+    expect(mockHttp.post).toHaveBeenCalledWith('/v1/vp/verify', {
+      signedVP: { id: 'vp:helix:test' },
+      session: true,
+    });
+  });
+
+  it('fetches and locally verifies JWT session tokens', async () => {
+    const keys = generateKeyPair();
+    mockHttp.get.mockResolvedValue({
+      publicKeyHex: keys.publicKey,
+      publicKeyMultibase: 'zkey',
+      alg: 'EdDSA',
+      crv: 'Ed25519',
+    });
+
+    await expect(client.fetchSessionPublicKey()).resolves.toBe(keys.publicKey);
+    expect(mockHttp.get).toHaveBeenCalledWith('/v1/sessions/public-key');
+
+    const token = issueJWT({
+      iss: 'did:hedera:testnet:issuer',
+      sub: 'did:hedera:testnet:agent',
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 600,
+      jti: 'jwt:test',
+      userDid: 'did:hedera:testnet:user',
+      targetService: 'amazon',
+      scopes: ['read:orders'],
+      vpId: 'vp:helix:test',
+    }, keys.privateKey);
+
+    expect(client.verifySessionToken(token, keys.publicKey)).toMatchObject({
+      sub: 'did:hedera:testnet:agent',
+      targetService: 'amazon',
+    });
   });
 });

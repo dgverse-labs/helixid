@@ -26,6 +26,7 @@ import vcRoutes from './routes/vc/index.js';
 import statusListRoutes from './routes/status-list/index.js';
 import vpRoutes from './routes/vp/index.js';
 import agentRoutes from './routes/agent/index.js';
+import sessionRoutes from './routes/sessions/index.js';
 
 const config = loadConfigFromEnv();
 const databaseName = getDatabaseName(config.DATABASE_URL);
@@ -61,7 +62,12 @@ const vcService = new VCService(
   config.HELIX_ISSUER_DID,
   config.API_BASE_URL,
 );
-const vpService = new VPService(vpRepository, didService, vcService, serviceRegistry, auditLogger);
+const vpService = new VPService(vpRepository, didService, vcService, serviceRegistry, auditLogger, config.VP_TTL_SECONDS, {
+  signingKey: config.HELIX_JWT_SIGNING_KEY,
+  issuerDid: config.HELIX_ISSUER_DID,
+  ttlSeconds: config.JWT_SESSION_TTL_SECONDS,
+});
+vcService.setVPService(vpService);
 const agentService = new AgentService(agentRepository, didService, vcService, auditLogger);
 
 const app = Fastify({
@@ -128,9 +134,10 @@ async function ensureIssuerDidCached(): Promise<void> {
 }
 
 await app.register(didRoutes, { didService });
-await app.register(vcRoutes, { prefix: '/v1/vcs', vcService, adminApiKey: config.HELIX_ADMIN_API_KEY });
+await app.register(vcRoutes, { prefix: '/v1/vcs', vcService, vpService, adminApiKey: config.HELIX_ADMIN_API_KEY });
 await app.register(statusListRoutes, { prefix: '/v1/status-list', vcService });
 await app.register(vpRoutes, { prefix: '/v1/vp', vpService });
+await app.register(sessionRoutes, { prefix: '/v1/sessions', publicKeyHex: config.HELIX_JWT_PUBLIC_KEY });
 await app.register(agentRoutes, { prefix: '/v1', agentService });
 
 const shutdown = async (): Promise<void> => {

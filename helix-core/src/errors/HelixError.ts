@@ -206,6 +206,42 @@ export class VCIssuerNotFoundError extends HelixError {
   }
 }
 
+export class DelegationNotPermittedError extends HelixError {
+  constructor(message = 'Delegation is not permitted for this credential') {
+    super('DELEGATION_NOT_PERMITTED', message, 403);
+  }
+}
+
+export class DelegationDepthExceededError extends HelixError {
+  constructor(message = 'Delegation depth has been exceeded') {
+    super('DELEGATION_DEPTH_EXCEEDED', message, 400);
+  }
+}
+
+export class DelegationScopeEscalationError extends HelixError {
+  constructor(scope: string) {
+    super('DELEGATION_SCOPE_ESCALATION', `Delegated scope is not permitted by the parent credential: ${scope}`, 400);
+  }
+}
+
+export class DelegationChainInvalidError extends HelixError {
+  constructor(reason: string) {
+    super('DELEGATION_CHAIN_INVALID', `Delegation chain is invalid: ${reason}`, 400, { reason });
+  }
+}
+
+export class DelegationParentVCNotFoundError extends HelixError {
+  constructor(message = 'Parent VC in delegation chain was not found') {
+    super('DELEGATION_PARENT_VC_NOT_FOUND', message, 404);
+  }
+}
+
+export class DelegationParentVCRevokedError extends HelixError {
+  constructor(message = 'Parent VC in delegation chain has been revoked') {
+    super('DELEGATION_PARENT_VC_REVOKED', message, 400);
+  }
+}
+
 export class VPNotFoundError extends HelixError {
   constructor(message = 'VP not found') {
     super('VP_NOT_FOUND', message, 404);
@@ -251,6 +287,24 @@ export class VPNoActiveVCError extends HelixError {
 export class VPMultipleActiveVCError extends HelixError {
   constructor(message = 'Multiple active VCs found for agent') {
     super('VP_MULTIPLE_ACTIVE_VC', message, 400);
+  }
+}
+
+export class InvalidJWTError extends HelixError {
+  constructor(message = 'JWT is invalid') {
+    super('JWT_INVALID', message, 400);
+  }
+}
+
+export class JWTExpiredError extends HelixError {
+  constructor(message = 'JWT has expired') {
+    super('JWT_EXPIRED', message, 401);
+  }
+}
+
+export class JWTPublicKeyNotFoundError extends HelixError {
+  constructor(message = 'JWT public key is not configured') {
+    super('JWT_PUBLIC_KEY_NOT_FOUND', message, 500);
   }
 }
 

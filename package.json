@@ -13,6 +13,7 @@
     "test:e2e": "turbo run test --filter=@helix-id/e2e",
     "typecheck": "turbo run typecheck",
     "format": "prettier --write \"**/*.{ts,json,md}\" --ignore-path .gitignore",
+    "setup": "pnpm --filter @helix-id/api exec tsx ../scripts/setup.ts",
     "dev": "turbo run dev",
     "dev:api": "turbo run dev --filter=@helix-id/api"
   },
