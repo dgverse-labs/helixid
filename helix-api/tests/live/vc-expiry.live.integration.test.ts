@@ -22,7 +22,7 @@ describe('VC Expiry Live Integration', () => {
   });
 
   it('rejects a VP carrying a VC that expired after signing', async () => {
-    const client = new HelixClient(api.baseUrl);
+    const client = new HelixClient(api.baseUrl, { adminApiKey: api.adminApiKey });
     const http = supertest(api.baseUrl);
     const agent = await onboardLiveAgent(api, client, {
       agentName: 'Live Expiry Agent',

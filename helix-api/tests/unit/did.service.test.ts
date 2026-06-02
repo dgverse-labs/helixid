@@ -81,11 +81,11 @@ describe('DIDService Unit Tests', () => {
       await expect(service.resolveDID('did:helix:fake', {}, requestId)).rejects.toThrow(/DID not found/);
     });
 
-    it('resolves from cache by default', async () => {
+    it('resolves from the database by default', async () => {
       const doc = { id: 'did:helix:123' };
       mockRepo.findDidById.mockResolvedValue({ id: 'did:helix:123', didDocument: doc });
       const result = await service.resolveDID('did:helix:123', {}, requestId);
-      expect(result.source).toBe('cache');
+      expect(result.source).toBe('db');
       expect(result.didDocument).toEqual(doc);
     });
 
@@ -105,7 +105,7 @@ describe('DIDService Unit Tests', () => {
       expect(result.didDocument).toEqual(liveDoc);
     });
 
-    it('falls back to cache if live resolution fails', async () => {
+    it('fails honestly if live resolution fails', async () => {
       const doc = { id: 'did:helix:123' };
       mockRepo.findDidById.mockResolvedValue({ 
         id: 'did:helix:123', 
@@ -115,8 +115,8 @@ describe('DIDService Unit Tests', () => {
       });
       mockHedera.fetchMessage.mockRejectedValue(new Error('Fetch failed'));
 
-      const result = await service.resolveDID('did:helix:123', { live: true }, requestId);
-      expect(result.source).toBe('hedera');
+      await expect(service.resolveDID('did:helix:123', { live: true }, requestId))
+        .rejects.toMatchObject({ code: 'HEDERA_RESOLUTION_FAILED' });
     });
   });
 

@@ -24,12 +24,14 @@ export interface IssueVCResult {
 
 export interface IVCService {
   findActiveBySubjectDid(subjectDid: string, vcType?: string): Promise<Record<string, unknown> | null>;
+  findActiveByVcIdForSubject(vcId: string, subjectDid: string, vcType?: string): Promise<Record<string, unknown> | null>;
   findRecordByVcId(vcId: string): Promise<{
     vcId: string;
     vc: Record<string, unknown>;
     status: VCStatus;
   } | null>;
   getVCStatus(vcId: string): Promise<VCStatus>;
+  getStatusList(listId: string): Promise<{ credentialSubject: { encodedList: string } }>;
   issueVC(input: IssueVCInput, requestId: string): Promise<IssueVCResult>;
   delegateVC(input: {
     delegatorVP: SignedVP;

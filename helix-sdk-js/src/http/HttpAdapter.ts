@@ -3,9 +3,11 @@ import { mapApiError } from '../errors/index.js';
 
 export class HttpAdapter {
   private readonly baseUrl: string;
+  private readonly adminApiKey: string | undefined;
 
-  constructor(baseUrl: string) {
+  constructor(baseUrl: string, options: { adminApiKey?: string } = {}) {
     this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    this.adminApiKey = options.adminApiKey;
   }
 
   async get<T>(path: string): Promise<T> {
@@ -24,7 +26,10 @@ export class HttpAdapter {
     const url = path.startsWith('http') ? path : `${this.baseUrl}${path}`;
     const init: RequestInit = {
       method,
-      headers: body === undefined ? {} : { 'content-type': 'application/json' },
+      headers: {
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(this.adminApiKey ? { 'x-admin-api-key': this.adminApiKey } : {}),
+      },
     };
     if (body !== undefined) {
       init.body = JSON.stringify(body);

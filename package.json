@@ -14,6 +14,11 @@
     "typecheck": "turbo run typecheck",
     "format": "prettier --write \"**/*.{ts,json,md}\" --ignore-path .gitignore",
     "setup": "pnpm --filter @helix-id/api exec tsx ../scripts/setup.ts",
+    "setup:hedera": "pnpm --filter @helix-id/api exec tsx ../scripts/setup-hedera.ts",
+    "example:verify-vp": "pnpm --filter @helix-id/api exec tsx ../examples/verify-vp.ts",
+    "example:scope-check": "pnpm --filter @helix-id/api exec tsx ../examples/scope-check.ts",
+    "example:self-verify": "pnpm --filter @helix-id/api exec tsx ../examples/self-verify.ts",
+    "example:revocation-check": "pnpm --filter @helix-id/api exec tsx ../examples/revocation-check.ts",
     "dev": "turbo run dev",
     "dev:api": "turbo run dev --filter=@helix-id/api"
   },

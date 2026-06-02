@@ -6,7 +6,7 @@ export class MockVPService implements IVPService {
       vpId: 'vp:helix:mock',
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
       unsignedVP: {
-        '@context': ['https://www.w3.org/2018/credentials/v1'],
+        '@context': ['https://www.w3.org/ns/credentials/v2'],
         type: ['VerifiablePresentation'],
         id: 'vp:helix:mock',
         holder: params.agentDid,

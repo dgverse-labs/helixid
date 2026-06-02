@@ -1,6 +1,10 @@
 // Copyright 2026 DgVerse LLP
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { HelixClient } from '../../../src/client/HelixClient.js';
+import { AgentWallet } from '../../../src/wallet/AgentWallet.js';
 import { createStatusList, generateKeyPair, issueJWT } from '@helix-id/core';
 
 describe('HelixClient Full Unit Tests', () => {
@@ -59,14 +63,14 @@ describe('HelixClient Full Unit Tests', () => {
   });
 
   it('checks VC status - expired', async () => {
-    const vc = { expirationDate: new Date(Date.now() - 1000).toISOString() } as any;
+    const vc = { validUntil: new Date(Date.now() - 1000).toISOString() } as any;
     const status = await client.checkVCStatus(vc);
     expect(status).toBe('expired');
   });
 
   it('checks VC status - active/revoked', async () => {
     const vc = { 
-      expirationDate: new Date(Date.now() + 10000).toISOString(),
+      validUntil: new Date(Date.now() + 10000).toISOString(),
       credentialStatus: { statusListCredential: 'http://list', statusListIndex: '0' }
     } as any;
     const validList = createStatusList();
@@ -118,12 +122,14 @@ describe('HelixClient Full Unit Tests', () => {
       userDid: 'did:hedera:testnet:user',
       targetService: 'orders',
       vcType: 'HelixAgentCredential',
+      vcId: 'vc:helix:selected',
     })).resolves.toMatchObject({ vpId: 'vp:helix:test' });
     expect(mockHttp.post).toHaveBeenCalledWith('/v1/vp/template', {
       agentDid: 'did:hedera:testnet:agent',
       userDid: 'did:hedera:testnet:user',
       targetService: 'orders',
       vcType: 'HelixAgentCredential',
+      vcId: 'vc:helix:selected',
     });
   });
 
@@ -155,5 +161,114 @@ describe('HelixClient Full Unit Tests', () => {
       sub: 'did:hedera:testnet:agent',
       targetService: 'amazon',
     });
+  });
+
+  it('delegates by signing a template from the selected wallet credential', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'helix-delegate-'));
+    const walletPath = join(dir, 'wallet.json');
+    const keys = generateKeyPair();
+    const wallet = new AgentWallet();
+
+    try {
+      await wallet.save({
+        did: 'did:hedera:testnet:delegator',
+        publicKeyHex: keys.publicKey,
+        privateKeyHex: keys.privateKey,
+        credentials: [AgentWallet.credentialFromVC('vc:helix:selected', {
+          id: 'vc:helix:selected',
+          type: ['VerifiableCredential', 'HelixAgentCredential'],
+          issuer: 'did:hedera:testnet:issuer',
+          credentialSubject: { id: 'did:hedera:testnet:delegator' },
+        })],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }, 'pass', walletPath);
+
+      mockHttp.post
+        .mockResolvedValueOnce({
+          unsignedVP: {
+            '@context': ['https://www.w3.org/ns/credentials/v2'],
+            type: ['VerifiablePresentation'],
+            id: 'vp:helix:delegate',
+            holder: 'did:hedera:testnet:delegator',
+            verifiableCredential: [{ id: 'vc:helix:selected' }],
+            nonce: 'a'.repeat(64),
+            expirationDate: new Date(Date.now() + 60_000).toISOString(),
+            delegatedBy: 'did:hedera:testnet:delegatee',
+            targetService: 'helix-delegation',
+          },
+          vpId: 'vp:helix:delegate',
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        })
+        .mockResolvedValueOnce({ vcId: 'vc:helix:delegated' });
+
+      await expect(client.delegate({
+        walletFilePath: walletPath,
+        walletPassphrase: 'pass',
+        delegateeAgentDid: 'did:hedera:testnet:delegatee',
+        requestedScopes: ['read:orders'],
+        expiresInSeconds: 3600,
+        vcId: 'vc:helix:selected',
+      })).resolves.toEqual({ vcId: 'vc:helix:delegated' });
+
+      expect(mockHttp.post).toHaveBeenNthCalledWith(1, '/v1/vp/template', {
+        agentDid: 'did:hedera:testnet:delegator',
+        userDid: 'did:hedera:testnet:delegatee',
+        targetService: 'helix-delegation',
+        vcType: 'HelixAgentCredential',
+        vcId: 'vc:helix:selected',
+      });
+      expect(mockHttp.post).toHaveBeenNthCalledWith(2, '/v1/vcs/delegate', {
+        delegatorVP: expect.objectContaining({
+          id: 'vp:helix:delegate',
+          proof: expect.objectContaining({
+            verificationMethod: 'did:hedera:testnet:delegator#key-1',
+          }),
+        }),
+        delegateeAgentDid: 'did:hedera:testnet:delegatee',
+        requestedScopes: ['read:orders'],
+        expiresInSeconds: 3600,
+      });
+
+      mockHttp.post.mockReset();
+      mockHttp.post
+        .mockResolvedValueOnce({
+          unsignedVP: {
+            '@context': ['https://www.w3.org/ns/credentials/v2'],
+            type: ['VerifiablePresentation'],
+            id: 'vp:helix:delegate-minimal',
+            holder: 'did:hedera:testnet:delegator',
+            verifiableCredential: [{ id: 'vc:helix:selected' }],
+            nonce: 'b'.repeat(64),
+            expirationDate: new Date(Date.now() + 60_000).toISOString(),
+            delegatedBy: 'did:hedera:testnet:delegatee',
+            targetService: 'helix-delegation',
+          },
+          vpId: 'vp:helix:delegate-minimal',
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        })
+        .mockResolvedValueOnce({ vcId: 'vc:helix:delegated-minimal' });
+
+      await client.delegate({
+        walletFilePath: walletPath,
+        walletPassphrase: 'pass',
+        delegateeAgentDid: 'did:hedera:testnet:delegatee',
+        requestedScopes: ['read:orders'],
+      });
+
+      expect(mockHttp.post).toHaveBeenNthCalledWith(1, '/v1/vp/template', {
+        agentDid: 'did:hedera:testnet:delegator',
+        userDid: 'did:hedera:testnet:delegatee',
+        targetService: 'helix-delegation',
+        vcType: 'HelixAgentCredential',
+      });
+      expect(mockHttp.post).toHaveBeenNthCalledWith(2, '/v1/vcs/delegate', {
+        delegatorVP: expect.objectContaining({ id: 'vp:helix:delegate-minimal' }),
+        delegateeAgentDid: 'did:hedera:testnet:delegatee',
+        requestedScopes: ['read:orders'],
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

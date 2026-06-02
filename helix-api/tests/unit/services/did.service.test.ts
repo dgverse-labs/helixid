@@ -118,11 +118,11 @@ describe('DIDService Branch Coverage', () => {
         expect((res.didDocument as unknown as { live?: boolean }).live).toBe(true);
     });
 
-    it('falls back to cache if live fetch fails', async () => {
+    it('fails honestly if live fetch fails', async () => {
         repository.findDidById.mockResolvedValue({ didDocument: { id: 'did:1' } });
         hedera.fetchMessage.mockRejectedValue(new Error('fail'));
-        const res = await service.resolveDID('did:1', { live: true });
-        expect(res.didDocument.id).toBe('did:1');
+        await expect(service.resolveDID('did:1', { live: true }))
+            .rejects.toMatchObject({ code: 'HEDERA_RESOLUTION_FAILED' });
     });
 
     it('handles options as string (requestId)', async () => {

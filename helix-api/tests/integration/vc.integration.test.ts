@@ -13,7 +13,7 @@
 import { describe, it, expect, beforeAll, afterEach, afterAll } from 'vitest';
 import Fastify from 'fastify';
 import type { PrismaClient } from '@prisma/client';
-import { ErrorCode } from '@helix-id/core';
+import { buildDIDDocument, derivePublicKey, ErrorCode } from '@helix-id/core';
 
 import { VCService } from '../../src/services/vc/vc.service.js';
 import { VcRepository } from '../../src/repositories/vc.repository.js';
@@ -30,6 +30,8 @@ describe('VC API Integration', () => {
   let app: any;
   let prisma: PrismaClient;
   let didId: string;
+  const signingKey = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+  const issuerDid = 'did:hedera:testnet:testissuer';
 
   beforeAll(async () => {
     prisma = createTestPrisma();
@@ -44,8 +46,8 @@ describe('VC API Integration', () => {
       vcRepo, 
       didService, 
       auditLogger, 
-      '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-      'did:hedera:testnet:testissuer',
+      signingKey,
+      issuerDid,
       'http://localhost:3000'
     );
 
@@ -65,6 +67,18 @@ describe('VC API Integration', () => {
       didDocument: { id: 'did:hedera:testnet:testsubject' },
     });
     didId = didRec.id;
+
+    const issuerPublicKey = derivePublicKey(signingKey);
+    const issuerDocument = buildDIDDocument(issuerDid, issuerPublicKey);
+    await didRepo.createDid({
+      id: issuerDid,
+      subjectType: 'user',
+      controller: issuerDid,
+      publicKey: issuerPublicKey,
+      publicKeyMultibase: issuerDocument.verificationMethod[0]!.publicKeyMultibase,
+      hederaTransactionId: 'tx-issuer',
+      didDocument: issuerDocument,
+    });
   });
 
   afterEach(async () => {
@@ -78,29 +92,55 @@ describe('VC API Integration', () => {
     await prisma.$disconnect();
   });
 
+  async function issueUserVC(): Promise<string> {
+    const issueRes = await app.inject({
+      method: 'POST',
+      url: '/v1/vcs',
+      headers: { 'x-admin-api-key': 'test-admin-key-0001' },
+      payload: { subjectDid: didId, subjectType: 'user', userId: 'test-user' },
+    });
+    return JSON.parse(issueRes.body).vcId as string;
+  }
+
   describe('POST /v1/vcs', () => {
     it('issues an agent VC successfully', async () => {
       const response = await app.inject({
         method: 'POST',
         url: '/v1/vcs',
+        headers: { 'x-admin-api-key': 'test-admin-key-0001' },
         payload: {
           subjectDid: didId,
           subjectType: 'agent',
           privilegeScopes: ['read:orders'],
-          agentName: 'Test Agent'
+          agentName: 'Test Agent',
         },
       });
 
       expect(response.statusCode).toBe(201);
       const body = JSON.parse(response.body);
       expect(body.vcId).toMatch(/^vc:helix:[0-9a-f]{24}$/);
+      expect(body.vc.validFrom).toBeDefined();
+      expect(body.vc.validUntil).toBeDefined();
+      expect(body.vc.credentialStatus.type).toBe('BitstringStatusListEntry');
       expect(body.vc.credentialSubject.privilegeScopes).toContain('read:orders');
+    });
+
+    it('requires admin authorization for issuance', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v1/vcs',
+        payload: { subjectDid: didId, subjectType: 'user', userId: 'test-user' },
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(JSON.parse(response.body).error.code).toBe(ErrorCode.ADMIN_AUTH_REQUIRED);
     });
 
     it('returns 404 for unknown subject DID', async () => {
       const response = await app.inject({
         method: 'POST',
         url: '/v1/vcs',
+        headers: { 'x-admin-api-key': 'test-admin-key-0001' },
         payload: {
           subjectDid: 'did:hedera:testnet:unknown',
           subjectType: 'user',
@@ -115,12 +155,7 @@ describe('VC API Integration', () => {
 
   describe('GET /v1/vcs/:vcId', () => {
     it('resolves an existing VC', async () => {
-      const issueRes = await app.inject({
-        method: 'POST',
-        url: '/v1/vcs',
-        payload: { subjectDid: didId, subjectType: 'user', userId: 'test-user' },
-      });
-      const { vcId } = JSON.parse(issueRes.body);
+      const vcId = await issueUserVC();
 
       const response = await app.inject({
         method: 'GET',
@@ -135,12 +170,7 @@ describe('VC API Integration', () => {
 
   describe('POST /v1/vcs/:vcId/revoke', () => {
     it('revokes a VC and updates the status list', async () => {
-      const issueRes = await app.inject({
-        method: 'POST',
-        url: '/v1/vcs',
-        payload: { subjectDid: didId, subjectType: 'user', userId: 'test-user' },
-      });
-      const { vcId } = JSON.parse(issueRes.body);
+      const vcId = await issueUserVC();
 
       const response = await app.inject({
         method: 'POST',
@@ -156,12 +186,7 @@ describe('VC API Integration', () => {
     });
 
     it('requires admin authorization', async () => {
-      const issueRes = await app.inject({
-        method: 'POST',
-        url: '/v1/vcs',
-        payload: { subjectDid: didId, subjectType: 'user', userId: 'test-user' },
-      });
-      const { vcId } = JSON.parse(issueRes.body);
+      const vcId = await issueUserVC();
 
       const response = await app.inject({
         method: 'POST',
@@ -175,12 +200,7 @@ describe('VC API Integration', () => {
 
   describe('GET /v1/status-list/:listId', () => {
     it('serves the status list credential with caching headers', async () => {
-      // Trigger list creation
-      await app.inject({
-        method: 'POST',
-        url: '/v1/vcs',
-        payload: { subjectDid: didId, subjectType: 'user', userId: 'test-user' },
-      });
+      await issueUserVC();
 
       const response = await app.inject({
         method: 'GET',
@@ -190,7 +210,7 @@ describe('VC API Integration', () => {
       expect(response.statusCode).toBe(200);
       expect(response.headers['cache-control']).toBe('public, max-age=300');
       const body = JSON.parse(response.body);
-      expect(body.type).toContain('StatusList2021Credential');
+      expect(body.type).toContain('BitstringStatusListCredential');
     });
   });
 });

@@ -13,15 +13,15 @@ function vc(
   delegation: Partial<AgentVC['credentialSubject']> = {},
 ): AgentVC {
   return {
-    '@context': ['https://www.w3.org/2018/credentials/v1'],
+    '@context': ['https://www.w3.org/ns/credentials/v2'],
     id,
     type: ['VerifiableCredential', 'HelixAgentCredential'],
     issuer: 'did:hedera:testnet:issuer',
-    issuanceDate: new Date().toISOString(),
-    expirationDate: new Date(Date.now() + 60_000).toISOString(),
+    validFrom: new Date().toISOString(),
+    validUntil: new Date(Date.now() + 60_000).toISOString(),
     credentialStatus: {
       id: 'https://example.com/status#0',
-      type: 'StatusList2021Entry',
+      type: 'BitstringStatusListEntry',
       statusPurpose: 'revocation',
       statusListIndex: '0',
       statusListCredential: 'https://example.com/status',
@@ -71,6 +71,60 @@ describe('delegation schema helpers', () => {
     });
 
     expect(() => validateChainIntegrity([root, child])).toThrow('delegatedFrom');
+  });
+
+  it('rejects too-short and malformed chains', () => {
+    const root = vc('vc:root', 'did:agent:a', ['read:orders'], { delegationDepth: 0, maxDelegationDepth: 1 });
+    const child = vc('vc:child', 'did:agent:b', ['read:orders'], {
+      delegatedFrom: 'did:agent:a',
+      delegationDepth: 1,
+      maxDelegationDepth: 1,
+      parentVcId: 'vc:root',
+    });
+
+    expect(() => validateChainIntegrity([])).toThrow('root and leaf');
+    expect(() => validateChainIntegrity([undefined as unknown as AgentVC, child])).toThrow('root credential missing');
+    expect(() => validateChainIntegrity([root, undefined as unknown as AgentVC])).toThrow('missing link');
+  });
+
+  it('rejects root depth, parent id, and max-depth mismatches', () => {
+    const root = vc('vc:root', 'did:agent:a', ['read:orders'], { delegationDepth: 0, maxDelegationDepth: 1 });
+    const badRoot = vc('vc:root', 'did:agent:a', ['read:orders'], { delegationDepth: 1, maxDelegationDepth: 1 });
+    const child = vc('vc:child', 'did:agent:b', ['read:orders'], {
+      delegatedFrom: 'did:agent:a',
+      delegationDepth: 1,
+      maxDelegationDepth: 1,
+      parentVcId: 'vc:other',
+    });
+    const changedMaxDepth = vc('vc:child', 'did:agent:b', ['read:orders'], {
+      delegatedFrom: 'did:agent:a',
+      delegationDepth: 1,
+      maxDelegationDepth: 2,
+      parentVcId: 'vc:root',
+    });
+
+    expect(() => validateChainIntegrity([badRoot, child])).toThrow('root credential depth');
+    expect(() => validateChainIntegrity([root, child])).toThrow('parentVcId');
+    expect(() => validateChainIntegrity([root, changedMaxDepth])).toThrow('maxDelegationDepth');
+  });
+
+  it('rejects chain scope escalation and leaf depth overflow', () => {
+    const root = vc('vc:root', 'did:agent:a', ['read:orders'], { delegationDepth: 0, maxDelegationDepth: 0 });
+    const escalatingChild = vc('vc:child', 'did:agent:b', ['read:orders', 'write:orders'], {
+      delegatedFrom: 'did:agent:a',
+      delegationDepth: 1,
+      maxDelegationDepth: 0,
+      parentVcId: 'vc:root',
+    });
+    const overflowingChild = vc('vc:child', 'did:agent:b', ['read:orders'], {
+      delegatedFrom: 'did:agent:a',
+      delegationDepth: 1,
+      maxDelegationDepth: 0,
+      parentVcId: 'vc:root',
+    });
+
+    expect(() => validateChainIntegrity([root, escalatingChild])).toThrow('write:orders');
+    expect(() => validateChainIntegrity([root, overflowingChild])).toThrow('exceeds root maxDelegationDepth');
   });
 
   it('rejects non-sequential depths and max depth overflow', () => {

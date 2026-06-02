@@ -18,9 +18,15 @@ async function main() {
 
   console.log('loaded wallet', {
     did: wallet.did,
-    vcId: wallet.vcId,
+    credentialCount: wallet.credentials.length,
     walletFilePath: WALLET_FILE_PATH,
   });
+  const credential = wallet.credentials
+    .filter((item) => item.type.includes(VC_TYPE))
+    .sort((a, b) => Date.parse(b.addedAt) - Date.parse(a.addedAt))[0];
+  if (!credential) {
+    throw new Error(`Wallet has no credential of type ${VC_TYPE}`);
+  }
 
   const didResponse = await fetch(`${API_BASE_URL}/v1/dids/${encodeURIComponent(wallet.did)}`);
   const didBody = await didResponse.json();
@@ -42,6 +48,7 @@ async function main() {
       userDid: USER_DID,
       targetService: TARGET_SERVICE,
       vcType: VC_TYPE,
+      vcId: credential.vcId,
     }),
   });
 
@@ -65,6 +72,8 @@ async function main() {
     agentDid: wallet.did,
     userDid: USER_DID,
     targetService: TARGET_SERVICE,
+    vcId: credential.vcId,
+    embeddedVcId: template.unsignedVP?.verifiableCredential?.[0]?.id,
   });
   console.log('signed VP saved', SIGNED_VP_FILE.pathname);
   console.log('verify request body saved', SIGNED_VP_REQUEST_FILE.pathname);

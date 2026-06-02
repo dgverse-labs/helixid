@@ -19,6 +19,7 @@ import { VPRepository } from './repositories/vp.repository.js';
 import { AgentRepository } from './repositories/agent.repository.js';
 import { ServiceRegistryRepository } from './repositories/service-registry.repository.js';
 import { createDidCache, createStatusListCache } from './cache/cacheFactory.js';
+import { extractEd25519PublicKeyHexFromDIDDocument } from './services/did/publicKey.js';
 import { DIDService } from './services/did/did.service.js';
 import { VCService } from './services/vc/vc.service.js';
 import { VPService } from './services/vp/vp.service.js';
@@ -130,16 +131,25 @@ function getDatabaseName(databaseUrl: string): string {
 }
 
 async function ensureIssuerDidCached(): Promise<void> {
+  const expectedPublicKey = derivePublicKey(config.HELIX_SIGNING_KEY).toLowerCase();
   const existing = await didRepository.findDidById(config.HELIX_ISSUER_DID);
-  if (existing) return;
+  if (existing) {
+    const existingPublicKey = extractEd25519PublicKeyHexFromDIDDocument(existing.didDocument);
+    if (existingPublicKey !== expectedPublicKey) {
+      throw new Error(
+        'Configured issuer DID public key does not match HELIX_SIGNING_KEY. ' +
+          'Run setup with matching issuer material or fix HELIX_ISSUER_DID before issuing VCs.',
+      );
+    }
+    return;
+  }
 
-  const publicKeyHex = derivePublicKey(config.HELIX_SIGNING_KEY);
-  const didDocument = buildDIDDocument(config.HELIX_ISSUER_DID, publicKeyHex);
+  const didDocument = buildDIDDocument(config.HELIX_ISSUER_DID, expectedPublicKey);
   await didRepository.createDid({
     id: config.HELIX_ISSUER_DID,
     subjectType: 'user',
     controller: config.HELIX_ISSUER_DID,
-    publicKey: publicKeyHex,
+    publicKey: expectedPublicKey,
     publicKeyMultibase: didDocument.verificationMethod[0]!.publicKeyMultibase,
     hederaTransactionId: `configured-issuer:${config.HELIX_ISSUER_DID}`,
     didDocument,

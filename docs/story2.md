@@ -2,7 +2,9 @@
 
 ## Overview
 
-B2 owns the full lifecycle of Verifiable Credentials. It issues agent VCs and user VCs, maintains the W3C StatusList2021 bitstring for revocation, handles expiry, and provides renewal. External verifiers use the status list URL embedded in each VC to check revocation without calling Helix ID per-verification.
+B2 owns the full lifecycle of Verifiable Credentials. It issues agent VCs and user VCs, maintains the W3C Bitstring Status List for revocation, handles expiry, and provides renewal. External verifiers can use the status list URL embedded in each VC to check revocation without calling Helix ID per-verification. Helix ID's own VP verification path currently checks VC status through server-side persisted VC state.
+
+Current format note: Helix emits VC Data Model 2.0-style credentials: `https://www.w3.org/ns/credentials/v2`, `validFrom`, `validUntil`, `BitstringStatusListEntry`, and `Ed25519Signature2020`.
 
 ---
 
@@ -24,12 +26,16 @@ model Vc {
   vcId             String    @unique  // format: vc:helix:<cuid>
   subjectDid       String
   subjectType      String              // "agent" or "user"
-  vcJson           String              // full signed VC JSON
-  privilegeScopes  String              // JSON array string, e.g. '["read:orders"]'
+  vcJson           Json                // full signed VC JSON
+  privilegeScopes  Json?               // JSON array, e.g. ["read:orders"]
   statusListIndex  Int
   expiresAt        DateTime
   revokedAt        DateTime?
   renewedByVcId    String?             // vcId of the replacement VC after renewal
+  delegatedFrom    String?
+  delegationDepth  Int?
+  maxDelegationDepth Int?
+  parentVcId       String?
   createdAt        DateTime  @default(now())
 
   @@index([subjectDid])
@@ -66,6 +72,8 @@ export const ALLOWED_PRIVILEGE_SCOPES = [
   'write:payments',
   'read:inventory',
   'write:inventory',
+  'read:catalog',
+  'write:catalog',
 ] as const;
 
 export type PrivilegeScope = typeof ALLOWED_PRIVILEGE_SCOPES[number];
@@ -78,20 +86,22 @@ export const SCOPE_PATTERN = /^[a-z]+:[a-z_]+$/;
 
 **Agent VC structure:**
 
+This is intentionally the current VC 2.0-style shape.
+
 ```json
 {
   "@context": [
-    "https://www.w3.org/2018/credentials/v1",
+    "https://www.w3.org/ns/credentials/v2",
     "https://helix-id.io/contexts/v1"
   ],
   "id": "vc:helix:<cuid>",
   "type": ["VerifiableCredential", "HelixAgentCredential"],
   "issuer": "did:hedera:testnet:<helix-id-operator-did>",
-  "issuanceDate": "<ISO 8601>",
-  "expirationDate": "<ISO 8601>",
+  "validFrom": "<ISO 8601>",
+  "validUntil": "<ISO 8601>",
   "credentialStatus": {
     "id": "<API_BASE_URL>/v1/status-list/<listId>#<index>",
-    "type": "StatusList2021Entry",
+    "type": "BitstringStatusListEntry",
     "statusPurpose": "revocation",
     "statusListIndex": "<index as string>",
     "statusListCredential": "<API_BASE_URL>/v1/status-list/<listId>"
@@ -135,21 +145,21 @@ Functions:
 
 - `getBit(encodedList: string, index: number): 0 | 1` — decodes, decompresses, reads bit at index. Returns 0 or 1.
 
-- `buildStatusListCredential(listId: string, encodedList: string, issuerDid: string, apiBaseUrl: string): object` — builds W3C StatusList2021 credential JSON. Structure:
+- `buildStatusListCredential(listId: string, encodedList: string, issuerDid: string, apiBaseUrl: string): object` — builds W3C Bitstring Status List credential JSON. Structure:
 
 ```json
 {
   "@context": [
-    "https://www.w3.org/2018/credentials/v1",
-    "https://w3id.org/vc/status-list/2021/v1"
+    "https://www.w3.org/ns/credentials/v2",
+    "https://www.w3.org/ns/credentials/status/v1"
   ],
   "id": "<apiBaseUrl>/v1/status-list/<listId>",
-  "type": ["VerifiableCredential", "StatusList2021Credential"],
+  "type": ["VerifiableCredential", "BitstringStatusListCredential"],
   "issuer": "<issuerDid>",
-  "issuanceDate": "<ISO 8601 now>",
+  "validFrom": "<ISO 8601 now>",
   "credentialSubject": {
     "id": "<apiBaseUrl>/v1/status-list/<listId>#list",
-    "type": "StatusList2021",
+    "type": "BitstringStatusList",
     "statusPurpose": "revocation",
     "encodedList": "<encodedList>"
   }
@@ -210,6 +220,8 @@ STATUS_LIST_UPDATED — fields: listId, index, newBitValue, timestamp
 
 ### `POST /v1/vcs` — Issue a VC
 
+Requires `x-admin-api-key`.
+
 **Request:**
 
 ```json
@@ -262,6 +274,8 @@ Signing: Helix ID signs the VC using HELIX_SIGNING_KEY (Ed25519). The signature 
 
 ### `POST /v1/vcs/{vcId}/revoke` — Revoke a VC
 
+Requires `x-admin-api-key`.
+
 No request body.
 
 **Response 200:**
@@ -277,6 +291,8 @@ No request body.
 **Error cases:** 404 `VC_NOT_FOUND`, 409 `VC_ALREADY_REVOKED`
 
 ### `POST /v1/vcs/{vcId}/renew` — Renew a VC
+
+Requires `x-admin-api-key`.
 
 **Request (all fields optional — defaults to same as original VC):**
 
@@ -306,7 +322,7 @@ Old VC is NOT revoked on renewal — it expires naturally or is revoked separate
 
 Public endpoint. No authentication. Set `Cache-Control: public, max-age=300` response header.
 
-**Response 200:** The W3C StatusList2021 credential JSON directly (not wrapped in envelope). Content-Type: `application/json`.
+**Response 200:** The W3C Bitstring Status List credential JSON directly (not wrapped in envelope). Content-Type: `application/json`.
 
 **Error cases:** 404 if listId not found.
 
@@ -353,7 +369,7 @@ Constructor: `(vcRepository: VCRepository, didService: IDIDService, auditLogger:
 1. Call `didService.resolveDID(params.subjectDid)` — if throws `DIDNotFoundError` or `DIDDeactivatedError`, throw `VCSubjectDIDNotFoundError`. Emit `VC_ISSUANCE_FAILED` audit event first.
 2. Validate privilege scopes: each must match `SCOPE_PATTERN` and be in `ALLOWED_PRIVILEGE_SCOPES`. Throw `VCInvalidPrivilegeScopeError(scope)` for first invalid scope.
 3. Claim next `statusListIndex` via `vcRepository.claimStatusListIndex('helix-status-list-1')`. If index ≥ 131072, throw `StatusListIndexExhaustedError`.
-4. Build unsigned VC JSON — set `vcId = 'vc:helix:' + cuid()`, set `credentialStatus` with index, set `expirationDate`.
+4. Build unsigned VC JSON — set `vcId = 'vc:helix:' + cuid()`, set `credentialStatus` with index, set `validFrom` and `validUntil`.
 5. Sign: `JSON.stringify` the VC without `proof` field → SHA-256 hash → sign hash with `HELIX_SIGNING_KEY` using Ed25519 → base58btc-encode signature bytes → attach as `proof.proofValue`.
 6. Persist to `vcs` table.
 7. Emit `VC_ISSUED` audit event — include `statusListIndex` and `vcId`, NOT the VC JSON.
@@ -366,7 +382,7 @@ Constructor: `(vcRepository: VCRepository, didService: IDIDService, auditLogger:
 3. Fetch status list entry.
 4. Call `setBit(encodedList, statusListIndex, 1)` from helix-core.
 5. In a single Prisma transaction: update status list entry AND mark VC as revoked. Atomicity prevents partial state.
-6. Emit `VC_REVOKED` and `STATUS_LIST_UPDATED` audit events.
+6. Emit `VC_REVOKED` audit event. `STATUS_LIST_UPDATED` is optional/currently not emitted as a separate public contract.
 7. Return result.
 
 **`renewVC(vcId, overrides, requestId)`:**
@@ -404,10 +420,10 @@ Fastify plugin. Accepts `{ vcService: IVCService }`.
 
 JSON Schema for every route per AC-4. Routes:
 
-- `POST /v1/vcs` → 201 or error
+- `POST /v1/vcs` → 201 or error, requires `x-admin-api-key`
 - `GET /v1/vcs/:vcId` → 200 or 404
-- `POST /v1/vcs/:vcId/revoke` → 200 or error
-- `POST /v1/vcs/:vcId/renew` → 201 or error
+- `POST /v1/vcs/:vcId/revoke` → 200 or error, requires `x-admin-api-key`
+- `POST /v1/vcs/:vcId/renew` → 201 or error, requires `x-admin-api-key`
 - `GET /v1/status-list/:listId` → 200 with `Cache-Control: public, max-age=300` header
 
 `vcId` path param pattern: `^vc:helix:[a-zA-Z0-9]+$`
@@ -422,7 +438,9 @@ Add to `HelixClient`:
 - `revokeVC(vcId: string): Promise<{ revoked: true, revokedAt: string }>` — calls `POST /v1/vcs/:vcId/revoke`
 - `renewVC(vcId: string, options?: { privilegeScopes?: string[], expiresInSeconds?: number }): Promise<RenewVCResult>` — calls `POST /v1/vcs/:vcId/renew`
 - `getStatusList(listId: string): Promise<object>` — calls `GET /v1/status-list/:listId`
-- `checkVCStatus(vc: SignedVC): Promise<'active' | 'revoked' | 'expired'>` — client-side only, no API call. Extracts `statusListIndex` and `statusListCredential` URL from VC, fetches status list via `getStatusList`, calls `getBit` from helix-core. Also checks `expirationDate` locally.
+- `checkVCStatus(vc: SignedVC): Promise<'active' | 'revoked' | 'expired'>` — client-side only, no API call. Extracts `statusListIndex` and `statusListCredential` URL from VC, fetches status list via `getStatusList`, calls `getBit` from helix-core. Also checks `validUntil` locally.
+
+Verifier note: this client-side helper uses the public Bitstring Status List URL. The API VP verifier currently checks revocation through `vcService.getVCStatus(vc.id)`, which reads the server's persisted VC state.
 
 Add error mappings in `HttpAdapter.ts` for `VC_NOT_FOUND`, `VC_ALREADY_REVOKED`, `VC_EXPIRED`, `VC_SUBJECT_DID_NOT_FOUND`, `VC_INVALID_PRIVILEGE_SCOPE`, `STATUS_LIST_INDEX_EXHAUSTED`.
 
@@ -476,7 +494,7 @@ Tests:
 - [ ] `GET /v1/vcs/:vcId` returns VC with computed status
 - [ ] `POST /v1/vcs/:vcId/revoke` flips bit in status list; atomic with DB update
 - [ ] `POST /v1/vcs/:vcId/renew` issues new VC; old VC marked with `renewedByVcId`
-- [ ] `GET /v1/status-list/:listId` serves W3C StatusList2021 credential with correct cache headers
+- [ ] `GET /v1/status-list/:listId` serves W3C Bitstring Status List credential with correct cache headers
 - [ ] Concurrent issuance test passes — unique `statusListIndex` per VC
 - [ ] All B2 audit events from AL-1 are emitted and verified by tests
 - [ ] VC proof value verified by security test against `HELIX_SIGNING_KEY`

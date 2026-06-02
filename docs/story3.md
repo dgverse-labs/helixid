@@ -2,7 +2,9 @@
 
 ## Overview
 
-B3 handles the presentation layer. Helix ID generates an unsigned VP template with a unique `vpId` and short expiry. The agent signs it locally using the SDK. External services verify the signed VP either by calling Helix ID's verify endpoint or by self-verifying directly against Hedera and the public status list.
+B3 handles the presentation layer. Helix ID generates an unsigned VP template with a unique `vpId` and short expiry. The agent signs it locally using the SDK. External services verify the signed VP either by calling Helix ID's verify endpoint or by self-verifying with the DID document, embedded VC proof, and public status list.
+
+Current implementation note: Helix ID's verify endpoint resolves DIDs from the persisted DID store and checks VC revocation through server-side VC state. Public Bitstring Status List self-checks are supported by SDK/examples, but direct Mirror Node DID resolution is not yet implemented as a production verifier path.
 
 ---
 
@@ -50,7 +52,7 @@ Run migration: `npx prisma migrate dev --name add_vp_ids_table`
 
 ```json
 {
-  "@context": ["https://www.w3.org/2018/credentials/v1"],
+  "@context": ["https://www.w3.org/ns/credentials/v2"],
   "type": ["VerifiablePresentation"],
   "id": "vp:helix:<cuid>",
   "holder": "<agentDid>",
@@ -118,14 +120,14 @@ VP_REJECTED         — fields: vpId (if parseable from request), internalReason
 
 ---
 
-## 3.3 — SDK: buildAndSignVP
+## 3.3 — SDK: VPBuilder.sign
 
 Location: `helix-sdk-js/src/vp/VPBuilder.ts`
 
-**Function signature:**
+**Current API:**
 
 ```typescript
-function buildAndSignVP(unsignedVP: UnsignedVP, privateKeyHex: string): SignedVP
+new VPBuilder(unsignedVP).sign(privateKeyHex, verificationMethod): Promise<SignedVP>
 ```
 
 **Steps:**
@@ -140,7 +142,7 @@ function buildAndSignVP(unsignedVP: UnsignedVP, privateKeyHex: string): SignedVP
 8. Attach proof block: `{ type: 'Ed25519Signature2020', created: ISO8601 now, verificationMethod: '${unsignedVP.holder}#key-1', proofPurpose: 'assertionMethod', proofValue: base58btcSignature }`
 9. Return `SignedVP`
 
-**Private key safety:** The private key is passed as a parameter. The function does not store, log, or transmit it. It exists in memory only for the duration of the call. Callers must not log the result of `buildAndSignVP` in raw form before it has been transmitted.
+**Private key safety:** The private key is passed as a parameter. The builder does not store, log, or transmit it. It exists in memory only for the duration of the call. Callers must not log the signed VP in raw form before it has been transmitted.
 
 ---
 
@@ -167,6 +169,8 @@ Called by the agent SDK immediately before performing an action on an external s
   "vcType": "HelixAgentCredential"
 }
 ```
+
+`vcType` should be sent by adapters today. The SDK type may permit omission, but the current API schema requires it.
 
 **Response 201:**
 
@@ -244,8 +248,8 @@ The internal audit log entry for a rejected VP includes the specific `internalRe
 7. Extract public key from resolved DID document via `extractPublicKeyFromDIDDocument`
 8. Verify VP signature: reconstruct canonical JSON without proof, sha256, verify with `verifySignature(hash, proof.proofValue, publicKeyHex)` → false: log `signature_invalid`, return `VP_VERIFICATION_FAILED`
 9. Extract embedded VC from `signedVP.verifiableCredential[0]`
-10. Check VC `expirationDate` is in future → expired: log `vc_expired`, return `VP_VERIFICATION_FAILED`
-11. Check VC credential status: fetch status list from `credentialStatus.statusListCredential`, call `getBit(encodedList, statusListIndex)` → bit is 1: log `vc_revoked`, return `VP_VERIFICATION_FAILED`
+10. Check VC `validUntil` is in future → expired: log `vc_expired`, return `VP_VERIFICATION_FAILED`
+11. Check VC credential status via `vcService.getVCStatus(vc.id)` → revoked: log `vc_revoked`, return `VP_VERIFICATION_FAILED`. Public StatusList checks remain available for SDK/self-verification flows.
 12. **Atomic consumption** — `UPDATE vp_ids SET consumed_at = NOW() WHERE vp_id = ? AND consumed_at IS NULL`. If 0 rows updated, a concurrent request consumed it first → log `VP_ALREADY_CONSUMED`, return `VP_VERIFICATION_FAILED`
 13. Emit `VP_VERIFIED` audit event
 14. Return 200 success
@@ -305,7 +309,7 @@ Create `helix-api/docs/self-verification.md`.
 
 Document must cover:
 
-1. **DID Resolution:** How to resolve `did:hedera:testnet:<id>` directly from Hedera Mirror Node REST API (`https://testnet.mirrornode.hedera.com/api/v1/topics/{topicId}/messages/{sequenceNumber}`) without calling Helix ID.
+1. **DID Resolution:** How to resolve the holder and issuer DID documents. For the current implementation, examples may use the DID document returned by Helix ID/API state. Direct Mirror Node DID resolution should be documented as future/advanced work until the live resolver path is implemented.
 
 2. **Public Key Extraction:** How to find the `Ed25519VerificationKey2020` verification method in the DID document and decode `publicKeyMultibase` to raw bytes.
 
@@ -315,7 +319,7 @@ Document must cover:
 
 5. **VP Expiry:** Check `signedVP.expirationDate` is in future before accepting.
 
-6. **VC Expiry:** Check embedded `vc.expirationDate` is in future.
+6. **VC Expiry:** Check embedded `vc.validUntil` is in future.
 
 7. **The vpId Obligation:** This section must be explicitly titled "Your Obligation for Replay Prevention". Text must state: "If you self-verify rather than calling the Helix ID verify endpoint, you are responsible for implementing vpId consumption tracking. You must store every `signedVP.id` value you have successfully verified and reject any subsequent request presenting the same `id`. Helix ID's verify endpoint handles this automatically. If you self-verify and do not implement this tracking, you are vulnerable to replay attacks."
 
@@ -327,9 +331,9 @@ Document must cover:
 
 ### Unit Tests — `helix-sdk-js/tests/unit/vp/`
 
-- `buildAndSignVP` with valid inputs produces SignedVP with non-empty `proof.proofValue`
-- `buildAndSignVP` throws `VPInvalidStructureError` if required field missing from unsignedVP
-- `buildAndSignVP` throws `VPExpiredError` if `expirationDate` is already past
+- `VPBuilder.sign` with valid inputs produces SignedVP with non-empty `proof.proofValue`
+- `VPBuilder.sign` throws `VPInvalidStructureError` if required field missing from unsignedVP
+- `VPBuilder.sign` throws `VPExpiredError` if `expirationDate` is already past
 - The signature in the returned SignedVP verifies via `verifySignature(canonicalHash, proof.proofValue, derivedPublicKey)` using the same private key
 - Signing with different private key → signature does not verify against original public key
 
@@ -368,7 +372,7 @@ Tests:
 - [ ] `POST /v1/vp/template` generates unsigned VP with unique vpId, correct structure, agent VC embedded
 - [ ] `POST /v1/vp/verify` verifies correctly signed VP and marks vpId consumed atomically
 - [ ] All verification failures return identical 400 `VP_VERIFICATION_FAILED` response — EH-4 verified by security tests
-- [ ] `buildAndSignVP` in SDK signs locally — no network call, private key never transmitted
+- [ ] `VPBuilder.sign` in SDK signs locally — no network call, private key never transmitted
 - [ ] All B3 audit events emitted; rejected VPs include `internalReason` in audit log only
 - [ ] `self-verification.md` document complete including the vpId obligation section
 - [ ] Concurrent replay test passes — exactly one success, one failure

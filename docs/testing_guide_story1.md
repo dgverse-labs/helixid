@@ -19,10 +19,10 @@ pnpm install
 ```
 
 ### 2.2. Configuration
-Create a `.env` file in the `helix-api/` directory (or use a root `.env` if using a workspace-wide loader):
+Use the repository-root `.env` as the source of truth. Do not create a separate `helix-api/.env` with duplicate Helix/Hedera keys unless it is an exact copy of the root file; mismatched signing keys can make issued VCs unverifiable.
 
 ```env
-# helix-api/.env
+# .env
 NODE_ENV=development
 PORT=3000
 DATABASE_URL="postgresql://postgres:password@localhost:5432/helixid?schema=public"
@@ -37,6 +37,7 @@ HEDERA_TOPIC_ID=0.0.yyyy
 
 # Security
 HELIX_SIGNING_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+HELIX_ISSUER_DID=did:hedera:testnet:...
 ```
 
 ### 2.3. Database Initialization

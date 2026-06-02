@@ -24,6 +24,7 @@ import {
   ALLOWED_PRIVILEGE_SCOPES,
   SCOPE_PATTERN,
   base58btcEncode,
+  derivePublicKey,
   hashCanonicalPayload,
   signBytes,
   validateScopeSubset,
@@ -31,6 +32,7 @@ import {
   type AgentVC,
   type SignedVC,
   type SignedVP,
+  VPMultipleActiveVCError,
 } from '@helix-id/core';
 import * as crypto from 'node:crypto';
 import { VcRepository } from '../../repositories/vc.repository.js';
@@ -39,6 +41,7 @@ import type { IVPService } from '../vp/IVPService.js';
 import type { ApiAuditLogger } from '../../audit/index.js';
 import type { ICache } from '../../cache/ICache.js';
 import { NoopCache } from '../../cache/NoopCache.js';
+import { extractEd25519PublicKeyHexFromDIDDocument } from '../did/publicKey.js';
 
 type CredentialSubject = {
   agentName?: string;
@@ -58,6 +61,11 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function asSignedVC(value: unknown): SignedVC {
   return value as SignedVC;
+}
+
+function getCredentialSubject(value: unknown): CredentialSubject {
+  const record = asRecord(value);
+  return asRecord(record.credentialSubject) as CredentialSubject;
 }
 
 export interface IssueVCParams {
@@ -150,9 +158,25 @@ export class VCService implements IVCService {
 
   async findActiveBySubjectDid(subjectDid: string, vcType?: string): Promise<Record<string, unknown> | null> {
     const records = await this.vcRepo.findActiveBySubjectDid(subjectDid, vcType);
+    if (records.length > 1) {
+      throw new VPMultipleActiveVCError();
+    }
     const record = records.at(-1);
     if (!record) return null;
     return (typeof record.vcJson === 'string' ? JSON.parse(record.vcJson) : record.vcJson) as Record<string, unknown>;
+  }
+
+  async findActiveByVcIdForSubject(vcId: string, subjectDid: string, vcType?: string): Promise<Record<string, unknown> | null> {
+    const record = await this.vcRepo.findByVcId(vcId);
+    if (!record || record.subjectDid !== subjectDid || record.revokedAt || record.expiresAt.getTime() <= Date.now()) {
+      return null;
+    }
+    const vc = (typeof record.vcJson === 'string' ? JSON.parse(record.vcJson) : record.vcJson) as Record<string, unknown>;
+    if (vcType) {
+      const types = Array.isArray(vc['type']) ? vc['type'] : [];
+      if (!types.includes(vcType)) return null;
+    }
+    return vc;
   }
 
   async issueVC(params: IssueVCParams, requestId: string): Promise<IssueVCResult> {
@@ -190,6 +214,8 @@ export class VCService implements IVCService {
       throw new HelixError(ErrorCode.STATUS_LIST_INDEX_EXHAUSTED, 'Default status list is full', 503);
     }
 
+    await this.assertIssuerSigningKeyMatches(requestId);
+
     const { claimedIndex } = await this.vcRepo.claimNextIndex(this.DEFAULT_STATUS_LIST_ID);
 
     // 4. Build VC
@@ -200,18 +226,18 @@ export class VCService implements IVCService {
 
     const credentialStatus = {
       id: `${this.apiBaseUrl}/v1/status-list/${this.DEFAULT_STATUS_LIST_ID}#${claimedIndex}`,
-      type: 'StatusList2021Entry' as const,
+      type: 'BitstringStatusListEntry' as const,
       statusPurpose: 'revocation' as const,
       statusListIndex: claimedIndex.toString(),
       statusListCredential: `${this.apiBaseUrl}/v1/status-list/${this.DEFAULT_STATUS_LIST_ID}`,
     };
     const credential: HelixVC = params.subjectType === 'agent' ? {
-      '@context': ['https://www.w3.org/2018/credentials/v1', 'https://helix-id.io/contexts/v1'],
+      '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helix-id.io/contexts/v1'],
       id: vcId,
       type: ['VerifiableCredential', 'HelixAgentCredential'],
       issuer: this.issuerDid,
-      issuanceDate: now.toISOString(),
-      expirationDate: expiresAt.toISOString(),
+      validFrom: now.toISOString(),
+      validUntil: expiresAt.toISOString(),
       credentialStatus,
       credentialSubject: {
         id: params.subjectDid,
@@ -224,12 +250,12 @@ export class VCService implements IVCService {
         ...(params.parentVcId ? { parentVcId: params.parentVcId } : {}),
       },
     } : {
-      '@context': ['https://www.w3.org/2018/credentials/v1', 'https://helix-id.io/contexts/v1'],
+      '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helix-id.io/contexts/v1'],
       id: vcId,
       type: ['VerifiableCredential', 'HelixUserCredential'],
       issuer: this.issuerDid,
-      issuanceDate: now.toISOString(),
-      expirationDate: expiresAt.toISOString(),
+      validFrom: now.toISOString(),
+      validUntil: expiresAt.toISOString(),
       credentialStatus,
       credentialSubject: {
         id: params.subjectDid,
@@ -445,12 +471,13 @@ export class VCService implements IVCService {
     }
 
     const vcJson = asRecord(record.vcJson) as StoredCredentialJson;
+    const subject = getCredentialSubject(vcJson);
     const newVcResult = await this.issueVC({
       subjectDid: record.subjectDid,
       subjectType: record.subjectType as 'agent' | 'user',
       privilegeScopes: overrides.privilegeScopes || (record.privilegeScopes as unknown as string[]),
-      agentName: vcJson.credentialSubject?.agentName,
-      userId: vcJson.credentialSubject?.userId,
+      agentName: subject.agentName,
+      userId: subject.userId,
       expiresInSeconds: overrides.expiresInSeconds,
       // Carry over other metadata if needed
     }, requestId);
@@ -511,6 +538,26 @@ export class VCService implements IVCService {
         proofValue,
       },
     };
+  }
+
+  private async assertIssuerSigningKeyMatches(requestId: string): Promise<void> {
+    let issuerDocument: Awaited<ReturnType<IDIDService['resolveDID']>>;
+    try {
+      issuerDocument = await this.didService.resolveDID(this.issuerDid, requestId);
+    } catch {
+      throw new HelixError(ErrorCode.VC_ISSUER_NOT_FOUND, 'Configured issuer DID could not be resolved', 500);
+    }
+
+    const expectedPublicKey = derivePublicKey(this.signingKeyHex).toLowerCase();
+    const issuerPublicKey = extractEd25519PublicKeyHexFromDIDDocument(issuerDocument);
+    if (issuerPublicKey !== expectedPublicKey) {
+      throw new HelixError(
+        ErrorCode.ISSUER_SIGNING_KEY_MISMATCH,
+        'Configured issuer DID public key does not match HELIX_SIGNING_KEY',
+        500,
+        { issuerDid: this.issuerDid },
+      );
+    }
   }
 }
 

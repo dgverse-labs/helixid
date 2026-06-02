@@ -52,13 +52,12 @@ On the client side (the agent calling MCP tools), the middleware intercepts outb
 
 ```json
 {
-  "@modelcontextprotocol/sdk": "latest",
   "@helix-id/sdk-js": "workspace:*",
   "@helix-id/core": "workspace:*"
 }
 ```
 
-Add `@modelcontextprotocol/sdk` to `decisions.md`.
+Declare `@modelcontextprotocol/sdk` as an optional peer dependency, not a hard dependency. Add `@modelcontextprotocol/sdk` to `decisions.md`.
 
 ### `packages/mcp/src/middleware.ts`
 
@@ -104,7 +103,7 @@ async function attachHelixVP(
 
 1. Load wallet via `AgentWallet.load`
 2. Request VP template from Helix ID
-3. Sign locally via `buildAndSignVP`
+3. Sign locally with `VPBuilder`
 4. Base64url-encode the signed VP JSON string
 5. Set `toolCall.headers['Authorization'] = 'HelixVP ' + encoded`
 6. Return modified tool call
@@ -133,11 +132,12 @@ Wraps LangChain tool calls so every outbound tool invocation automatically carri
 
 ```json
 {
-  "@langchain/core": "latest",
   "@helix-id/sdk-js": "workspace:*",
   "@helix-id/core": "workspace:*"
 }
 ```
+
+Declare `@langchain/core` as an optional peer dependency, not a hard dependency. The adapter exports structural TypeScript types so unit tests and non-LangChain users do not need to install LangChain.
 
 ### `packages/langchain/src/middleware.ts`
 
@@ -155,7 +155,7 @@ interface LangChainMiddlewareOptions {
 function HelixIDMiddleware(options: LangChainMiddlewareOptions): RunnableConfig
 ```
 
-Returns a LangChain `RunnableConfig` with `callbacks` that intercept `handleToolStart`. On each tool invocation:
+Returns a LangChain-compatible `RunnableConfig` with `callbacks` that intercept `handleToolStart`. On each tool invocation:
 
 1. Request VP template (agentDid from wallet, targetService from options)
 2. Load wallet, sign VP locally
@@ -166,9 +166,9 @@ Returns a LangChain `RunnableConfig` with `callbacks` that intercept `handleTool
 
 ```typescript
 function HelixIDToolWrapper(
-  tool: StructuredTool,
+  tool: StructuredToolLike,
   options: LangChainMiddlewareOptions
-): StructuredTool
+): StructuredToolLike
 ```
 
 Returns a new `StructuredTool` whose `_call` method prepends VP attachment before calling the original tool's `_call`. Use this when wrapping individual tools rather than an entire chain.

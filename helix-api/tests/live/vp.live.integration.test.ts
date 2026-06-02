@@ -22,7 +22,7 @@ describe('VP Live Integration', () => {
   });
 
   it('generates, signs, verifies, and rejects replay for a VP with real VC and VP signatures', async () => {
-    const client = new HelixClient(api.baseUrl);
+    const client = new HelixClient(api.baseUrl, { adminApiKey: api.adminApiKey });
     const http = supertest(api.baseUrl);
     const agent = await onboardLiveAgent(api, client, {
       agentName: 'Live VP Agent',
@@ -62,7 +62,7 @@ describe('VP Live Integration', () => {
   }, LIVE_HEDERA_TIMEOUT_MS);
 
   it('rejects VP and VC tampering after signing', async () => {
-    const client = new HelixClient(api.baseUrl);
+    const client = new HelixClient(api.baseUrl, { adminApiKey: api.adminApiKey });
     const http = supertest(api.baseUrl);
     const agent = await onboardLiveAgent(api, client, {
       agentName: 'Live Tamper Agent',

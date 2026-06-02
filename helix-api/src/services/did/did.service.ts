@@ -72,7 +72,7 @@ export interface ResolveDIDResult {
   didDocument: DIDDocument;
   document: DIDDocument;
   deactivated: boolean;
-  source: 'cache' | 'hedera';
+  source: 'cache' | 'db' | 'hedera';
 }
 
 /**
@@ -246,13 +246,12 @@ export class DIDService implements IDIDService {
     let document = toDIDDocument(record.didDocument);
 
     if (normalizedOptions.live) {
-      // In a real implementation, we would crawl HCS here.
       try {
         const message = await this.hedera.fetchMessage(record.hederaTopicId ?? '', record.hederaSequenceNumber ?? 0);
         document = toDIDDocument(JSON.parse(message.contents) as unknown);
-      } catch {
-        // Fallback to cache if live resolution fails? 
-        // Spec says resolutionType: hedera if live.
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Live Hedera DID resolution failed';
+        throw new HelixError(ErrorCode.HEDERA_RESOLUTION_FAILED, message, 502);
       }
     }
     if (!normalizedOptions.live) {
@@ -264,7 +263,7 @@ export class DIDService implements IDIDService {
       event: 'DID_RESOLVED',
       requestId: normalizedRequestId,
       did,
-      source: normalizedOptions.live ? 'hedera' : 'cache',
+      source: normalizedOptions.live ? 'hedera' : 'db',
     });
 
     return {
@@ -272,7 +271,7 @@ export class DIDService implements IDIDService {
       didDocument: document,
       document,
       deactivated: !!record.deactivatedAt,
-      source: normalizedOptions.live ? 'hedera' : 'cache',
+      source: normalizedOptions.live ? 'hedera' : 'db',
     };
   }
 
@@ -288,8 +287,13 @@ export class DIDService implements IDIDService {
 
     const updatedDoc = addServiceCore(toDIDDocument(record.didDocument), endpoint);
     
-    // Anchor update
-    const anchoring = await this.hedera.anchorDocument(JSON.stringify(updatedDoc));
+    let anchoring;
+    try {
+      anchoring = await this.hedera.anchorDocument(JSON.stringify(updatedDoc));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Live Hedera DID update anchoring failed';
+      throw new HelixError(ErrorCode.HEDERA_ANCHOR_FAILED, message, 501);
+    }
 
     // Persist
     await this.repository.updateDidDocument(did, updatedDoc, {
@@ -323,7 +327,13 @@ export class DIDService implements IDIDService {
 
     const updatedDoc = removeServiceCore(toDIDDocument(record.didDocument), endpointId);
     
-    const anchoring = await this.hedera.anchorDocument(JSON.stringify(updatedDoc));
+    let anchoring;
+    try {
+      anchoring = await this.hedera.anchorDocument(JSON.stringify(updatedDoc));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Live Hedera DID update anchoring failed';
+      throw new HelixError(ErrorCode.HEDERA_ANCHOR_FAILED, message, 501);
+    }
 
     await this.repository.updateDidDocument(did, updatedDoc, {
       updateType: 'remove_service_endpoint',

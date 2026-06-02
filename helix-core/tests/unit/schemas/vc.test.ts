@@ -3,15 +3,15 @@ import { AgentVCSchema, UserVCSchema } from '../../../src/schemas/vc.js';
 
 describe('VC Schemas', () => {
   const validAgentVC = {
-    '@context': ['https://www.w3.org/2018/credentials/v1', 'https://helix-id.io/contexts/v1'],
+    '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helix-id.io/contexts/v1'],
     id: 'vc:helix:123',
     type: ['VerifiableCredential', 'HelixAgentCredential'],
     issuer: 'did:helix:issuer',
-    issuanceDate: new Date().toISOString(),
-    expirationDate: new Date(Date.now() + 86400000).toISOString(),
+    validFrom: new Date().toISOString(),
+    validUntil: new Date(Date.now() + 86400000).toISOString(),
     credentialStatus: {
       id: 'https://api.test.com/v1/status-list/1#0',
-      type: 'StatusList2021Entry',
+      type: 'BitstringStatusListEntry',
       statusPurpose: 'revocation',
       statusListIndex: '0',
       statusListCredential: 'https://api.test.com/v1/status-list/1'
@@ -25,15 +25,15 @@ describe('VC Schemas', () => {
   };
 
   const validUserVC = {
-    '@context': ['https://www.w3.org/2018/credentials/v1', 'https://helix-id.io/contexts/v1'],
+    '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helix-id.io/contexts/v1'],
     id: 'vc:helix:456',
     type: ['VerifiableCredential', 'HelixUserCredential'],
     issuer: 'did:helix:issuer',
-    issuanceDate: new Date().toISOString(),
-    expirationDate: new Date(Date.now() + 86400000).toISOString(),
+    validFrom: new Date().toISOString(),
+    validUntil: new Date(Date.now() + 86400000).toISOString(),
     credentialStatus: {
       id: 'https://api.test.com/v1/status-list/1#1',
-      type: 'StatusList2021Entry',
+      type: 'BitstringStatusListEntry',
       statusPurpose: 'revocation',
       statusListIndex: '1',
       statusListCredential: 'https://api.test.com/v1/status-list/1'

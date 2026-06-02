@@ -22,7 +22,7 @@ describe('VC Revocation Live Integration', () => {
   });
 
   it('requires admin revocation and rejects VP verification after the VC is revoked', async () => {
-    const client = new HelixClient(api.baseUrl);
+    const client = new HelixClient(api.baseUrl, { adminApiKey: api.adminApiKey });
     const http = supertest(api.baseUrl);
     const agent = await onboardLiveAgent(api, client, {
       agentName: 'Live Revocation Agent',

@@ -83,6 +83,7 @@ export interface DelegateVCOptions {
   expiresInSeconds?: number;
   walletPassphrase: string;
   walletFilePath: string;
+  vcId?: string;
 }
 
 export interface DelegateVCResult {
@@ -102,6 +103,10 @@ export interface SessionPublicKeyResponse {
   crv: 'Ed25519';
 }
 
+export interface HelixClientOptions {
+  adminApiKey?: string;
+}
+
 type DIDResolveResponse = {
   didDocument?: DIDDocument;
   document?: DIDDocument;
@@ -112,11 +117,12 @@ export class HelixClient {
   private readonly wallet = new AgentWallet();
   private pendingKeyPair: PendingKeyPair | null = null;
 
-  constructor(baseUrl: string);
+  constructor(baseUrl: string, options?: HelixClientOptions);
   constructor(http: HttpAdapter, baseUrl: string);
-  constructor(first: string | HttpAdapter, _baseUrl?: string) {
-    void _baseUrl;
-    this.http = typeof first === 'string' ? new HttpAdapter(first) : first;
+  constructor(first: string | HttpAdapter, second?: string | HelixClientOptions) {
+    this.http = typeof first === 'string'
+      ? new HttpAdapter(first, typeof second === 'object' ? second : {})
+      : first;
   }
 
   async createDID(options: CreateDIDOptions): Promise<CreateDIDResult> {
@@ -203,7 +209,9 @@ export class HelixClient {
   }
 
   async checkVCStatus(vc: SignedVC): Promise<'active' | 'revoked' | 'expired'> {
-    if (new Date(vc.expirationDate).getTime() <= Date.now()) {
+    const credential = vc as unknown as { validUntil?: string; expirationDate?: string };
+    const validUntil = credential.validUntil ?? credential.expirationDate;
+    if (validUntil && new Date(validUntil).getTime() <= Date.now()) {
       return 'expired';
     }
     const { statusListCredential, statusListIndex } = vc.credentialStatus;
@@ -225,6 +233,7 @@ export class HelixClient {
     userDid: string;
     targetService: string;
     vcType?: string;
+    vcId?: string;
   }): Promise<{ unsignedVP: UnsignedVP; vpId: string; expiresAt: string }> {
     return this.http.post('/v1/vp/template', options);
   }
@@ -250,6 +259,7 @@ export class HelixClient {
       userDid: options.delegateeAgentDid,
       targetService: 'helix-delegation',
       vcType: 'HelixAgentCredential',
+      ...(options.vcId ? { vcId: options.vcId } : {}),
     });
     const signedVP = await new VPBuilder(template.unsignedVP).sign(wallet.privateKeyHex, `${wallet.did}#key-1`);
     return this.http.post('/v1/vcs/delegate', {
@@ -299,8 +309,7 @@ export class HelixClient {
         did: result.agentDid,
         publicKeyHex: this.pendingKeyPair.publicKey,
         privateKeyHex: this.pendingKeyPair.privateKey,
-        vcId: result.vcId,
-        vcJson: JSON.stringify(result.vc),
+        credentials: [AgentWallet.credentialFromVC(result.vcId, result.vc)],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },

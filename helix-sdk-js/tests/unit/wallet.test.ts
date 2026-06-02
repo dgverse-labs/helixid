@@ -25,10 +25,16 @@ describe('AgentWallet', () => {
     client = new HelixClient(http, baseUrl);
   });
 
-  it('generates a new keypair and DID when no key provided', () => {
+  it('generates a new keypair when no key provided without guessing a live DID', () => {
     const wallet = new AgentWallet({ client });
     expect(wallet.getPublicKey()).toBeDefined();
-    expect(wallet.getDID()).toMatch(/^did:hedera:testnet:[0-9a-f]{32}$/);
+    expect(() => wallet.getDID()).toThrow('Wallet has no DID');
+  });
+
+  it('uses an explicitly provided live DID', () => {
+    const did = 'did:hedera:testnet:agent_0.0.12345';
+    const wallet = new AgentWallet({ client, did });
+    expect(wallet.getDID()).toBe(did);
   });
 
   it('signs data correctly', () => {
@@ -42,7 +48,7 @@ describe('AgentWallet', () => {
     (fetch as any).mockResolvedValue({
       ok: true,
       status: 201,
-      json: async () => ({ id: wallet.getDID(), didDocument: {}, hederaTransactionId: 'tx' }),
+      json: async () => ({ id: 'did:hedera:testnet:agent_0.0.12345', didDocument: {}, hederaTransactionId: 'tx' }),
     });
 
     const result = await wallet.createDID('agent');
@@ -59,7 +65,7 @@ describe('AgentWallet', () => {
   });
 
   it('orchestrates service addition', async () => {
-    const wallet = new AgentWallet({ client });
+    const wallet = new AgentWallet({ client, did: 'did:hedera:testnet:agent_0.0.12345' });
     (fetch as any).mockResolvedValue({
       ok: true,
       status: 200,
@@ -79,7 +85,7 @@ describe('AgentWallet', () => {
   });
 
   it('orchestrates deactivation', async () => {
-    const wallet = new AgentWallet({ client });
+    const wallet = new AgentWallet({ client, did: 'did:hedera:testnet:agent_0.0.12345' });
     (fetch as any).mockResolvedValue({
       ok: true,
       status: 204,

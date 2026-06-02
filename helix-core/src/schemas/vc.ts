@@ -20,7 +20,7 @@ import {
  * W3C Verifiable Credential standard contexts
  */
 export const VC_CONTEXTS = [
-  'https://www.w3.org/2018/credentials/v1',
+  'https://www.w3.org/ns/credentials/v2',
   'https://helix-id.io/contexts/v1'
 ] as const;
 
@@ -38,11 +38,11 @@ export const VCProofSchema = z.object({
 export type VCProof = z.infer<typeof VCProofSchema>;
 
 /**
- * Credential Status for W3C StatusList2021
+ * Credential Status for W3C Bitstring Status List.
  */
 export const VCCredentialStatusSchema = z.object({
   id: z.string().url(), // <API_BASE_URL>/v1/status-list/<listId>#<index>
-  type: z.literal('StatusList2021Entry'),
+  type: z.literal('BitstringStatusListEntry'),
   statusPurpose: z.literal('revocation'),
   statusListIndex: z.string(), // index as string
   statusListCredential: z.string().url(),
@@ -78,8 +78,8 @@ const VCBaseSchema = z.object({
   '@context': z.array(z.string()).min(1),
   id: z.string(),
   issuer: z.string(),
-  issuanceDate: z.string().datetime(),
-  expirationDate: z.string().datetime(),
+  validFrom: z.string().datetime(),
+  validUntil: z.string().datetime(),
   credentialStatus: VCCredentialStatusSchema,
   proof: VCProofSchema.optional(),
 });

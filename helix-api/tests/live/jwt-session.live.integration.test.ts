@@ -23,7 +23,7 @@ describe('JWT Session Live Integration', () => {
   });
 
   it('verifies a VP once, then authorizes repeated book-order actions with the JWT session', async () => {
-    const client = new HelixClient(api.baseUrl);
+    const client = new HelixClient(api.baseUrl, { adminApiKey: api.adminApiKey });
     const http = supertest(api.baseUrl);
     const agent = await onboardLiveAgent(api, client, {
       agentName: 'Live JWT Session Agent',

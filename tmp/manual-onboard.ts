@@ -31,7 +31,8 @@ async function main() {
   console.log('saved wallet', {
     did: saved.did,
     publicKeyHex: saved.publicKeyHex,
-    vcId: saved.vcId,
+    credentialCount: saved.credentials.length,
+    vcIds: saved.credentials.map((credential) => credential.vcId),
     walletFilePath: WALLET_FILE_PATH,
     hasPrivateKey: !!saved.privateKeyHex
   });

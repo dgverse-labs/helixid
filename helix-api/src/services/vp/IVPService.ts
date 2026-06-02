@@ -5,6 +5,7 @@ export interface VPTemplateParams {
   userDid: string;
   targetService: string;
   vcType: string;
+  vcId?: string;
 }
 
 export interface VPTemplateResult {
