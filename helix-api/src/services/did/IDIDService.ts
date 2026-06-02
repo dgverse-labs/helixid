@@ -18,7 +18,7 @@ export interface ResolveDIDResult {
   didDocument: DIDDocument;
   document: DIDDocument;
   deactivated: boolean;
-  source: 'cache' | 'hedera';
+  source: 'cache' | 'db' | 'hedera';
 }
 
 export interface IDIDService {

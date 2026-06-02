@@ -11,9 +11,15 @@
 // limitations under the License.
 
 import { describe, it, expect } from 'vitest';
+import { gunzipSync } from 'node:zlib';
 import { createStatusList, setBit, getBit, buildStatusListCredential } from '../../src/status-list/index.js';
 
-describe('StatusList2021', () => {
+function decodeStatusList(encodedList: string): Buffer {
+  const base64 = encodedList.replace(/-/g, '+').replace(/_/g, '/');
+  return gunzipSync(Buffer.from(base64, 'base64'));
+}
+
+describe('BitstringStatusList', () => {
   it('createStatusList produces a non-empty base64url string', () => {
     const list = createStatusList(100);
     expect(list).toBeDefined();
@@ -43,6 +49,24 @@ describe('StatusList2021', () => {
     expect(getBit(updatedList, 6)).toBe(0);
   });
 
+  it('uses W3C left-most bit ordering within each byte', () => {
+    let list = createStatusList(16);
+    list = setBit(list, 0, 1);
+    expect(decodeStatusList(list)[0]).toBe(0b10000000);
+
+    list = createStatusList(16);
+    list = setBit(list, 7, 1);
+    expect(decodeStatusList(list)[0]).toBe(0b00000001);
+
+    list = createStatusList(16);
+    list = setBit(list, 8, 1);
+    expect(decodeStatusList(list)[1]).toBe(0b10000000);
+
+    list = createStatusList(16);
+    list = setBit(list, 11, 1);
+    expect(decodeStatusList(list)[1]).toBe(0b00010000);
+  });
+
   it('handles roundtrip with multiple bits correctly', () => {
     let list = createStatusList(1024);
     const indices = [0, 7, 8, 15, 1023];
@@ -64,8 +88,8 @@ describe('StatusList2021', () => {
     const list = createStatusList(100);
     const cred = buildStatusListCredential('list-1', list, 'did:helix:issuer', 'http://api.test');
     
-    expect(cred['@context']).toContain('https://w3id.org/vc/status-list/2021/v1');
-    expect(cred.type).toContain('StatusList2021Credential');
+    expect(cred['@context']).toContain('https://www.w3.org/ns/credentials/status/v1');
+    expect(cred.type).toContain('BitstringStatusListCredential');
     expect(cred.credentialSubject.encodedList).toBe(list);
   });
 });

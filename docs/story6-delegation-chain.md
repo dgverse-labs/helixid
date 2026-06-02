@@ -4,9 +4,13 @@
 
 Agent A can delegate a subset of its authority to Agent B via Helix ID. Helix ID remains the sole VC signer throughout — Agent A cannot sign credentials itself. Agent A calls `POST /v1/vcs/delegate` with a signed VP proving its own authority, specifies Agent B's DID and a subset of scopes. Helix ID verifies A's authority, enforces scope subset rules, issues a child VC for Agent B carrying the full delegation chain, and returns it.
 
+`POST /v1/vcs/delegate` is an admin-protected Helix ID operation and requires `x-admin-api-key`.
+
 When Agent B presents a VP, the verify path walks the embedded chain, verifying each VC's signature against `HELIX_SIGNING_KEY` and each link's scope subset constraint. DID resolution is used per link to verify the holder identity — not the signer (all VCs are Helix-signed). This keeps chain verification fast: one signing key, N DID resolutions where N is chain depth.
 
 This story touches the VC service (new delegate endpoint and chain verification), the VP verify path (extended to walk chains), helix-core (VC schema additions, new error codes), and the SDK (new `delegate()` method).
+
+Current implementation note: delegation uses the existing VP verification path as the authority proof, then extracts the parent VC id from the delegator VP. The convention `targetService: 'helix-delegation'` is used by the SDK, so that service must exist in `service_registry` before delegation examples run. Revocation checks in the API verifier are currently DB-backed through `getVCStatus`, not direct StatusList bit fetching.
 
 ---
 
@@ -185,7 +189,7 @@ Steps:
 
 1. **Verify delegator VP** — call `vpService.verifyVP(params.delegatorVP, requestId)` using the existing B3 verify path. If it fails, throw `VPVerificationFailedError`. This is the authority proof — Agent A proves it holds the private key and has an active VC.
 
-2. **Fetch delegator's active VC** — call `vcRepository.findActiveBySubjectDid(delegatorDid)`. If null, throw `DelegationNotPermittedError`. Parse VC JSON.
+2. **Fetch delegator's parent VC** — extract the embedded VC id from `params.delegatorVP.verifiableCredential[0].id`, then call `vcRepository.findByVcId(parentVcId)`. If null, throw `DelegationParentVCNotFoundError`. Parse VC JSON.
 
 3. **Check delegation is permitted** — if delegator VC has no `maxDelegationDepth` field or `maxDelegationDepth === 0`, throw `DelegationNotPermittedError`. If `delegationDepth >= maxDelegationDepth`, throw `DelegationDepthExceededError`.
 
@@ -199,7 +203,8 @@ Steps:
    - `agentName` — resolve from delegatee DID document metadata or use delegateeAgentDid as fallback
    - `expiresInSeconds: params.expiresInSeconds`
    - Extra fields: `delegatedFrom: delegatorDid`, `delegationDepth: delegatorVC.delegationDepth + 1`, `maxDelegationDepth: rootMaxDelegationDepth`, `parentVcId: delegatorVcId`
-   - `rootMaxDelegationDepth` — if delegator is root (depth 0) use its `maxDelegationDepth`; if delegator is itself delegated, traverse up to root to retrieve `maxDelegationDepth` (one extra `findByVcId` call)
+   - `rootMaxDelegationDepth` — if delegator is root (depth 0) use its `maxDelegationDepth`; if delegator is itself delegated, traverse up to root to retrieve `maxDelegationDepth` (one extra `findByVcId` call) - decide between this and the below point
+   - `maxDelegationDepth` is inherited from the parent VC's `credentialSubject.maxDelegationDepth`
 
 7. **Emit `VC_DELEGATED` audit event** — include both vcIds, both DIDs, depth.
 
@@ -214,11 +219,11 @@ Check if embedded leaf VC has `credentialSubject.delegationDepth > 0`. If yes, p
 
 **Steps 9b–9e (chain path only):**
 
-9b. **Reconstruct chain from DB** — call `extractChainFromVC(leafVC)` to get ordered `parentVcId` array. For each parentVcId, call `vcRepository.findByVcId(parentVcId)`. If any returns null, log `CHAIN_REJECTED` with `internalReason: 'parent_vc_not_found'`, return `VPVerificationFailedError`.
+9b. **Reconstruct chain from DB** — follow `credentialSubject.parentVcId` from the leaf VC through stored parent records until the root is reached. If any parent returns null, log `CHAIN_REJECTED` with `internalReason: 'parent_vc_not_found'`, return `VPVerificationFailedError`.
 
 9c. **Verify each VC in chain** — for each VC (including leaf):
-- Check `expirationDate` is in future — if not, log `vc_expired`, return `VPVerificationFailedError`
-- Check revocation status via `getBit` on status list — if revoked, log `vc_revoked`, return `VPVerificationFailedError`
+- Check `validUntil` is in future — if not, log `vc_expired`, return `VPVerificationFailedError`
+- Check revocation status via `vcService.getVCStatus(vc.id)` — if revoked, log `vc_revoked`, return `VPVerificationFailedError`
 - Verify VC signature against `HELIX_SIGNING_KEY` public key using `verifySignature` (all VCs signed by Helix ID) — if invalid, log `chain_signature_invalid`, return `VPVerificationFailedError`
 
 9d. **Validate chain integrity** — call `validateChainIntegrity(chain)`. If throws, log specific reason from exception, return `VPVerificationFailedError`.
@@ -240,6 +245,8 @@ Emit `CHAIN_VERIFIED` audit event on success.
 ```
 POST /v1/vcs/delegate
 ```
+
+Requires `x-admin-api-key`.
 
 The route plugin receives both `vcService` and `vpService` — the delegate endpoint needs to verify the delegator VP, which is handled by `vpService`.
 
@@ -265,8 +272,8 @@ async delegate(options: {
 
 Steps:
 1. Load wallet: `AgentWallet.load(options.walletPassphrase, options.walletFilePath)` — retrieves `did`, `vcJson`, `privateKeyHex`
-2. Request VP template: call `POST /v1/vp/template` with agent's own DID, delegatee as `targetService` (or a dedicated `delegationTarget` field — use `targetService: 'helix-delegation'` as convention)
-3. Sign VP locally: `buildAndSignVP(unsignedVP, privateKeyHex)`
+2. Request VP template: call `POST /v1/vp/template` with agent's own DID, `userDid: delegateeAgentDid`, `targetService: 'helix-delegation'`, and `vcType: 'HelixAgentCredential'`
+3. Sign VP locally: `new VPBuilder(unsignedVP).sign(privateKeyHex, \`\${wallet.did}#key-1\`)`
 4. Call `POST /v1/vcs/delegate` with signed VP + other params
 5. Return result — caller stores the returned child VC however they need to (typically transmit to Agent B out of band)
 

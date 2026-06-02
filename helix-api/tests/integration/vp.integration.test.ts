@@ -110,7 +110,11 @@ describe('VP integration API', () => {
       id: 'vc:test:1',
       type: ['VerifiableCredential', 'HelixAgentCredential'],
       issuer: defaultDid,
-      expirationDate: new Date(Date.now() + 60_000).toISOString(),
+      validUntil: new Date(Date.now() + 60_000).toISOString(),
+      credentialStatus: {
+        statusListCredential: 'http://localhost:3000/v1/status-list/helix-status-list-1',
+        statusListIndex: '0',
+      },
       credentialSubject: { privilegeScopes: ['read'] }
     }));
   });
@@ -142,6 +146,23 @@ describe('VP integration API', () => {
     expect(body.expiresAt).toBeDefined();
     expect(body.unsignedVP).toBeDefined();
     expect(body.unsignedVP.holder).toBe(defaultDid);
+  });
+
+  it('POST /v1/vp/template uses explicit vcId when provided', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/vp/template',
+      payload: {
+        agentDid: defaultDid,
+        userDid: 'did:hedera:testnet:user1',
+        targetService: 'amazon',
+        vcType: 'HelixAgentCredential',
+        vcId: 'vc:test:1',
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().unsignedVP.verifiableCredential[0].id).toBe('vc:test:1');
   });
 
   it('fails with 404 for unknown agentDid', async () => {

@@ -41,6 +41,7 @@ const vcRoutes: FastifyPluginAsync<VcRouteOptions> = async (fastify, options) =>
 
   // POST /v1/vcs - Issue a VC
   fastify.post('', async (request, reply) => {
+    requireAdmin(request);
     const params = request.body as IssueVCParams;
     const result = await vcService.issueVC(params, request.id);
     return reply.status(201).send(result);
@@ -48,6 +49,7 @@ const vcRoutes: FastifyPluginAsync<VcRouteOptions> = async (fastify, options) =>
 
   // POST /v1/vcs/delegate - Issue a delegated VC after verifying delegator authority.
   fastify.post('/delegate', async (request, reply) => {
+    requireAdmin(request);
     const result = await vcService.delegateVC(request.body as DelegateVCParams, request.id);
     return reply.status(201).send(result);
   });
@@ -69,6 +71,7 @@ const vcRoutes: FastifyPluginAsync<VcRouteOptions> = async (fastify, options) =>
 
   // POST /v1/vcs/:vcId/renew - Renew a VC
   fastify.post('/:vcId/renew', async (request, reply) => {
+    requireAdmin(request);
     const { vcId } = request.params as VCParams;
     const overrides = request.body as RenewVCOptions;
     const result = await vcService.renewVC(vcId, overrides, request.id);

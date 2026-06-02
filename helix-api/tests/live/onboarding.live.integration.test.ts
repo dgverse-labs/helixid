@@ -24,7 +24,7 @@ describe('Onboarding Live Integration', () => {
   });
 
   it('onboards an agent through the SDK and persists DID, VC, wallet, and audit state', async () => {
-    const client = new HelixClient(api.baseUrl);
+    const client = new HelixClient(api.baseUrl, { adminApiKey: api.adminApiKey });
     const http = supertest(api.baseUrl);
     const prisma = createTestPrisma();
     const agent = await onboardLiveAgent(api, client, {
@@ -55,7 +55,7 @@ describe('Onboarding Live Integration', () => {
 
       const wallet = await new AgentWallet().load('live-onboarding-passphrase', agent.walletPath);
       expect(wallet.did).toBe(agent.did);
-      expect(wallet.vcId).toBe(agent.vcId);
+      expect(wallet.credentials.map((credential) => credential.vcId)).toContain(agent.vcId);
 
       const auditTypes = (await prisma.auditLog.findMany()).map((entry: { eventType: string }) => entry.eventType);
       expect(auditTypes).toEqual(expect.arrayContaining([

@@ -3,7 +3,7 @@ import { unsignedVPSchema, signedVPSchema } from '../../src/schemas/vp.js';
 
 describe('VP Schemas', () => {
   const validUnsigned = {
-    '@context': ['https://www.w3.org/2018/credentials/v1'],
+    '@context': ['https://www.w3.org/ns/credentials/v2'],
     type: ['VerifiablePresentation'],
     id: 'vp:helix:123',
     holder: 'did:key:123',

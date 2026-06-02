@@ -4,6 +4,8 @@
 
 B4 is the orchestration boundary. It does not own any primitives — it calls B1, B2, and B3 to implement the human-facing flows: agent onboarding, user DID verification, and the service registry. B4 is the only boundary that the SDK's human-facing methods call directly.
 
+Current implementation note: agent onboarding is the primary live did:hedera creation path. Step 1 prepares a Hiero DID creation payload and returns it to the SDK; step 2 verifies the challenge signature and submits the SDK-signed DID creation proof to Hedera.
+
 ---
 
 ## What to Mock So This Story Can Start
@@ -48,6 +50,8 @@ model Challenge {
   // Only present for agent_onboarding challenges
   pendingPublicKeyHex String?
   pendingDomains      String?          // JSON array string
+  pendingDidCreateStateJson String?
+  pendingDidCreatePayloadHex String?
   expiresAt           DateTime
   verifiedAt          DateTime?
   createdAt           DateTime         @default(now())
@@ -259,11 +263,12 @@ Agent signs the nonce from step 1 and submits the signature.
 6. Verify: `verifySignature(hexToBytes(nonce), signature, pendingPublicKeyHex)` → if false throw `ChallengeSignatureInvalidError`
 7. Retrieve enrollment token via `challenge.enrollmentTokenId` to get `requestedScopes`, `agentName`, `requestedDomains`
 8. Parse `pendingDomains` from challenge (domains submitted at step 1, used here for DID creation)
-9. Call `IDIDService.createDID(pendingPublicKeyHex, 'agent', parsedDomains, requestId)` — if throws `DIDAlreadyExistsError` → throw `AgentAlreadyOnboardedError`
-10. Call `IVCService.issueVC({ subjectDid: agentDid, subjectType: 'agent', privilegeScopes: requestedScopes, agentName, expiresInSeconds: ENROLLMENT_TOKEN_TTL_SECONDS * 100 }, requestId)` — use a sensible default VC expiry
-11. Mark challenge `verifiedAt = now()`
-12. Emit `AGENT_ONBOARDED` with `agentDid`, `agentName`, `hederaTransactionId`
-13. Return `agentDid` + signed VC + `hederaTransactionId` + `vcId`
+9. Validate `didCreateSignature` when a pending DID creation payload is present. This signature is over `pendingDidCreatePayloadHex` and is produced locally by the SDK using the same pending private key.
+10. Call `IDIDService.createDID(pendingPublicKeyHex, 'agent', parsedDomains, requestId, { stateJson: pendingDidCreateStateJson, signatureHex: didCreateSignature })` — if throws `DIDAlreadyExistsError` → throw `AgentAlreadyOnboardedError`
+11. Call `IVCService.issueVC({ subjectDid: agentDid, subjectType: 'agent', privilegeScopes: requestedScopes, agentName, delegationDepth: 0, maxDelegationDepth, expiresInSeconds: ENROLLMENT_TOKEN_TTL_SECONDS * 100 }, requestId)` — use a sensible default VC expiry
+12. Mark challenge `verifiedAt = now()`
+13. Emit `AGENT_ONBOARDED` with `agentDid`, `agentName`, `hederaTransactionId`
+14. Return `agentDid` + signed VC + `hederaTransactionId` + `vcId`
 
 **Error cases:** 404 `CHALLENGE_NOT_FOUND`, 410 `CHALLENGE_EXPIRED`, 409 `CHALLENGE_ALREADY_VERIFIED`, 400 `CHALLENGE_SIGNATURE_INVALID`, 409 `AGENT_ALREADY_ONBOARDED`
 
@@ -469,28 +474,31 @@ Private key encryption: PBKDF2 (100,000 iterations, SHA-256, 32-byte output key,
 - `getPrivateKey(passphrase: string, filePath: string): Promise<string>` — convenience: load + return `privateKeyHex`
 - `updateVC(newVcId: string, newVcJson: string, filePath: string, passphrase: string): Promise<void>` — load, update VC fields, re-save
 
+Wallet DID rule: the SDK wallet must not derive or guess a live did:hedera DID from a public key. A DID is only known after the API/Hiero onboarding flow returns it, or when the caller explicitly passes a live DID into `AgentWallet`.
+
 ---
 
 ## 4.7 — SDK: High-Level Onboarding and User Flow Methods
 
 Add to `HelixClient`:
 
-**`requestOnboardingChallenge(enrollmentToken: string, domains?: string[]): Promise<{ challengeId, nonce, expiresAt }>`**
+**`requestOnboardingChallenge(enrollmentToken: string, domains?: string[]): Promise<{ challengeId, nonce, expiresAt, didCreateSigningPayloadHex? }>`**
 
 1. Generate keypair locally: `const keyPair = generateKeyPair()`
 2. Store `keyPair` temporarily in-memory (do not persist yet — only persist after challenge verified)
 3. Call `POST /v1/onboard` with `{ enrollmentToken, publicKeyHex: keyPair.publicKey, domains }`
-4. Store `keyPair` on the client instance temporarily for use in `completeOnboarding`
-5. Return `{ challengeId, nonce, expiresAt }`
+4. Store `keyPair` and `didCreateSigningPayloadHex` on the client instance temporarily for use in `completeOnboarding`
+5. Return `{ challengeId, nonce, expiresAt, didCreateSigningPayloadHex }`
 
 **`completeOnboarding(challengeId: string, nonce: string, walletPassphrase: string, walletFilePath: string): Promise<OnboardingResult>`**
 
 1. Retrieve `pendingKeyPair` stored in step above
 2. Sign nonce: `signBytes(hexToBytes(nonce), pendingKeyPair.privateKey)` — produces hex signature
-3. Call `POST /v1/onboard/verify` with `{ challengeId, signature }`
-4. On success: call `AgentWallet.save({ did: result.agentDid, publicKeyHex: pendingKeyPair.publicKey, privateKeyHex: pendingKeyPair.privateKey, vcId: result.vcId, vcJson: JSON.stringify(result.vc), createdAt: now, updatedAt: now }, walletPassphrase, walletFilePath)`
-5. Clear `pendingKeyPair` from memory
-6. Return `OnboardingResult` with `agentDid`, `vcId`, `walletSaved: true`
+3. Sign the pending DID creation payload if present: `signBytes(Buffer.from(didCreateSigningPayloadHex, 'hex'), pendingKeyPair.privateKey)`
+4. Call `POST /v1/onboard/verify` with `{ challengeId, signature, didCreateSignature }`
+5. On success: call `AgentWallet.save({ did: result.agentDid, publicKeyHex: pendingKeyPair.publicKey, privateKeyHex: pendingKeyPair.privateKey, vcId: result.vcId, vcJson: JSON.stringify(result.vc), createdAt: now, updatedAt: now }, walletPassphrase, walletFilePath)`
+6. Clear `pendingKeyPair` from memory
+7. Return `OnboardingResult` with `agentDid`, `vcId`, `walletSaved: true`
 
 **`requestUserChallenge(userDid: string): Promise<{ challengeId, nonce, expiresAt }>`** — calls `POST /v1/challenges`
 

@@ -1,15 +1,24 @@
 import { pbkdf2Sync, createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
-import { deriveDID, derivePublicKey, generateKeyPair, signData, type ServiceEndpoint } from '@helix-id/core';
+import { derivePublicKey, generateKeyPair, signData, type ServiceEndpoint } from '@helix-id/core';
 import type { HelixClient } from '../client/HelixClient.js';
 
 export interface WalletData {
   did: string;
   publicKeyHex: string;
   privateKeyHex: string;
+  credentials: WalletCredential[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WalletCredential {
   vcId: string;
   vcJson: string;
-  createdAt: string;
+  type: string[];
+  issuer?: string;
+  subjectDid?: string;
+  addedAt: string;
   updatedAt: string;
 }
 
@@ -21,8 +30,7 @@ interface StoredWalletData {
   authTag: string;
   iv: string;
   salt: string;
-  vcId: string;
-  vcJson: string;
+  credentials: WalletCredential[];
   createdAt: string;
   updatedAt: string;
 }
@@ -30,6 +38,7 @@ interface StoredWalletData {
 export interface AgentWalletOptions {
   client?: HelixClient;
   privateKeyHex?: string;
+  did?: string;
 }
 
 export class AgentWallet {
@@ -48,7 +57,7 @@ export class AgentWallet {
       this.privateKeyHex = keyPair.privateKey;
       this.publicKeyHex = keyPair.publicKey;
     }
-    this.did = this.publicKeyHex ? deriveDID(this.publicKeyHex) : undefined;
+    this.did = options.did;
   }
 
   getPublicKey(): string {
@@ -57,7 +66,7 @@ export class AgentWallet {
   }
 
   getDID(): string {
-    if (!this.did) throw new Error('Wallet has no in-memory DID');
+    if (!this.did) throw new Error('Wallet has no DID. Pass a live DID into AgentWallet or load an onboarded wallet file.');
     return this.did;
   }
 
@@ -102,8 +111,7 @@ export class AgentWallet {
       authTag: authTag.toString('hex'),
       iv: iv.toString('hex'),
       salt: salt.toString('hex'),
-      vcId: data.vcId,
-      vcJson: data.vcJson,
+      credentials: data.credentials,
       createdAt: data.createdAt,
       updatedAt: data.updatedAt,
     };
@@ -125,8 +133,7 @@ export class AgentWallet {
         did: parsed.did,
         publicKeyHex: parsed.publicKeyHex,
         privateKeyHex: decrypted.toString('utf8'),
-        vcId: parsed.vcId,
-        vcJson: parsed.vcJson,
+        credentials: parsed.credentials,
         createdAt: parsed.createdAt,
         updatedAt: parsed.updatedAt,
       };
@@ -140,12 +147,72 @@ export class AgentWallet {
     return data.privateKeyHex;
   }
 
-  async updateVC(newVcId: string, newVcJson: string, filePath: string, passphrase: string): Promise<void> {
+  async addCredential(vcId: string, vcJson: string, filePath: string, passphrase: string): Promise<void> {
     const existing = await this.load(passphrase, filePath);
+    const credential = AgentWallet.credentialFromVC(vcId, vcJson);
+    const credentials = [
+      ...existing.credentials.filter((item) => item.vcId !== vcId),
+      credential,
+    ];
     await this.save(
-      { ...existing, vcId: newVcId, vcJson: newVcJson, updatedAt: new Date().toISOString() },
+      { ...existing, credentials, updatedAt: new Date().toISOString() },
       passphrase,
       filePath,
     );
+  }
+
+  async updateCredential(vcId: string, vcJson: string, filePath: string, passphrase: string): Promise<void> {
+    await this.addCredential(vcId, vcJson, filePath, passphrase);
+  }
+
+  async removeCredential(vcId: string, filePath: string, passphrase: string): Promise<void> {
+    const existing = await this.load(passphrase, filePath);
+    await this.save(
+      {
+        ...existing,
+        credentials: existing.credentials.filter((item) => item.vcId !== vcId),
+        updatedAt: new Date().toISOString(),
+      },
+      passphrase,
+      filePath,
+    );
+  }
+
+  async listCredentials(passphrase: string, filePath: string): Promise<WalletCredential[]> {
+    return (await this.load(passphrase, filePath)).credentials;
+  }
+
+  async getCredential(vcId: string, passphrase: string, filePath: string): Promise<WalletCredential | null> {
+    return (await this.load(passphrase, filePath)).credentials.find((item) => item.vcId === vcId) ?? null;
+  }
+
+  async getLatestCredential(
+    options: { vcType?: string } | undefined,
+    passphrase: string,
+    filePath: string,
+  ): Promise<WalletCredential | null> {
+    const credentials = (await this.load(passphrase, filePath)).credentials
+      .filter((item) => !options?.vcType || item.type.includes(options.vcType))
+      .sort((a, b) => Date.parse(b.addedAt) - Date.parse(a.addedAt));
+    return credentials[0] ?? null;
+  }
+
+  static credentialFromVC(vcId: string, vc: string | Record<string, unknown>): WalletCredential {
+    const vcJson = typeof vc === 'string' ? vc : JSON.stringify(vc);
+    const parsed = typeof vc === 'string' ? JSON.parse(vc) as Record<string, unknown> : vc;
+    const subject = typeof parsed['credentialSubject'] === 'object' && parsed['credentialSubject'] !== null
+      ? parsed['credentialSubject'] as Record<string, unknown>
+      : {};
+    const now = new Date().toISOString();
+    const credential: WalletCredential = {
+      vcId,
+      vcJson,
+      type: Array.isArray(parsed['type']) ? parsed['type'].filter((item): item is string => typeof item === 'string') : [],
+      addedAt: now,
+      updatedAt: now,
+    };
+    if (typeof parsed['issuer'] === 'string') credential.issuer = parsed['issuer'];
+    if (typeof subject['id'] === 'string') credential.subjectDid = subject['id'];
+    return credential;
   }
 }

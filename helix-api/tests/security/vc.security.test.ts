@@ -14,7 +14,7 @@ import { describe, it, expect, beforeAll, afterEach, afterAll } from 'vitest';
 import Fastify from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { createTestPrisma } from '../utils/prisma.js';
-import { verifySignature, hashCanonicalPayload, derivePublicKey } from '@helix-id/core';
+import { buildDIDDocument, verifySignature, hashCanonicalPayload, derivePublicKey } from '@helix-id/core';
 import bs58 from 'bs58';
 
 import { VCService } from '../../src/services/vc/vc.service.js';
@@ -31,6 +31,7 @@ describe('VC Security', () => {
   let prisma: PrismaClient;
   let didId: string;
   const signingKeyHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+  const issuerDid = 'did:hedera:testnet:testissuer';
 
   beforeAll(async () => {
     prisma = createTestPrisma();
@@ -45,7 +46,7 @@ describe('VC Security', () => {
       didService,
       auditLogger,
       signingKeyHex,
-      'did:hedera:testnet:testissuer',
+      issuerDid,
       'http://localhost:3000',
     );
 
@@ -63,6 +64,18 @@ describe('VC Security', () => {
       didDocument: { id: 'did:helix:securitysubject' },
     });
     didId = didRec.id;
+
+    const issuerPublicKey = derivePublicKey(signingKeyHex);
+    const issuerDocument = buildDIDDocument(issuerDid, issuerPublicKey);
+    await didRepo.createDid({
+      id: issuerDid,
+      subjectType: 'user',
+      controller: issuerDid,
+      publicKey: issuerPublicKey,
+      publicKeyMultibase: issuerDocument.verificationMethod[0]!.publicKeyMultibase,
+      hederaTransactionId: 'tx-issuer',
+      didDocument: issuerDocument,
+    });
   });
 
   afterEach(async () => {
@@ -80,6 +93,7 @@ describe('VC Security', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/v1/vcs',
+      headers: { 'x-admin-api-key': 'test-admin-key-0001' },
       payload: { subjectDid: didId, subjectType: 'user', userId: 'security-user' },
     });
     const { vc } = JSON.parse(res.body);
@@ -100,6 +114,7 @@ describe('VC Security', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/v1/vcs',
+      headers: { 'x-admin-api-key': 'test-admin-key-0001' },
       payload: { subjectDid: didId, subjectType: 'agent', agentName: 'Original', privilegeScopes: ['read:orders'] },
     });
     const { vc } = JSON.parse(res.body);
@@ -122,6 +137,7 @@ describe('VC Security', () => {
     const requests = Array.from({ length: 5 }, () => app.inject({
       method: 'POST',
       url: '/v1/vcs',
+      headers: { 'x-admin-api-key': 'test-admin-key-0001' },
       payload: { subjectDid: didId, subjectType: 'user', userId: 'concurrent-user' },
     }));
 

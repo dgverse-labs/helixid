@@ -19,6 +19,7 @@ export interface VPTemplateClient {
     userDid: string;
     targetService: string;
     vcType?: string;
+    vcId?: string;
   }): Promise<{ unsignedVP: UnsignedVP; vpId?: string; expiresAt?: string }>;
 }
 
@@ -26,8 +27,15 @@ export interface WalletData {
   did: string;
   publicKeyHex: string;
   privateKeyHex: string;
-  vcId: string;
-  vcJson: string;
+  credentials: Array<{
+    vcId: string;
+    vcJson: string;
+    type: string[];
+    issuer?: string;
+    subjectDid?: string;
+    addedAt: string;
+    updatedAt: string;
+  }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -43,6 +51,7 @@ export interface LangChainMiddlewareOptions {
   targetService: string;
   userDid: string;
   vcType?: string;
+  vcId?: string;
   walletLoader?: WalletLoader;
 }
 
@@ -84,6 +93,7 @@ async function createSignedVP(options: LangChainMiddlewareOptions): Promise<Sign
     userDid: options.userDid,
     targetService: options.targetService,
     ...(options.vcType ? { vcType: options.vcType } : {}),
+    ...(options.vcId ? { vcId: options.vcId } : {}),
   });
   return new VPBuilder(template.unsignedVP).sign(wallet.privateKeyHex, `${wallet.did}#key-1`);
 }

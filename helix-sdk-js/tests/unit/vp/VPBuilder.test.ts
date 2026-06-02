@@ -10,7 +10,7 @@ describe('VPBuilder (SDK Unit Tests)', () => {
   
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getValidUnsignedVP = (): any => ({
-    '@context': ['https://www.w3.org/2018/credentials/v1'],
+    '@context': ['https://www.w3.org/ns/credentials/v2'],
     type: ['VerifiablePresentation'],
     id: `vp:helix:${randomBytes(12).toString('hex')}`,
     holder: 'did:hedera:testnet:agent-sdk',

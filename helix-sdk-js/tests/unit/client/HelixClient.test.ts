@@ -79,7 +79,7 @@ describe('HelixClient Branch Coverage', () => {
 
   describe('checkVCStatus branches', () => {
     it('returns expired if date in past', async () => {
-        const res = await client.checkVCStatus({ expirationDate: new Date(Date.now() - 1000).toISOString() } as any);
+        const res = await client.checkVCStatus({ validUntil: new Date(Date.now() - 1000).toISOString() } as any);
         expect(res).toBe('expired');
     });
 

@@ -5,6 +5,13 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { AgentWallet } from '../../../src/wallet/AgentWallet.js';
 
+const credential = AgentWallet.credentialFromVC('v', {
+  id: 'v',
+  type: ['VerifiableCredential', 'HelixAgentCredential'],
+  issuer: 'did:issuer',
+  credentialSubject: { id: 'did:agent' },
+});
+
 describe('AgentWallet Branch Coverage', () => {
   it('constructor handles no options', () => {
     const w = new AgentWallet();
@@ -26,7 +33,7 @@ describe('AgentWallet Branch Coverage', () => {
   it('throws when getting keys if not initialized', () => {
     const w = new AgentWallet();
     expect(() => w.getPublicKey()).toThrow('Wallet has no in-memory public key');
-    expect(() => w.getDID()).toThrow('Wallet has no in-memory DID');
+    expect(() => w.getDID()).toThrow('Wallet has no DID');
     expect(() => w.sign('data')).toThrow('Wallet has no in-memory private key');
   });
 
@@ -49,7 +56,7 @@ describe('AgentWallet Branch Coverage', () => {
     const path = join(dir, 'wallet.json');
     const w = new AgentWallet();
     // Save valid wallet first
-    await w.save({ did: 'd', publicKeyHex: 'p', privateKeyHex: 'pk', vcId: 'v', vcJson: '{}', createdAt: 'c', updatedAt: 'u' }, 'pass', path);
+    await w.save({ did: 'd', publicKeyHex: 'p', privateKeyHex: 'pk', credentials: [credential], createdAt: 'c', updatedAt: 'u' }, 'pass', path);
     // Corrupt it by changing authTag
     const raw = await readFile(path, 'utf8');
     const parsed = JSON.parse(raw);
@@ -61,18 +68,39 @@ describe('AgentWallet Branch Coverage', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it('gets private key and updates VC', async () => {
+  it('gets private key and manages multiple credentials', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'helix-wallet-'));
     const path = join(dir, 'wallet.json');
     const w = new AgentWallet();
-    await w.save({ did: 'd', publicKeyHex: 'p', privateKeyHex: 'pk', vcId: 'v', vcJson: '{}', createdAt: 'c', updatedAt: 'u' }, 'pass', path);
+    await w.save({ did: 'd', publicKeyHex: 'p', privateKeyHex: 'pk', credentials: [credential], createdAt: 'c', updatedAt: 'u' }, 'pass', path);
     
     const pk = await w.getPrivateKey('pass', path);
     expect(pk).toBe('pk');
 
-    await w.updateVC('v-new', '{"new":true}', path, 'pass');
+    await w.addCredential('v-new', JSON.stringify({
+      id: 'v-new',
+      type: ['VerifiableCredential', 'HelixAgentCredential'],
+      issuer: 'did:issuer',
+      credentialSubject: { id: 'did:agent' },
+    }), path, 'pass');
     const loaded = await w.load('pass', path);
-    expect(loaded.vcId).toBe('v-new');
+    expect(loaded.credentials.map((item) => item.vcId)).toEqual(['v', 'v-new']);
+    await expect(w.getCredential('v-new', 'pass', path)).resolves.toMatchObject({ vcId: 'v-new' });
+    await expect(w.getLatestCredential({ vcType: 'HelixAgentCredential' }, 'pass', path)).resolves.toMatchObject({ vcId: 'v-new' });
+
+    await w.updateCredential('v-new', JSON.stringify({
+      id: 'v-new',
+      type: ['VerifiableCredential', 'HelixDelegatedAgentCredential'],
+      issuer: 'did:issuer',
+      credentialSubject: { id: 'did:agent' },
+    }), path, 'pass');
+    await expect(w.getCredential('v-new', 'pass', path)).resolves.toMatchObject({
+      vcId: 'v-new',
+      type: ['VerifiableCredential', 'HelixDelegatedAgentCredential'],
+    });
+
+    await w.removeCredential('v', path, 'pass');
+    await expect(w.listCredentials('pass', path)).resolves.toHaveLength(1);
     await rm(dir, { recursive: true, force: true });
   });
 });

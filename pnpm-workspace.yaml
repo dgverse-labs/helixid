@@ -2,5 +2,6 @@ packages:
   - 'helix-core'
   - 'helix-api'
   - 'helix-sdk-js'
+  - 'examples/*'
   - 'packages/*'
   - 'e2e'

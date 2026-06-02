@@ -17,6 +17,7 @@ import {
   base58btcDecode,
   hashCanonicalPayload,
   issueJWT,
+  getBit,
   signedVPSchema,
   validateChainIntegrity,
   verifySignature,
@@ -95,6 +96,25 @@ function extractScopes(vc: { credentialSubject?: unknown }): string[] {
   return Array.isArray(scopes) ? scopes.filter((scope): scope is string => typeof scope === 'string') : [];
 }
 
+function credentialExpiryMs(vc: { validUntil?: unknown; expirationDate?: unknown }): number | null {
+  const value = typeof vc.validUntil === 'string'
+    ? vc.validUntil
+    : typeof vc.expirationDate === 'string'
+      ? vc.expirationDate
+      : null;
+  return value ? new Date(value).getTime() : null;
+}
+
+function extractStatusListId(statusListCredential: string): string {
+  const pathname = new URL(statusListCredential).pathname;
+  const marker = '/v1/status-list/';
+  const index = pathname.indexOf(marker);
+  if (index === -1) {
+    throw new Error('credential_status_invalid');
+  }
+  return decodeURIComponent(pathname.slice(index + marker.length));
+}
+
 export class VPService implements IVPService {
   constructor(
     private readonly vpRepository: VPRepository,
@@ -113,7 +133,9 @@ export class VPService implements IVPService {
       throw new VPAgentDIDNotFoundError();
     }
 
-    const activeVC = await this.vcService.findActiveBySubjectDid(params.agentDid, params.vcType);
+    const activeVC = params.vcId
+      ? await this.vcService.findActiveByVcIdForSubject(params.vcId, params.agentDid, params.vcType)
+      : await this.vcService.findActiveBySubjectDid(params.agentDid, params.vcType);
     if (!activeVC) {
       throw new VPNoActiveVCError();
     }
@@ -123,7 +145,7 @@ export class VPService implements IVPService {
     const vpId = makeVpId();
     const expiresAt = new Date(Date.now() + this.vpTtlSeconds * 1000);
     const unsignedVP = {
-      '@context': ['https://www.w3.org/2018/credentials/v1'],
+      '@context': ['https://www.w3.org/ns/credentials/v2'],
       type: ['VerifiablePresentation'],
       id: vpId,
       holder: params.agentDid,
@@ -202,14 +224,20 @@ export class VPService implements IVPService {
       const vc = parsed.data.verifiableCredential[0] as {
         id?: string;
         issuer?: string;
+        validUntil?: string;
         expirationDate?: string;
+        credentialStatus?: {
+          statusListCredential?: string;
+          statusListIndex?: string;
+        };
         credentialSubject?: unknown;
         proof?: { proofValue?: string; verificationMethod?: string; type?: string; created?: string; proofPurpose?: string };
         [key: string]: unknown;
       };
 
       // Step 6: Check VC expiry from the VC payload itself
-      if (vc.expirationDate && new Date(vc.expirationDate).getTime() <= Date.now()) {
+      const vcExpiry = credentialExpiryMs(vc);
+      if (vcExpiry !== null && vcExpiry <= Date.now()) {
         throw new Error('vc_expired');
       }
       if (!vc.id) {
@@ -238,13 +266,17 @@ export class VPService implements IVPService {
         throw new VCSignatureInvalidError();
       }
 
-      // Step 8: Check VC revocation status in DB
-      const status = await this.vcService.getVCStatus(vc.id);
-      if (status === 'revoked') {
+      // Step 8: Check VC revocation status through the embedded status-list entry.
+      const statusListCredential = vc.credentialStatus?.statusListCredential;
+      const statusListIndex = vc.credentialStatus?.statusListIndex;
+      if (!statusListCredential || statusListIndex === undefined) {
         throw new VCRevokedError();
       }
-      if (status === 'expired') {
-        throw new VCExpiredError();
+      const listId = extractStatusListId(statusListCredential);
+      const statusList = await this.vcService.getStatusList(listId);
+      const bit = getBit(statusList.credentialSubject.encodedList, Number(statusListIndex));
+      if (bit === 1) {
+        throw new VCRevokedError();
       }
 
       const agentParse = AgentVCSchema.safeParse(vc);
@@ -391,15 +423,20 @@ export class VPService implements IVPService {
     try {
       validateChainIntegrity(chain);
       for (const vc of chain) {
-        if (new Date(vc.expirationDate).getTime() <= Date.now()) {
+        const expiry = credentialExpiryMs(vc);
+        if (expiry !== null && expiry <= Date.now()) {
           throw new Error('vc_expired');
         }
-        const status = await this.vcService.getVCStatus(vc.id);
-        if (status === 'revoked') {
+        const statusListCredential = vc.credentialStatus?.statusListCredential;
+        const statusListIndex = vc.credentialStatus?.statusListIndex;
+        if (!statusListCredential || statusListIndex === undefined) {
           throw new Error('vc_revoked');
         }
-        if (status === 'expired') {
-          throw new Error('vc_expired');
+        const listId = extractStatusListId(statusListCredential);
+        const statusList = await this.vcService.getStatusList(listId);
+        const bit = getBit(statusList.credentialSubject.encodedList, Number(statusListIndex));
+        if (bit === 1) {
+          throw new Error('vc_revoked');
         }
         await this.verifyVCSignedByIssuer(vc);
         await this.didService.resolveDID(vc.credentialSubject.id);

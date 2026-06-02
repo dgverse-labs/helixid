@@ -115,7 +115,11 @@ describe('VP security API', () => {
       id: 'vc:test:sec1',
       type: ['VerifiableCredential', 'HelixAgentCredential'],
       issuer: defaultDid,
-      expirationDate: new Date(Date.now() + 60_000).toISOString(),
+      validUntil: new Date(Date.now() + 60_000).toISOString(),
+      credentialStatus: {
+        statusListCredential: 'http://localhost:3000/v1/status-list/helix-status-list-1',
+        statusListIndex: '0',
+      },
       credentialSubject: { privilegeScopes: ['read'] }
     }));
   });
@@ -209,9 +213,19 @@ describe('VP security API', () => {
     expectOpaqueFailure(res);
   });
 
-  it('rejects expired VC (mock status)', async () => {
+  it('rejects expired VC validUntil', async () => {
+    vcService.setActiveVC(await signTestVC({
+      id: 'vc:test:expired',
+      type: ['VerifiableCredential', 'HelixAgentCredential'],
+      issuer: defaultDid,
+      validUntil: new Date(Date.now() - 60_000).toISOString(),
+      credentialStatus: {
+        statusListCredential: 'http://localhost:3000/v1/status-list/helix-status-list-1',
+        statusListIndex: '0',
+      },
+      credentialSubject: { privilegeScopes: ['read'] },
+    }));
     const signedVP = await getSignedVP();
-    vcService.setStatus('expired');
 
     const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP } });
     expectOpaqueFailure(res);

@@ -22,7 +22,8 @@ const vpRoutes: FastifyPluginAsync<VPRouteOptions> = async (fastify, options) =>
           agentDid: { type: 'string', minLength: 1 },
           userDid: { type: 'string', minLength: 1 },
           targetService: { type: 'string', minLength: 1 },
-          vcType: { type: 'string', minLength: 1 }
+          vcType: { type: 'string', minLength: 1 },
+          vcId: { type: 'string', minLength: 1 }
         }
       }
     }
@@ -30,7 +31,7 @@ const vpRoutes: FastifyPluginAsync<VPRouteOptions> = async (fastify, options) =>
     try {
       const requestId = request.id;
       const result = await options.vpService.generateVPTemplate(
-        request.body as { agentDid: string; userDid: string; targetService: string; vcType: string },
+        request.body as { agentDid: string; userDid: string; targetService: string; vcType: string; vcId?: string },
         requestId
       );
       return reply.code(201).send(result);

@@ -111,7 +111,7 @@ export class MockDIDService implements IDIDService {
     return undefined;
   }
 
-  private toResolveResult(document: DIDDocument, source: 'cache' | 'hedera'): ResolveDIDResult {
+  private toResolveResult(document: DIDDocument, source: 'cache' | 'db' | 'hedera'): ResolveDIDResult {
     return {
       did: document.id,
       didDocument: document,

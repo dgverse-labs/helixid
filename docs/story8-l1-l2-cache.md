@@ -6,7 +6,7 @@ Add a two-layer read cache to selected DID resolution and status list fetch path
 
 No new API endpoints. No schema changes. This is a performance and reliability story that makes the delegation chain verify path (Story 6) cheaper at scale and reduces repeated PostgreSQL/Hedera read frequency in production.
 
-Security rule: cache is never the authority for revocation or deactivation. Helix ID's own verification path must not accept a stale cached DID after deactivation or a stale cached status list after VC revocation.
+Security rule: cache is never the authority for deactivation, and revocation cache entries must be invalidated on writes. Helix ID's own verification path must not accept a stale cached DID after deactivation or a stale public status-list value after VC revocation.
 
 ---
 
@@ -167,7 +167,7 @@ The `v1:` version prefix allows cache invalidation of all entries if the schema 
 
 ### `helix-api/src/services/did/did.service.ts`
 
-Add constructor parameter: `cache: TwoLayerCache<DIDDocument>`
+Add constructor parameter: `cache: ICache<DIDDocument>`. Runtime wiring should pass a `TwoLayerCache` when caching is enabled and `NoopCache` when disabled.
 
 **`resolveDID(did, options)` — add cache read/write:**
 
@@ -178,7 +178,7 @@ Add constructor parameter: `cache: TwoLayerCache<DIDDocument>`
    c. If still active, return cached document with `source: 'cache'`.
 2. Existing path: DB lookup → if found and not deactivated, cache it and return with `source: 'db'`.
 3. If `live=true` or not in DB: Hedera mirror node fetch.
-4. After successful Hedera fetch/DB hit: `await cache.set(did, didDocument, config.DID_CACHE_L1_TTL_SECONDS)`.
+4. After successful DB hit: `await cache.set(did, didDocument, config.DID_CACHE_L1_TTL_SECONDS)`. Live Hedera resolution should not write stale data into the normal read cache unless the fetched document is also reconciled into the durable record.
 5. Return result.
 
 Rationale: DID documents are already stored in PostgreSQL. L1/L2 cache reduces repeated DB reads, especially in VP/delegation verification, but DB remains the immediate authority for deactivation state.
@@ -226,9 +226,9 @@ const vcService = new VCService(vcRepository, didService, auditLogger, statusLis
 
 ### `helix-api/src/services/vc/vc.service.ts`
 
-Add constructor parameter: `statusListCache: TwoLayerCache<string>`
+Add constructor parameter: `statusListCache: ICache<string>`. Runtime wiring should pass a `TwoLayerCache` when caching is enabled and `NoopCache` when disabled.
 
-**`getStatusListCredential(listId)` — add cache for the public status-list endpoint:**
+**`getStatusList(listId)` — add cache for the public status-list endpoint:**
 
 ```
 1. Check cache: const cached = await statusListCache.get(listId)
@@ -242,7 +242,7 @@ Add constructor parameter: `statusListCache: TwoLayerCache<string>`
 
 After the atomic Prisma transaction (DB revocation + status list update), call `statusListCache.delete('helix-status-list-1')`. This forces the next local read to fetch the updated bitstring from DB.
 
-**Why short TTL for status lists (60s L1, 300s L2):** A revocation must be detectable by verifiers within a reasonable window. The existing self-verification documentation already states verifiers may cache the status list — a 5-minute maximum staleness window is consistent with that. For Helix ID's own `verifyVP` path, revocation must still be checked against durable VC status, not accepted from a stale cached status list.
+**Why short TTL for status lists (60s L1, 300s L2):** A revocation must be detectable by verifiers within a reasonable window. The existing self-verification documentation already states verifiers may cache the status list — a 5-minute maximum staleness window is consistent with that. For Helix ID's own `verifyVP` path, revocation is read from the embedded VC 2.0 `BitstringStatusListEntry` and the corresponding status-list credential. Revocation writes must delete the status-list cache entry before returning.
 
 ---
 
@@ -301,7 +301,7 @@ Setup: real PostgreSQL + app-level cache. Do not require real Redis in this stor
 
 Tests:
 
-- `GET /v1/dids/:did` first call → DB/Hedera path, response `source: 'db'`. Second call → L1 cache hit (no DB call — verify via mock on repository layer).
+- `DIDService.resolveDID` first call → DB/Hedera path, result `source: 'db'` or `source: 'hedera'`. Second non-live call → L1 cache hit, result `source: 'cache'`, while still checking durable DB deactivation state.
 - L2 behavior without real Redis: populate fake L2, clear L1, resolve DID → L2 hit repopulates L1.
 - `CACHE_ENABLED=false`: repeated DID resolve does not return `source: 'cache'` and continues through normal DB/Hedera path.
 - `CACHE_L2_ENABLED=false` with `REDIS_URL` set: cache factory does not create Redis L2 and L1-only mode works.
@@ -309,14 +309,14 @@ Tests:
 - DID deactivation invalidates cache and DB active-state check wins: resolve DID (populate cache), deactivate, resolve again → 410 `DID_DEACTIVATED` (not served from cache)
 - Status list `GET /v1/status-list/:listId` first call → DB. Second call within TTL → L1 cache.
 - Revoke VC → status list cache invalidated → next `GET /v1/status-list/:listId` returns updated bitstring with revoked bit set
-- VP verification after revocation rejects using durable VC status, even if status-list cache was warm before revocation
+- VP verification after revocation rejects using the VC's embedded `BitstringStatusListEntry`; status-list cache invalidation ensures the updated bitstring is used after revocation
 - No Redis configured (`REDIS_URL` unset): L1-only mode works correctly end to end
 - L2 TTL higher than L1: fake L2 retains value after L1 expiry and repopulates L1; caller TTL cap is still respected
 
 ### Security Tests — `helix-api/tests/security/cache.security.test.ts`
 
 - **Deactivated DID not accepted from cache:** Deactivate DID while it is in L1 cache. Immediately call `resolveDID` → must return `DID_DEACTIVATED`, not the cached document. This confirms DB active-state check/invalidation wins over TTL.
-- **Revoked VC not accepted from stale cache:** Revoke VC. Call `POST /v1/vp/verify` with a VP built from that VC → must reject. This confirms Helix ID's own verify path does not trust stale status-list cache.
+- **Revoked VC not accepted from stale cache:** Revoke VC. Call `POST /v1/vp/verify` with a VP built from that VC → must reject. This confirms Helix ID's own verify path uses the updated Bitstring Status List state after cache invalidation.
 - **Public status list invalidated on revoke:** Revoke VC. Call `GET /v1/status-list/:listId` → bit at revoked index must be 1. Confirms public status-list cache invalidation works before TTL expiry.
 - **Cache keys do not leak private data:** Assert no key in the in-memory/fake L2 cache contains `privateKey`, `encryptedPrivateKey`, or any 64-char hex string matching a known private key from test fixtures. When real Redis tests are added later, apply the same assertion to Redis keys.
 

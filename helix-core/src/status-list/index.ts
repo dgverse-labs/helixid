@@ -17,10 +17,10 @@ export interface StatusListCredential {
   id: string;
   type: string[];
   issuer: string;
-  issuanceDate: string;
+  validFrom: string;
   credentialSubject: {
     id: string;
-    type: 'StatusList2021';
+    type: 'BitstringStatusList';
     statusPurpose: 'revocation';
     encodedList: string;
   };
@@ -45,7 +45,7 @@ function base64urlDecode(str: string): Buffer {
 }
 
 /**
- * Creates a new status list bitstring (W3C StatusList2021).
+ * Creates a new status list bitstring (W3C Bitstring Status List).
  * Default size: 131072 bits (16KB uncompressed).
  */
 export function createStatusList(size: number = 131072): string {
@@ -69,9 +69,9 @@ export function setBit(encodedList: string, index: number, value: 0 | 1): string
   if (byte === undefined) throw new Error('Status list index out of bounds');
 
   if (value === 1) {
-    buffer[byteIndex] = byte | (1 << bitIndex);
+    buffer[byteIndex] = byte | (1 << (7 - bitIndex));
   } else {
-    buffer[byteIndex] = byte & ~(1 << bitIndex);
+    buffer[byteIndex] = byte & ~(1 << (7 - bitIndex));
   }
 
   const newCompressed = gzipSync(buffer);
@@ -91,12 +91,12 @@ export function getBit(encodedList: string, index: number): 0 | 1 {
   const byte = buffer[byteIndex];
   if (byte === undefined) throw new Error('Status list index out of bounds');
 
-  const bit = (byte >> bitIndex) & 1;
+  const bit = (byte >> (7 - bitIndex)) & 1;
   return bit === 1 ? 1 : 0;
 }
 
 /**
- * Builds the W3C StatusList2021 credential JSON.
+ * Builds the W3C Bitstring Status List credential JSON.
  */
 export function buildStatusListCredential(
   listId: string, 
@@ -106,16 +106,16 @@ export function buildStatusListCredential(
 ): StatusListCredential {
   return {
     '@context': [
-      'https://www.w3.org/2018/credentials/v1',
-      'https://w3id.org/vc/status-list/2021/v1'
+      'https://www.w3.org/ns/credentials/v2',
+      'https://www.w3.org/ns/credentials/status/v1'
     ],
     id: `${apiBaseUrl}/v1/status-list/${listId}`,
-    type: ['VerifiableCredential', 'StatusList2021Credential'],
+    type: ['VerifiableCredential', 'BitstringStatusListCredential'],
     issuer: issuerDid,
-    issuanceDate: new Date().toISOString(),
+    validFrom: new Date().toISOString(),
     credentialSubject: {
       id: `${apiBaseUrl}/v1/status-list/${listId}#list`,
-      type: 'StatusList2021',
+      type: 'BitstringStatusList',
       statusPurpose: 'revocation',
       encodedList
     }

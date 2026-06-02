@@ -1,8 +1,9 @@
 const API_BASE_URL = 'http://localhost:3000';
-const VC_ID = 'vc:helix:2ca5e33bddf847d6827041e4';
+const VC_ID = process.argv[2];
 const HELIX_ADMIN_API_KEY = 'local-admin-key-please-rotate';
 
 async function main() {
+  if (!VC_ID) throw new Error('Usage: pnpm exec tsx tmp/revoke-vc-for-testing.ts <vc-id>');
   const response = await fetch(`${API_BASE_URL}/v1/vcs/${encodeURIComponent(VC_ID)}/revoke`, {
     method: 'POST',
     headers: {

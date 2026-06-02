@@ -23,7 +23,7 @@ describe('Delegation Live Integration', () => {
   });
 
   it('supports two levels of live delegation and rejects a third level', async () => {
-    const client = new HelixClient(api.baseUrl);
+    const client = new HelixClient(api.baseUrl, { adminApiKey: api.adminApiKey });
     const http = supertest(api.baseUrl);
     const agentA = await onboardLiveAgent(api, client, {
       agentName: 'Live Delegator A',
@@ -53,7 +53,7 @@ describe('Delegation Live Integration', () => {
 
     try {
       const agentAVP = await signDelegationAuthorityVP(http, agentA, agentB.did);
-      const delegateBRes = await http.post('/v1/vcs/delegate').send({
+      const delegateBRes = await http.post('/v1/vcs/delegate').set('x-admin-api-key', api.adminApiKey).send({
         delegatorVP: agentAVP,
         delegateeAgentDid: agentB.did,
         requestedScopes: ['read:catalog', 'read:orders'],
@@ -78,7 +78,7 @@ describe('Delegation Live Integration', () => {
         ...agentB,
         vcId: delegateBRes.body.vcId,
       }, agentC.did);
-      const delegateCRes = await http.post('/v1/vcs/delegate').send({
+      const delegateCRes = await http.post('/v1/vcs/delegate').set('x-admin-api-key', api.adminApiKey).send({
         delegatorVP: agentBVP,
         delegateeAgentDid: agentC.did,
         requestedScopes: ['read:catalog'],
@@ -115,7 +115,7 @@ describe('Delegation Live Integration', () => {
         ...agentC,
         vcId: delegateCRes.body.vcId,
       }, agentD.did);
-      const delegateDRes = await http.post('/v1/vcs/delegate').send({
+      const delegateDRes = await http.post('/v1/vcs/delegate').set('x-admin-api-key', api.adminApiKey).send({
         delegatorVP: freshAgentCVP,
         delegateeAgentDid: agentD.did,
         requestedScopes: ['read:catalog'],
