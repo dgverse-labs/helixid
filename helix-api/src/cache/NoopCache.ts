@@ -4,15 +4,18 @@
 import type { ICache } from './ICache.js';
 
 export class NoopCache<T> implements ICache<T> {
-  async get(): Promise<T | null> {
+  async get(key: string): Promise<T | null> {
+    void key;
     return null;
   }
 
-  async set(): Promise<void> {
-    // Intentionally empty.
+  async set(key: string, value: T, ttlSeconds: number): Promise<void> {
+    void key;
+    void value;
+    void ttlSeconds;
   }
 
-  async delete(): Promise<void> {
-    // Intentionally empty.
+  async delete(key: string): Promise<void> {
+    void key;
   }
 }
