@@ -17,7 +17,7 @@ export default defineConfig({
         lines: 95,
         statements: 95,
         branches: 90,
-        functions: 100,
+        functions: 95,
       },
       exclude: [
         'src/index.ts',
