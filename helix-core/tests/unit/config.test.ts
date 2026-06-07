@@ -26,12 +26,13 @@ describe('Config', () => {
     process.env.HEDERA_TOPIC_ID = '0.0.456';
     process.env.HELIX_SIGNING_KEY = 'a'.repeat(64);
     process.env.HELIX_ISSUER_DID = 'did:hedera:testnet:testissuer';
+    process.env.NODE_ENV = 'test';
 
     const { loadConfigFromEnv } = await import('../../src/config/index.js');
     const config = loadConfigFromEnv();
     expect(config.API_BASE_URL).toBe('https://api.test.com');
     expect(config.HELIX_ISSUER_DID).toBe('did:hedera:testnet:testissuer');
-    expect(config.NODE_ENV).toBe('test'); // Vitest sets this
+    expect(config.NODE_ENV).toBe('test');
   });
 
   it('accepts a PKCS8 DER seed Helix signing key', async () => {

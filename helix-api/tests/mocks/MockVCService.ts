@@ -77,7 +77,6 @@ export class MockVCService implements IVCService {
       requestedScopes: string[];
       expiresInSeconds?: number;
     },
-    _requestId: string,
   ): Promise<{
     vcId: string;
     delegateeAgentDid: string;

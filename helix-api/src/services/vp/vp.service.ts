@@ -11,7 +11,6 @@ import {
   VPNotFoundError,
   VPVerificationFailedError,
   VCSignatureInvalidError,
-  VCExpiredError,
   VCRevokedError,
   VCIssuerNotFoundError,
   base58btcDecode,
