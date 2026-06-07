@@ -153,4 +153,65 @@ describe('AgentRepository Unit Tests', () => {
     });
     expect(prisma.$queryRawUnsafe).toHaveBeenCalledTimes(3);
   });
+
+  it('uses raw Prisma branches for enrollment token lookups and max delegation depth', async () => {
+    const expiresAt = new Date();
+    const updatedToken = {
+      id: 'et-raw',
+      tokenHash: 'hash',
+      agentName: 'Agent',
+      requestedScopes: '[]',
+      requestedDomains: '[]',
+      maxDelegationDepth: 2,
+      expiresAt,
+      usedAt: null,
+      createdAt: new Date(),
+    };
+    const prisma = {
+      $connect: vi.fn(),
+      $queryRawUnsafe: vi.fn()
+        .mockResolvedValueOnce([updatedToken])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]),
+      enrollmentToken: {
+        create: vi.fn().mockResolvedValue({ ...updatedToken, maxDelegationDepth: 0 }),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+    };
+    const prismaRepository = new AgentRepository(prisma as never);
+
+    await expect(prismaRepository.createEnrollmentToken({
+      tokenHash: 'hash',
+      agentName: 'Agent',
+      requestedScopes: '[]',
+      requestedDomains: '[]',
+      expiresAt,
+      maxDelegationDepth: 2,
+    })).resolves.toMatchObject({ maxDelegationDepth: 2 });
+    await expect(prismaRepository.findEnrollmentTokenByHash('missing')).resolves.toBeNull();
+    await expect(prismaRepository.findEnrollmentTokenById('missing')).resolves.toBeNull();
+    await expect(prismaRepository.burnEnrollmentTokenAtomically('hash')).resolves.toBe(false);
+  });
+
+  it('throws when raw challenge writes return no row and when memory challenge is missing', async () => {
+    const prismaRepository = new AgentRepository({
+      $queryRawUnsafe: vi.fn().mockResolvedValue([]),
+    } as never);
+
+    await expect(prismaRepository.createChallenge({
+      challengeId: 'chal-missing',
+      nonce: 'nonce',
+      did: '',
+      purpose: 'agent_onboarding',
+      pendingPublicKeyHex: 'a'.repeat(64),
+      pendingDomains: '[]',
+      pendingDidCreateStateJson: null,
+      pendingDidCreatePayloadHex: null,
+      expiresAt: new Date(),
+      enrollmentTokenId: null,
+    })).rejects.toThrow('Challenge query returned no rows');
+
+    await expect(repository.markChallengeVerified('missing')).rejects.toThrow('Challenge not found');
+  });
 });

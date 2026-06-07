@@ -7,7 +7,7 @@ import { InProcessCache } from '../../../src/cache/InProcessCache.js';
 import { NoopCache } from '../../../src/cache/NoopCache.js';
 import { RedisCache, type RedisLike } from '../../../src/cache/RedisCache.js';
 import { TwoLayerCache } from '../../../src/cache/TwoLayerCache.js';
-import { createDidCache } from '../../../src/cache/cacheFactory.js';
+import { createDidCache, createStatusListCache } from '../../../src/cache/cacheFactory.js';
 import type { ICache } from '../../../src/cache/ICache.js';
 
 class RecordingCache<T> implements ICache<T> {
@@ -52,6 +52,13 @@ describe('cache primitives', () => {
     await cache.set('k', 'v', 10);
     await cache.delete('k');
     await expect(cache.get('k')).resolves.toBeNull();
+
+    await cache.set('zero', 'v', 0);
+    await expect(cache.get('zero')).resolves.toBeNull();
+
+    await cache.set('clear-me', 'v', 10);
+    cache.clear();
+    expect(cache.keys()).toEqual([]);
   });
 
   it('NoopCache never stores values', async () => {
@@ -128,6 +135,22 @@ describe('cache primitives', () => {
     expect(redis.del).toHaveBeenCalledWith('p:k');
   });
 
+  it('RedisCache handles misses and non-positive TTL deletes', async () => {
+    const redis: RedisLike = {
+      get: vi.fn().mockResolvedValue(null),
+      set: vi.fn().mockResolvedValue('OK'),
+      del: vi.fn().mockResolvedValue(1),
+    };
+    const cache = new RedisCache<string>(redis, 'p:');
+
+    await expect(cache.get('missing')).resolves.toBeNull();
+    await cache.set('expired', 'v', 0);
+
+    expect(redis.get).toHaveBeenCalledWith('p:missing');
+    expect(redis.set).not.toHaveBeenCalled();
+    expect(redis.del).toHaveBeenCalledWith('p:expired');
+  });
+
   it('cache factory respects CACHE_ENABLED, CACHE_L2_ENABLED, and REDIS_URL state', async () => {
     const redis: RedisLike = {
       get: vi.fn().mockResolvedValue(JSON.stringify('from-l2')),
@@ -152,5 +175,9 @@ describe('cache primitives', () => {
     const l2Enabled = createDidCache<string>(testConfig({ REDIS_URL: 'redis://localhost:6379' }), redis);
     await expect(l2Enabled.get('k')).resolves.toBe('from-l2');
     expect(redis.get).toHaveBeenCalledWith('did:v1:k');
+
+    const statusListCache = createStatusListCache<string>(testConfig({ REDIS_URL: 'redis://localhost:6379' }), redis);
+    await statusListCache.set('list-1', 'encoded', 10);
+    expect(redis.set).toHaveBeenCalledWith('sl:v1:list-1', JSON.stringify('encoded'), 'EX', 10);
   });
 });
