@@ -7,7 +7,7 @@ import pg from 'pg';
 import { Redis } from 'ioredis';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { buildDIDDocument, derivePublicKey, loadConfigFromEnv, type DIDDocument } from '@helix-id/core';
+import { buildDIDDocument, derivePublicKey, generateKeyPair, loadConfigFromEnv, type DIDDocument } from '@helix-id/core';
 
 import { errorHandler } from './middleware/errorHandler.js';
 import { ApiAuditLogger } from './audit/index.js';
@@ -58,6 +58,7 @@ const hederaClient = process.env['HEDERA_MOCK'] === 'true'
   : new HieroHederaClient(config);
 const didCache = createDidCache<DIDDocument>(config, redis);
 const statusListCache = createStatusListCache<string>(config, redis);
+const jwtSessionKeyPair = generateKeyPair();
 
 const didService = new DIDService(
   didRepository,
@@ -77,7 +78,7 @@ const vcService = new VCService(
   config.STATUS_LIST_CACHE_L1_TTL_SECONDS,
 );
 const vpService = new VPService(vpRepository, didService, vcService, serviceRegistry, auditLogger, config.VP_TTL_SECONDS, {
-  signingKey: config.HELIX_JWT_SIGNING_KEY,
+  signingKey: jwtSessionKeyPair.privateKey,
   issuerDid: config.HELIX_ISSUER_DID,
   ttlSeconds: config.JWT_SESSION_TTL_SECONDS,
 });
@@ -160,7 +161,7 @@ await app.register(didRoutes, { didService });
 await app.register(vcRoutes, { prefix: '/v1/vcs', vcService, vpService, adminApiKey: config.HELIX_ADMIN_API_KEY });
 await app.register(statusListRoutes, { prefix: '/v1/status-list', vcService });
 await app.register(vpRoutes, { prefix: '/v1/vp', vpService });
-await app.register(sessionRoutes, { prefix: '/v1/sessions', publicKeyHex: config.HELIX_JWT_PUBLIC_KEY });
+await app.register(sessionRoutes, { prefix: '/v1/sessions', publicKeyHex: jwtSessionKeyPair.publicKey });
 await app.register(agentRoutes, { prefix: '/v1', agentService });
 
 const shutdown = async (): Promise<void> => {

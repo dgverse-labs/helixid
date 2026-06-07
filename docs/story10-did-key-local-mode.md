@@ -198,7 +198,7 @@ If "key":
   - Skip Hedera credential prompts
   - Write DID_METHOD=key to .env
   - Print warning: "did:key mode is for local development only. Not suitable for production."
-  - Generate HELIX_SIGNING_KEY and HELIX_JWT_SIGNING_KEY as normal
+  - Generate HELIX_SIGNING_KEY as normal; JWT session signing keys are generated ephemerally at API startup
   - Done — no Hedera account needed
 
 If "hedera":

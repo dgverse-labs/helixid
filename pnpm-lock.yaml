@@ -71,6 +71,34 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
+  examples/framework-middleware:
+    dependencies:
+      '@helix-id/core':
+        specifier: workspace:*
+        version: link:../../helix-core
+      '@helix-id/langchain':
+        specifier: workspace:*
+        version: link:../../packages/langchain
+      '@helix-id/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
+      '@helix-id/sdk-js':
+        specifier: workspace:*
+        version: link:../../helix-sdk-js
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
+      tsx:
+        specifier: ^4.0.0
+        version: 4.21.0
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
   helix-api:
     dependencies:
       '@fastify/sensible':

@@ -11,7 +11,7 @@
 // limitations under the License.
 
 import { z } from 'zod';
-import { derivePublicKey, isSupportedEd25519PrivateKeyHex } from '../crypto/keys.js';
+import { isSupportedEd25519PrivateKeyHex } from '../crypto/keys.js';
 
 const BooleanEnvSchema = z.preprocess((value) => {
   if (typeof value === 'boolean') return value;
@@ -37,12 +37,6 @@ export const ConfigSchema = z.object({
   }),
   HELIX_ISSUER_DID: z.string().regex(/^did:hedera:(testnet|previewnet|mainnet):.+$/, {
     message: 'must be a did:hedera issuer DID',
-  }),
-  HELIX_JWT_SIGNING_KEY: z.string().refine(isSupportedEd25519PrivateKeyHex, {
-    message: 'must be raw 32-byte Ed25519 private key hex or PKCS8 DER seed hex',
-  }),
-  HELIX_JWT_PUBLIC_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, {
-    message: 'must be a 32-byte Ed25519 public key hex',
   }),
   HELIX_ADMIN_API_KEY: z.string().min(16).optional(),
 
@@ -91,10 +85,6 @@ export function loadConfig(input: Record<string, unknown>): Config {
       'HEDERA_NETWORK=mainnet is only permitted when NODE_ENV=production. ' +
         'This safeguard prevents accidental writes to mainnet in development or CI.',
     );
-  }
-
-  if (derivePublicKey(config.HELIX_JWT_SIGNING_KEY) !== config.HELIX_JWT_PUBLIC_KEY.toLowerCase()) {
-    throw new Error('HELIX_JWT_PUBLIC_KEY must match HELIX_JWT_SIGNING_KEY.');
   }
 
   return config;

@@ -19,6 +19,9 @@
     "example:scope-check": "pnpm --filter @helix-id/api exec tsx ../examples/scope-check.ts",
     "example:self-verify": "pnpm --filter @helix-id/api exec tsx ../examples/self-verify.ts",
     "example:revocation-check": "pnpm --filter @helix-id/api exec tsx ../examples/revocation-check.ts",
+    "example:middleware:setup": "pnpm --filter @helix-id/example-framework-middleware run setup",
+    "example:middleware:langchain": "pnpm --filter @helix-id/example-framework-middleware run langchain",
+    "example:middleware:mcp": "pnpm --filter @helix-id/example-framework-middleware run mcp",
     "dev": "turbo run dev",
     "dev:api": "turbo run dev --filter=@helix-id/api"
   },

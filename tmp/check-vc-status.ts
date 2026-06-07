@@ -9,8 +9,10 @@ const VC_ID = process.argv[2];
 async function main() {
   const client = new HelixClient(API_BASE_URL);
   const wallet = await new AgentWallet().load(WALLET_PASSPHRASE, WALLET_FILE_PATH);
-  const vcId = VC_ID ?? wallet.credentials.at(-1)?.vcId;
-  if (!vcId) throw new Error('Usage: pnpm exec tsx tmp/check-vc-status.ts <vc-id> or use a wallet with credentials');
+  const vcId = VC_ID ?? (wallet.credentials.length === 1 ? wallet.credentials[0]?.vcId : undefined);
+  if (!vcId) {
+    throw new Error('Usage: pnpm exec tsx tmp/check-vc-status.ts <vc-id>. The wallet has zero or multiple credentials, so vcId must be explicit.');
+  }
   const details = await client.getVC(vcId);
 
   console.log('VC details', {

@@ -45,6 +45,7 @@ describe('VC Expiry Live Integration', () => {
         userDid: 'did:hedera:testnet:live-user-placeholder',
         targetService: 'amazon',
         vcType: 'HelixAgentCredential',
+        vcId: shortVc.vcId,
       });
       expect(templateRes.statusCode).toBe(201);
       expect(templateRes.body.unsignedVP.verifiableCredential[0].id).toBe(shortVc.vcId);

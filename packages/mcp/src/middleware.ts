@@ -134,14 +134,31 @@ export async function attachHelixVP(toolCall: MCPToolCall, options: VPAttachOpti
 
 async function createSignedVP(options: VPAttachOptions): Promise<SignedVP> {
   const wallet = await (options.walletLoader ?? new AgentWallet()).load(options.walletPassphrase, options.walletFilePath);
+  const vcId = options.vcId ?? selectOnlyMatchingCredentialId(wallet, options.vcType ?? 'HelixAgentCredential');
   const template = await options.helixClient.createVPTemplate({
     agentDid: wallet.did,
     userDid: options.userDid,
     targetService: options.targetService,
     ...(options.vcType ? { vcType: options.vcType } : {}),
-    ...(options.vcId ? { vcId: options.vcId } : {}),
+    vcId,
   });
   return new VPBuilder(template.unsignedVP).sign(wallet.privateKeyHex, `${wallet.did}#key-1`);
+}
+
+function selectOnlyMatchingCredentialId(wallet: WalletData, vcType: string): string {
+  const now = Date.now();
+  const matches = wallet.credentials.filter((credential) => {
+    if (!credential.type.includes(vcType)) return false;
+    const vc = JSON.parse(credential.vcJson) as { validUntil?: unknown; expirationDate?: unknown };
+    const expiresAt = typeof vc.validUntil === 'string'
+      ? vc.validUntil
+      : typeof vc.expirationDate === 'string'
+        ? vc.expirationDate
+        : undefined;
+    return !expiresAt || Date.parse(expiresAt) > now;
+  });
+  if (matches.length === 1) return matches[0]!.vcId;
+  throw new Error(`Helix MCP adapter requires vcId when the wallet has ${matches.length} matching active credentials. Select the credential in application code.`);
 }
 
 function parseAuthorization(headers: MCPRequestLike['headers']): { scheme: string; token: string } | null {

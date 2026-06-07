@@ -61,16 +61,12 @@ async function main(): Promise<void> {
   const signingKey = ensureKey(contents, env, 'HELIX_SIGNING_KEY');
   contents = signingKey.contents;
 
-  const jwtSigningKey = ensureKey(contents, env, 'HELIX_JWT_SIGNING_KEY');
-  contents = jwtSigningKey.contents;
-  const jwtPublicKey = derivePublicKey(jwtSigningKey.value);
-  contents = upsertEnvValue(contents, 'HELIX_JWT_PUBLIC_KEY', jwtPublicKey);
   contents = upsertEnvValue(contents, 'JWT_SESSION_TTL_SECONDS', env.JWT_SESSION_TTL_SECONDS ?? '600');
 
   const issuerPublicKey = derivePublicKey(signingKey.value);
   contents = upsertEnvValue(contents, 'HELIX_ISSUER_PUBLIC_KEY', issuerPublicKey);
   console.log(`[setup-hedera] HELIX_SIGNING_KEY ${signingKey.created ? 'generated' : 'exists'}; issuer public key ${issuerPublicKey}`);
-  console.log(`[setup-hedera] HELIX_JWT_SIGNING_KEY ${jwtSigningKey.created ? 'generated' : 'exists'}; JWT public key updated.`);
+  console.log('[setup-hedera] JWT session signing keys are generated ephemerally at API startup.');
 
   const existingIssuerDid = env.HELIX_ISSUER_DID;
   if (!existingIssuerDid || createIssuerDid) {

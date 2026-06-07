@@ -39,8 +39,8 @@ function options(verifyVP = vi.fn()) {
           publicKeyHex: keyPair.publicKey,
           privateKeyHex: keyPair.privateKey,
           credentials: [{
-            vcId: 'vc:test',
-            vcJson: '{}',
+            vcId: 'vc:selected',
+            vcJson: JSON.stringify({ validUntil: new Date(Date.now() + 60_000).toISOString() }),
             type: ['VerifiableCredential', 'HelixAgentCredential'],
             addedAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
@@ -67,6 +67,7 @@ describe('@helix-id/langchain', () => {
       agentDid: setup.did,
       userDid: 'did:hedera:testnet:user',
       targetService: 'orders',
+      vcId: 'vc:selected',
     });
   });
 
@@ -98,5 +99,39 @@ describe('@helix-id/langchain', () => {
 
     await expect(wrapped._call({})).rejects.toThrow('Invalid passphrase or corrupted wallet');
     expect(originalCall).not.toHaveBeenCalled();
+  });
+
+  it('requires callers to provide the credential id when multiple active credentials match', async () => {
+    const setup = options();
+    const middleware = HelixIDMiddleware({
+      ...setup.value,
+      walletLoader: {
+        load: vi.fn().mockResolvedValue({
+          did: setup.did,
+          publicKeyHex: setup.keyPair.publicKey,
+          privateKeyHex: setup.keyPair.privateKey,
+          credentials: [
+            {
+              vcId: 'vc:one',
+              vcJson: JSON.stringify({ validUntil: new Date(Date.now() + 60_000).toISOString() }),
+              type: ['VerifiableCredential', 'HelixAgentCredential'],
+              addedAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+            },
+            {
+              vcId: 'vc:two',
+              vcJson: JSON.stringify({ validUntil: new Date(Date.now() + 60_000).toISOString() }),
+              type: ['VerifiableCredential', 'HelixAgentCredential'],
+              addedAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+            },
+          ],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }),
+      },
+    });
+
+    await expect(middleware.callbacks[0]!.handleToolStart({ name: 'orders' }, {})).rejects.toThrow('requires vcId');
   });
 });

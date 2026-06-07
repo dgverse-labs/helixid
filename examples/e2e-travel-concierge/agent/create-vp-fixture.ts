@@ -15,8 +15,9 @@ const walletPassphrase = process.env.WALLET_PASSPHRASE ?? 'change-this-passphras
 const userDID = 'did:hedera:testnet:user-demo-traveler';
 
 async function main(): Promise<void> {
-  const wallet = await new AgentWallet().load(walletPassphrase, walletPath);
-  const credential = wallet.credentials.at(-1);
+  const walletStore = new AgentWallet();
+  const wallet = await walletStore.load(walletPassphrase, walletPath);
+  const credential = await walletStore.getLatestCredential({ vcType: 'HelixAgentCredential' }, walletPassphrase, walletPath);
   if (!credential) throw new Error('Wallet has no credentials');
   const client = new HelixClient(helixApiUrl);
 

@@ -290,7 +290,7 @@ These rules are non-negotiable. No user story, no implementation shortcut, no ex
 
 **SA-10 — No security test may be skipped.** Security tests in tests/security/ may not be marked skip, todo, or xit. CI enforces this via grep. A skipped security test is a build failure.
 
-**SA-11 — JWT sessions are derived from verified VPs only.** A JWT session may be issued only after full VP verification succeeds and `vpId` has been consumed. JWTs are short-lived, stateless, signed by `HELIX_JWT_SIGNING_KEY`, and never replace VC or VP issuance semantics. `HELIX_JWT_SIGNING_KEY` never leaves API runtime and raw JWT token strings must not be logged or audited.
+**SA-11 — JWT sessions are derived from verified VPs only.** A JWT session may be issued only after full VP verification succeeds and `vpId` has been consumed. JWTs are short-lived, stateless, signed by an API startup-ephemeral Ed25519 keypair, and never replace VC or VP issuance semantics. The JWT session private key never leaves API memory and raw JWT token strings must not be logged or audited.
 
 **SA-12 — Delegation never increases authority.** A delegated VC may contain only scopes that are a subset of the delegator's active VC scopes. Any requested scope outside the parent scope set is rejected.
 
@@ -392,14 +392,14 @@ helix-sdk-py does not import from helix-core. It maintains its own Python-native
 | Database | DATABASE_URL |
 | Cache | CACHE_ENABLED, CACHE_L2_ENABLED, REDIS_URL, DID_CACHE_L1_TTL_SECONDS, DID_CACHE_L2_TTL_SECONDS, STATUS_LIST_CACHE_L1_TTL_SECONDS, STATUS_LIST_CACHE_L2_TTL_SECONDS |
 | Helix ID signing | HELIX_SIGNING_KEY (private key for VC issuance), HELIX_ISSUER_DID |
-| JWT session signing | HELIX_JWT_SIGNING_KEY, HELIX_JWT_PUBLIC_KEY |
+| JWT session signing | API startup-ephemeral Ed25519 keypair, public key served at `/v1/sessions/public-key` |
 | API | PORT, API_BASE_URL |
 | Token expiry | ENROLLMENT_TOKEN_TTL_SECONDS, CHALLENGE_TTL_SECONDS, VP_TTL_SECONDS, JWT_SESSION_TTL_SECONDS |
 | Audit | AUDIT_LOG_DESTINATION (stdout / file / both), AUDIT_LOG_PATH |
 | Environment | NODE_ENV |
 | E2E / Testing | HEDERA_E2E_TESTNET |
 
-The developer setup script may generate `HELIX_JWT_SIGNING_KEY` and `HELIX_JWT_PUBLIC_KEY`. Live Hedera DID creation for issuer setup is separate work and must not be faked locally.
+The developer setup script must not persist JWT session signing keys. Live Hedera DID creation for issuer setup is separate work and must not be faked locally.
 
 Cache variables are optional. `CACHE_ENABLED` defaults to true. L1 in-process cache is enabled by default with conservative TTLs. Redis L2 is enabled only when `CACHE_L2_ENABLED=true` and `REDIS_URL` is set.
 
@@ -501,7 +501,7 @@ Every security-relevant event must produce an audit log entry. This is not optio
 - Raw VC payloads in plaintext
 - Raw VP payloads before verification
 - Raw JWT session tokens
-- HELIX_JWT_SIGNING_KEY
+- JWT session private key
 - Database connection strings
 - Enrollment token raw values after generation (log the tokenIdHash only)
 
@@ -591,7 +591,7 @@ Every item on this list must have a corresponding test. This is a checklist, not
 - [ ] Tamper JWT payload after signing — verification must fail
 - [ ] Verify JWT with wrong public key — verification must fail
 - [ ] Verify JWT past expiry — must be rejected
-- [ ] Raw JWT session token and HELIX_JWT_SIGNING_KEY must never appear in audit log
+- [ ] Raw JWT session token and JWT session private key must never appear in audit log
 
 ### Coverage Minimums
 
