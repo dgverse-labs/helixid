@@ -70,4 +70,80 @@ describe('VcRepository Unit Tests', () => {
     await repository.createVC({ vcId: 'v1', subjectDid: 'd1', vcJson: '{}', expiresAt: new Date() });
     expect(mockPrisma.vc.create).toHaveBeenCalled();
   });
+
+  it('uses raw Prisma branches for VC writes and lookups', async () => {
+    const rawRecord = {
+      vcId: 'vc:raw',
+      subjectDid: 'did:raw',
+      subjectType: 'agent',
+      vcJson: { type: ['VerifiableCredential', 'HelixAgentCredential'] },
+      privilegeScopes: ['read:orders'],
+      statusListIndex: 0,
+      expiresAt: new Date(Date.now() + 60_000),
+      revokedAt: null,
+      renewedByVcId: null,
+      createdAt: new Date(),
+    };
+    const rawPrisma = {
+      $connect: vi.fn(),
+      $queryRawUnsafe: vi.fn()
+        .mockResolvedValueOnce([rawRecord])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          rawRecord,
+          { ...rawRecord, vcId: 'vc:string', vcJson: '{"type":["VerifiableCredential"]}' },
+          { ...rawRecord, vcId: 'vc:null', vcJson: null },
+        ]),
+      vc: mockPrisma.vc,
+      statusListEntry: mockPrisma.statusListEntry,
+      $transaction: mockPrisma.$transaction,
+    };
+    const rawRepository = new VcRepository(rawPrisma as never);
+
+    await expect(rawRepository.createVc({
+      vcId: 'vc:raw',
+      subjectDid: 'did:raw',
+      subjectType: 'agent',
+      vcJson: rawRecord.vcJson,
+      statusListIndex: 0,
+      expiresAt: rawRecord.expiresAt,
+    })).resolves.toMatchObject({ vcId: 'vc:raw' });
+    await expect(rawRepository.findByVcId('missing')).resolves.toBeNull();
+    await expect(rawRepository.findActiveBySubjectDid('did:raw', 'HelixAgentCredential')).resolves.toEqual([rawRecord]);
+  });
+
+  it('throws when raw VC insert returns no row and returns raw active records without type filter', async () => {
+    const rawRecord = {
+      vcId: 'vc:raw',
+      subjectDid: 'did:raw',
+      subjectType: 'agent',
+      vcJson: { type: ['VerifiableCredential'] },
+      privilegeScopes: null,
+      statusListIndex: 0,
+      expiresAt: new Date(Date.now() + 60_000),
+      revokedAt: null,
+      renewedByVcId: null,
+    };
+    const rawPrisma = {
+      $connect: vi.fn(),
+      $queryRawUnsafe: vi.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([rawRecord]),
+      vc: mockPrisma.vc,
+      statusListEntry: mockPrisma.statusListEntry,
+      $transaction: mockPrisma.$transaction,
+    };
+    const rawRepository = new VcRepository(rawPrisma as never);
+
+    await expect(rawRepository.createVc({
+      vcId: 'vc:raw',
+      subjectDid: 'did:raw',
+      subjectType: 'agent',
+      vcJson: rawRecord.vcJson,
+      privilegeScopes: ['read:orders'],
+      statusListIndex: 0,
+      expiresAt: rawRecord.expiresAt,
+    })).rejects.toThrow('VC query returned no rows');
+    await expect(rawRepository.findActiveBySubjectDid('did:raw')).resolves.toEqual([rawRecord]);
+  });
 });

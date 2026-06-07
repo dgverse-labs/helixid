@@ -25,10 +25,7 @@ Future rules:
 
 Status: Parked
 
-Story 5 setup work generates only:
-
-- `HELIX_JWT_SIGNING_KEY`
-- `HELIX_JWT_PUBLIC_KEY`
+Story 5 setup work no longer generates persisted JWT session signing keys. Session JWTs are signed with an API startup-ephemeral keypair, and the public key is served at `/v1/sessions/public-key`.
 
 A future setup story should create a real Hedera-backed issuer DID and write or update:
 

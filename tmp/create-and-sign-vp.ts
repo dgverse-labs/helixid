@@ -4,7 +4,7 @@ import { AgentWallet } from '../helix-sdk-js/src/wallet/AgentWallet.js';
 import { VPBuilder } from '../helix-sdk-js/src/vp/VPBuilder.js';
 
 const API_BASE_URL = 'http://localhost:3000';
-const WALLET_FILE_PATH = new URL('./helix-manual-agent-wallet.json', import.meta.url).pathname;
+const WALLET_FILE_PATH = new URL('./agent-c-wallet.json', import.meta.url).pathname;
 const WALLET_PASSPHRASE = 'manual-passphrase';
 const USER_DID = 'did:hedera:testnet:replace-with-user-did';
 const TARGET_SERVICE = 'amazon';

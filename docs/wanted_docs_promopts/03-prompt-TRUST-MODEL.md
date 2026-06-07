@@ -26,10 +26,10 @@ able to make confident security decisions when integrating Helix ID into their s
 #### 1.1 Helix ID (Issuer)
 What Helix ID is in the trust model: the credential issuer and the verification
 API provider. What it controls: the VC signing key (`HELIX_SIGNING_KEY`), the
-JWT signing key (`HELIX_JWT_SIGNING_KEY`), the StatusList, the VP replay store,
+startup-ephemeral JWT session signing keypair, the StatusList, the VP replay store,
 the enrollment token lifecycle, challenge nonces during enrollment, and the
-service registry. These two signing keys are always separate values — they sign
-different artifacts and must never be the same key.
+service registry. VC signing keys and JWT session keys sign different artifacts;
+JWT session keys are generated at API startup and held only in memory.
 
 #### 1.2 The Agent Owner
 The developer or company that onboards and operates an agent. What the agent
@@ -120,8 +120,8 @@ must implement its own vpId store.
 
 #### 3.6 Session JWT Issuance
 When a verifier passes `session: true` with a VP verification request, Helix ID
-issues a short-lived JWT signed with `HELIX_JWT_SIGNING_KEY`. This key is always
-separate from `HELIX_SIGNING_KEY`.
+issues a short-lived JWT signed with the current API startup-ephemeral session key.
+This key is always separate from `HELIX_SIGNING_KEY`.
 
 #### 3.7 Service Registry Maintenance
 Helix ID stores and serves verified service endpoint records. Agents query the
@@ -201,12 +201,13 @@ This is a catastrophic failure mode. Mitigation: key rotation — verifiers must
 re-establish trust against the new issuer public key after rotation. Key protection
 is the most critical operational concern for a Helix ID operator.
 
-#### 7.3 Compromised Helix ID JWT Signing Key (HELIX_JWT_SIGNING_KEY)
+#### 7.3 Compromised Helix ID JWT Session Signing Key
 What an attacker can do: forge Session JWTs that verifiers accept as valid for
 up to 10 minutes per token. Because Session JWTs are verified locally without
-calling Helix ID, revocation of a forged token requires rotating the key and
-invalidating all verifiers' cached public keys. Mitigation: rotate the key,
-redistribute the new public key endpoint response.
+calling Helix ID, revocation of a forged token requires restarting the API process
+to rotate the startup-ephemeral key and invalidating all verifiers' cached public
+keys. Mitigation: restart/rotate the API and have verifiers refetch
+`/v1/sessions/public-key`.
 
 #### 7.4 VP Replay Attack
 What an attacker can do: intercept a valid signed VP and re-present it to the
@@ -247,14 +248,14 @@ A direct, honest list. No hedging:
 - A self-verifier that skips vpId tracking
 - Physical or OS-level access to the agent's wallet file
 - A compromised `HELIX_SIGNING_KEY` if the operator does not rotate it promptly
-- A compromised `HELIX_JWT_SIGNING_KEY` if the operator does not rotate it promptly
+- A compromised API process memory holding the startup-ephemeral JWT session key
 - Network-level attacks between the agent and the verifier
 
 ### 9. Security Assumptions
 The explicit assumptions the trust model depends on:
 - The Hedera HCS topic admin key is not compromised
-- `HELIX_SIGNING_KEY` and `HELIX_JWT_SIGNING_KEY` are not compromised
-- `HELIX_SIGNING_KEY` and `HELIX_JWT_SIGNING_KEY` are different values
+- `HELIX_SIGNING_KEY` is not compromised
+- API process memory holding the startup-ephemeral JWT session key is not compromised
 - The agent owner admin key is not compromised
 - The agent wallet file is stored on a system the agent process controls
 - The verifier calls verification on every request without ad-hoc caching

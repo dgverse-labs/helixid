@@ -26,14 +26,13 @@ describe('Config', () => {
     process.env.HEDERA_TOPIC_ID = '0.0.456';
     process.env.HELIX_SIGNING_KEY = 'a'.repeat(64);
     process.env.HELIX_ISSUER_DID = 'did:hedera:testnet:testissuer';
-    process.env.HELIX_JWT_SIGNING_KEY = 'b'.repeat(64);
-    process.env.HELIX_JWT_PUBLIC_KEY = '7d59c5623dd40a74aa4d5a32ac645d3b3f95daeae4c22be25476dd6a486f7382';
+    process.env.NODE_ENV = 'test';
 
     const { loadConfigFromEnv } = await import('../../src/config/index.js');
     const config = loadConfigFromEnv();
     expect(config.API_BASE_URL).toBe('https://api.test.com');
     expect(config.HELIX_ISSUER_DID).toBe('did:hedera:testnet:testissuer');
-    expect(config.NODE_ENV).toBe('test'); // Vitest sets this
+    expect(config.NODE_ENV).toBe('test');
   });
 
   it('accepts a PKCS8 DER seed Helix signing key', async () => {
@@ -44,8 +43,6 @@ describe('Config', () => {
     process.env.HEDERA_TOPIC_ID = '0.0.456';
     process.env.HELIX_SIGNING_KEY = '302e020100300506032b657004220420' + 'a'.repeat(64);
     process.env.HELIX_ISSUER_DID = 'did:hedera:testnet:testissuer';
-    process.env.HELIX_JWT_SIGNING_KEY = 'b'.repeat(64);
-    process.env.HELIX_JWT_PUBLIC_KEY = '7d59c5623dd40a74aa4d5a32ac645d3b3f95daeae4c22be25476dd6a486f7382';
 
     const { loadConfigFromEnv } = await import('../../src/config/index.js');
     expect(loadConfigFromEnv().HELIX_SIGNING_KEY).toHaveLength(96);
@@ -68,8 +65,6 @@ describe('Config', () => {
     process.env.HEDERA_TOPIC_ID = 'topic';
     process.env.HELIX_SIGNING_KEY = 'a'.repeat(64);
     process.env.HELIX_ISSUER_DID = 'did:hedera:testnet:testissuer';
-    process.env.HELIX_JWT_SIGNING_KEY = 'b'.repeat(64);
-    process.env.HELIX_JWT_PUBLIC_KEY = '7d59c5623dd40a74aa4d5a32ac645d3b3f95daeae4c22be25476dd6a486f7382';
 
     const { loadConfigFromEnv } = await import('../../src/config/index.js');
     expect(() => loadConfigFromEnv()).toThrow(/HEDERA_NETWORK=mainnet is only permitted when NODE_ENV=production/);

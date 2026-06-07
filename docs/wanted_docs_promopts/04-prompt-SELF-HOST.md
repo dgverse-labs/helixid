@@ -86,14 +86,11 @@ Security note: this key signs every VC in the system. A compromised
 HELIX_SIGNING_KEY means an attacker can forge credentials for any agent.
 Treat it as the most sensitive credential in the entire deployment.
 
-##### 3.1.5 Helix JWT Signing Key
-HELIX_JWT_SIGNING_KEY: the Ed25519 private key Helix ID uses to sign Session JWTs.
-This key is always a different value from HELIX_SIGNING_KEY — they sign different
-artifacts and must never share the same key material. Explain what a Session JWT
-is in one sentence and why a separate key is required: a compromised JWT key
-allows forging session tokens; a compromised VC signing key allows forging
-credentials. Rotating one should not require rotating the other.
-Security note: treat this key with the same care as HELIX_SIGNING_KEY.
+##### 3.1.5 Helix JWT Session Key
+Session JWTs are signed with an API startup-ephemeral Ed25519 keypair. There is
+no HELIX_JWT_SIGNING_KEY environment variable. Explain what a Session JWT is in
+one sentence, why it uses a separate key from HELIX_SIGNING_KEY, and that an API
+restart rotates the session public key and invalidates previously issued JWTs.
 
 ##### 3.1.6 Admin API Key
 HELIX_ADMIN_KEY: the bearer token for admin endpoints (enrollment token creation,
@@ -103,17 +100,16 @@ this key: enroll rogue agents, revoke legitimate credentials.
 #### 3.2 Generating the Issuer DID and Signing Keys
 Step-by-step commands to generate:
 1. The issuer keypair and DID (HELIX_SIGNING_KEY and HELIX_ISSUER_DID)
-2. The JWT signing keypair (HELIX_JWT_SIGNING_KEY) — a separate generation step
 
 Use tools available in helix-core or helix-sdk-js. What each output value maps
 to in the environment configuration. Where to store these values securely.
-Emphasise: run the generation command twice to produce two independent keypairs.
-Never reuse the same key for both variables.
+Emphasise: Session JWT keys are not generated or stored during setup; they are
+created in memory at API startup.
 
 #### 3.3 Secrets Management Recommendations
 Do not commit .env to version control. Use a secrets manager in production.
 Which variables are safe to log (HEDERA_NETWORK, HELIX_ISSUER_DID) and which
-are never logged (HELIX_SIGNING_KEY, HELIX_JWT_SIGNING_KEY, HELIX_ADMIN_KEY,
+are never logged (HELIX_SIGNING_KEY, HELIX_ADMIN_KEY,
 HEDERA_OPERATOR_KEY). Rotation procedure overview for each sensitive key.
 
 ### 4. Database Setup
@@ -196,15 +192,15 @@ configuration, the URL embedded in issued VCs.
 #### 10.5 Session JWT Verification Failures
 Why a verifier might get JWT verification failures after a key rotation.
 How to instruct verifiers to re-fetch the public key from
-`GET /v1/sessions/public-key` after a HELIX_JWT_SIGNING_KEY rotation.
+`GET /v1/sessions/public-key` after an API restart or session key rotation.
 
 ## Constraints
 
 - Read the actual package.json scripts, prisma schema, and .env.example
   before writing. Do not invent command names or variable names.
 - Every command must be accurate against the actual repo.
-- HELIX_SIGNING_KEY and HELIX_JWT_SIGNING_KEY must both be documented as
-  separate, required variables. Never suggest they can be the same value.
+- HELIX_SIGNING_KEY must be documented as a required issuer signing variable.
+  JWT session signing keys must be documented as startup-ephemeral, not env-backed.
 - Do not describe API endpoints in detail. Link to the OpenAPI spec.
 - Where Docker Compose is mentioned, be honest that it does not exist yet.
   Do not write a placeholder compose file.

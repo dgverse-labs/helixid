@@ -161,6 +161,7 @@ async function signVP(
     userDid: params.userDid,
     targetService: params.targetService,
     vcType: 'HelixAgentCredential',
+    vcId: agent.vcId,
   });
   expect(templateRes.statusCode).toBe(201);
   expect(templateRes.body.unsignedVP.verifiableCredential[0].id).toBe(agent.vcId);

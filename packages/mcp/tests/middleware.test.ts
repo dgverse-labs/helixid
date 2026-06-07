@@ -122,8 +122,8 @@ describe('@helix-id/mcp', () => {
             publicKeyHex: keyPair.publicKey,
             privateKeyHex: keyPair.privateKey,
             credentials: [{
-              vcId: 'vc:test',
-              vcJson: '{}',
+              vcId: 'vc:selected',
+              vcJson: JSON.stringify({ validUntil: new Date(Date.now() + 60_000).toISOString() }),
               type: ['VerifiableCredential', 'HelixAgentCredential'],
               addedAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -141,8 +141,52 @@ describe('@helix-id/mcp', () => {
       agentDid: did,
       userDid: 'did:hedera:testnet:user',
       targetService: 'orders',
+      vcId: 'vc:selected',
     });
     expect(verifyVP).not.toHaveBeenCalled();
     expect(result.headers?.Authorization).not.toContain(keyPair.privateKey);
+  });
+
+  it('requires callers to provide the credential id when multiple active credentials match', async () => {
+    const keyPair = generateKeyPair();
+    const did = 'did:hedera:testnet:agent';
+
+    await expect(
+      attachHelixVP(
+        { name: 'orders.lookup' },
+        {
+          helixClient: { createVPTemplate: vi.fn(), verifyVP: vi.fn() } as never,
+          walletPassphrase: 'pass',
+          walletFilePath: '/unused',
+          targetService: 'orders',
+          userDid: 'did:hedera:testnet:user',
+          walletLoader: {
+            load: vi.fn().mockResolvedValue({
+              did,
+              publicKeyHex: keyPair.publicKey,
+              privateKeyHex: keyPair.privateKey,
+              credentials: [
+                {
+                  vcId: 'vc:one',
+                  vcJson: JSON.stringify({ validUntil: new Date(Date.now() + 60_000).toISOString() }),
+                  type: ['VerifiableCredential', 'HelixAgentCredential'],
+                  addedAt: '2026-01-01T00:00:00.000Z',
+                  updatedAt: '2026-01-01T00:00:00.000Z',
+                },
+                {
+                  vcId: 'vc:two',
+                  vcJson: JSON.stringify({ validUntil: new Date(Date.now() + 60_000).toISOString() }),
+                  type: ['VerifiableCredential', 'HelixAgentCredential'],
+                  addedAt: '2026-01-01T00:00:00.000Z',
+                  updatedAt: '2026-01-01T00:00:00.000Z',
+                },
+              ],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }),
+          },
+        },
+      ),
+    ).rejects.toThrow('requires vcId');
   });
 });

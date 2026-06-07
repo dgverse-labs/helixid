@@ -8,7 +8,7 @@ import { NoopCache } from './NoopCache.js';
 import { RedisCache, type RedisLike } from './RedisCache.js';
 import { TwoLayerCache } from './TwoLayerCache.js';
 
-interface CacheFactoryParams<T> {
+interface CacheFactoryParams {
   enabled: boolean;
   l2Enabled: boolean;
   redis: RedisLike | null;
@@ -17,7 +17,7 @@ interface CacheFactoryParams<T> {
   l2TtlSeconds: number;
 }
 
-export function createTwoLayerCache<T>(params: CacheFactoryParams<T>): ICache<T> {
+export function createTwoLayerCache<T>(params: CacheFactoryParams): ICache<T> {
   if (!params.enabled) return new NoopCache<T>();
 
   const l1 = new InProcessCache<T>();

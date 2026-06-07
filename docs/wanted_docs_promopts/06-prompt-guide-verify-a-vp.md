@@ -119,7 +119,7 @@ Step by step:
 #### 3.3 Fetching and Caching the Public Key
 The endpoint: `GET /v1/sessions/public-key`. What it returns. How to cache it
 in the verifier process. When to re-fetch: after a Helix ID key rotation
-(HELIX_JWT_SIGNING_KEY change). A TypeScript code example.
+or API restart. A TypeScript code example.
 
 #### 3.4 Verifying Session Tokens Locally
 The SDK method: `sdk.verifySessionToken(token, publicKeyHex)`. What it returns

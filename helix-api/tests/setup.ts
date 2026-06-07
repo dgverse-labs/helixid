@@ -27,7 +27,5 @@ process.env['HEDERA_OPERATOR_KEY'] ??= '302e020100300506032b657004220420' + 'a'.
 process.env['HEDERA_TOPIC_ID'] ??= '0.0.456';
 process.env['HELIX_SIGNING_KEY'] ??= 'a'.repeat(64);
 process.env['HELIX_ISSUER_DID'] ??= 'did:hedera:testnet:helixissuer';
-process.env['HELIX_JWT_SIGNING_KEY'] ??= 'b'.repeat(64);
-process.env['HELIX_JWT_PUBLIC_KEY'] ??= '7d59c5623dd40a74aa4d5a32ac645d3b3f95daeae4c22be25476dd6a486f7382';
 process.env['JWT_SESSION_TTL_SECONDS'] ??= '600';
 process.env['HELIX_ADMIN_API_KEY'] ??= 'test-admin-key-0001';

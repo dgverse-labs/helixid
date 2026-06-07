@@ -6,7 +6,7 @@ Bolt JWT session issuance into the existing VP verify flow. When an external ser
 
 This story touches the VP verify route and service, helix-core (JWT schema, new error codes), and the SDK (session-aware verify method).
 
-Current implementation note: `/v1/sessions/public-key` is registered as its own sessions route, not inside the VP route module. `scripts/setup-hedera.ts` is the current setup helper that ensures `HELIX_JWT_SIGNING_KEY` and `HELIX_JWT_PUBLIC_KEY` are present and matching.
+Current implementation note: `/v1/sessions/public-key` is registered as its own sessions route, not inside the VP route module. Session JWTs are signed with an API startup-ephemeral Ed25519 keypair held in memory. Restarting the API rotates the session signing key and invalidates previously issued session JWTs.
 
 ---
 
@@ -15,16 +15,12 @@ Current implementation note: `/v1/sessions/public-key` is registered as its own 
 Add to `.env.example` and `helix-core/src/config/`:
 
 ```
-HELIX_JWT_SIGNING_KEY=        # Ed25519 private key hex — separate from HELIX_SIGNING_KEY
-HELIX_JWT_PUBLIC_KEY=         # Corresponding public key hex — served at /v1/sessions/public-key
 JWT_SESSION_TTL_SECONDS=600   # Default 10 minutes
 ```
 
-**SA rule:** `HELIX_JWT_SIGNING_KEY` is a secret. It should be generated or reconciled by setup tooling alongside the VC signing key. In the current project, use `pnpm setup:hedera` / `scripts/setup-hedera.ts` for Hedera-aware setup; `scripts/setup.ts` is the older JWT-only helper. The JWT signing key must never appear in any log or audit entry.
+**SA rule:** JWT session signing keys are generated at API startup and are never stored in `.env`, the database, or logs. The public key is discoverable through `/v1/sessions/public-key`; clients must refetch it after API restart/key rotation if JWT verification fails.
 
 Config module (`helix-core/src/config/index.ts`) adds:
-- `jwtSigningKey: string` — required, validated present on startup
-- `jwtPublicKey: string` — required
 - `jwtSessionTtlSeconds: number` — default 600
 
 ---
@@ -183,7 +179,7 @@ Public endpoint. No authentication. Called once by external services to fetch He
 
 ```json
 {
-  "publicKeyHex": "<HELIX_JWT_PUBLIC_KEY>",
+  "publicKeyHex": "<current startup-ephemeral JWT public key>",
   "publicKeyMultibase": "<multibase encoding>",
   "alg": "EdDSA",
   "crv": "Ed25519"
@@ -253,11 +249,11 @@ Add to `helix-sdk-js/src/http/HttpAdapter.ts`: error mapping for `JWT_INVALID`, 
 
 ### Security Tests — `helix-api/tests/security/jwt.security.test.ts`
 
-- JWT issued after VP verify — verify JWT signature against `HELIX_JWT_PUBLIC_KEY` using `verifyJWT` from helix-core → valid
+- JWT issued after VP verify — verify JWT signature against `/v1/sessions/public-key` using `verifyJWT` from helix-core → valid
 - Tamper JWT payload (base64url-decode, change `scopes`, re-encode without re-signing) → `verifyJWT` throws `InvalidJWTError`
 - JWT issued for one `targetService` — manually decode and check it cannot be used for a different service (scope is in payload, enforcement is caller's responsibility — document this obligation in `self-verification.md`)
 - `JWT_ISSUED` audit entry contains `jti` and `vpId` but does NOT contain the JWT token string itself
-- `HELIX_JWT_SIGNING_KEY` does not appear in any audit log entry
+- JWT session private key does not appear in any audit log entry
 - Expired JWT (manually set `exp` to past): `verifyJWT` throws `JWTExpiredError`
 - `POST /v1/vp/verify` with `session: true` on a VP that fails verification → 400 `VP_VERIFICATION_FAILED`, no JWT issued, no `JWT_ISSUED` audit entry
 
@@ -273,14 +269,14 @@ Add to `helix-sdk-js/src/http/HttpAdapter.ts`: error mapping for `JWT_INVALID`, 
 ## Story 5 Acceptance Criteria
 
 - [ ] `POST /v1/vp/verify` with `session: true` runs full VP verification then issues JWT — no JWT issued if VP fails
-- [ ] JWT signed with `HELIX_JWT_SIGNING_KEY` (Ed25519, EdDSA alg) — separate from VC signing key
+- [ ] JWT signed with the API startup-ephemeral session key (Ed25519, EdDSA alg) — separate from VC signing key
 - [ ] `GET /v1/sessions/public-key` serves public key with 1-hour cache header
 - [ ] `verifyJWT` in helix-core verifies without any external dependency — pure `@noble/curves`
 - [ ] JWT payload contains `agentDid`, `userDid`, `targetService`, `scopes`, `vpId`, `jti`, `exp`
 - [ ] `JWT_ISSUED` audit event emitted — token string never in audit log
-- [ ] `HELIX_JWT_SIGNING_KEY` never in any log or audit entry
+- [ ] JWT session private key never in any log or audit entry
 - [ ] All JWT security tests pass and none are skipped
 - [ ] SDK `verifySessionToken` is a pure local call — no network
 - [ ] `decisions.md` updated: confirm no jwt library added, Ed25519 manual JWT rationale documented
 - [ ] OpenAPI spec updated for `session` field in verify request and response, and new public-key endpoint
-- [ ] `scripts/setup-hedera.ts`/`pnpm setup:hedera` generates or verifies `HELIX_JWT_SIGNING_KEY` + `HELIX_JWT_PUBLIC_KEY` alongside existing keys
+- [ ] `scripts/setup-hedera.ts`/`pnpm setup:hedera` does not generate JWT signing keys; the API rotates them on startup

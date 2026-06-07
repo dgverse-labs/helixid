@@ -29,7 +29,6 @@ import {
   signBytes,
   validateScopeSubset,
   type HelixVC,
-  type AgentVC,
   type SignedVC,
   type SignedVP,
   VPMultipleActiveVCError,

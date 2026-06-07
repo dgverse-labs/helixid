@@ -143,8 +143,9 @@ async function waitForRevocation(vcId: string): Promise<void> {
 async function main(): Promise<void> {
   // The wallet contains the agent DID, public key, encrypted private key, and
   // issued credentials. Loading decrypts the private key inside this process only.
-  const wallet = await new AgentWallet().load(walletPassphrase, walletPath);
-  const credential = wallet.credentials.at(-1);
+  const walletStore = new AgentWallet();
+  const wallet = await walletStore.load(walletPassphrase, walletPath);
+  const credential = await walletStore.getLatestCredential({ vcType: 'HelixAgentCredential' }, walletPassphrase, walletPath);
   if (!credential) throw new Error('Wallet has no credentials');
   const vc = JSON.parse(credential.vcJson) as WalletVC;
 

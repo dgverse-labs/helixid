@@ -86,8 +86,9 @@ async function main(): Promise<void> {
 
   // The SDK's AgentWallet encrypts the private key and stores DID, public key, and issued credentials.
   // The private key never left the process; Helix ID only saw signatures and the public key.
-  const wallet = await new AgentWallet().load(walletPassphrase, walletPath);
-  const credential = wallet.credentials.at(-1);
+  const walletStore = new AgentWallet();
+  const wallet = await walletStore.load(walletPassphrase, walletPath);
+  const credential = await walletStore.getLatestCredential({ vcType: 'HelixAgentCredential' }, walletPassphrase, walletPath);
   if (!credential) throw new Error('Wallet has no credentials after onboarding');
   const vc = JSON.parse(credential.vcJson) as AgentVC;
 

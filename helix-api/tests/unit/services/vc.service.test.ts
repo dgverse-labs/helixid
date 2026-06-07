@@ -44,7 +44,7 @@ describe('VCService Branch Coverage', () => {
   };
   const delegatorVP = {
     verifiableCredential: [{ id: 'vc:parent' }],
-  } as SignedVP;
+  } as unknown as SignedVP;
 
   beforeEach(() => {
     repository = {

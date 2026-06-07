@@ -83,8 +83,8 @@ revoked without asking Helix ID directly for a yes/no answer.
 
 #### 3.3 Who Signs the VC and Why It Matters
 Helix ID signs the VC with its `HELIX_SIGNING_KEY`. This is distinct from the
-`HELIX_JWT_SIGNING_KEY` used for Session JWTs — they are two separate keys that
-must never be the same value. A verifier can check the VC signature against the
+startup-ephemeral keypair used for Session JWTs — VC signing key material is
+configured, while JWT session key material lives only in API memory. A verifier can check the VC signature against the
 issuer public key without contacting Helix ID at verification time. Explain why
 this matters for offline and self-verification scenarios.
 
@@ -193,7 +193,7 @@ Explain the distinction between authentication and authorization in this context
 #### 9.1 What It Is and When to Use It
 After a VP is successfully verified, a verifier can request a short-lived JWT
 by passing `session: true` with the VP. Helix ID issues a 10-minute JWT signed
-with `HELIX_JWT_SIGNING_KEY`. The verifier then verifies subsequent calls from
+with the current API startup-ephemeral session key. The verifier then verifies subsequent calls from
 the agent locally without calling Helix ID again until the JWT expires.
 
 #### 9.2 What Makes It Different From VP Verification

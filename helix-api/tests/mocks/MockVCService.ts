@@ -77,36 +77,6 @@ export class MockVCService implements IVCService {
       requestedScopes: string[];
       expiresInSeconds?: number;
     },
-    _requestId: string,
-  ): Promise<{
-    vcId: string;
-    delegateeAgentDid: string;
-    delegatedFrom: string;
-    delegationDepth: number;
-    scopes: string[];
-    expiresAt: string;
-    vc: Record<string, unknown>;
-  }> {
-    const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
-    return {
-      vcId: 'vc:mock:delegated',
-      delegateeAgentDid: _input.delegateeAgentDid,
-      delegatedFrom: 'did:hedera:testnet:delegator',
-      delegationDepth: 1,
-      scopes: _input.requestedScopes,
-      expiresAt,
-      vc: { id: 'vc:mock:delegated', validUntil: expiresAt },
-    };
-  }
-
-  async delegateVC(
-    _input: {
-      delegatorVP: SignedVP;
-      delegateeAgentDid: string;
-      requestedScopes: string[];
-      expiresInSeconds?: number;
-    },
-    _requestId: string,
   ): Promise<{
     vcId: string;
     delegateeAgentDid: string;
