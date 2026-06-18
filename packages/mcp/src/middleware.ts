@@ -1,5 +1,5 @@
-import { AgentWallet, VPBuilder, type HelixClient } from '@helix-id/sdk-js';
-import type { HelixJWTPayload, SignedVP, UnsignedVP } from '@helix-id/core';
+import { AgentWallet, verifyVP, VPBuilder, type HelixClient } from '@helix-id/sdk-js';
+import type { HelixJWTPayload, SignedVC, SignedVP, VerifyVPResult } from '@helix-id/core';
 
 export interface MCPRequestLike {
   headers?: Record<string, string | undefined>;
@@ -31,29 +31,15 @@ export interface MCPMiddlewareResult {
   error?: MCPError;
 }
 
-type VerifyResult = Awaited<ReturnType<HelixClient['verifyVP']>> & {
-  scopes?: string[];
-  privilegeScopes?: string[];
-};
-
 export type MCPNext = (request: MCPRequestLike) => unknown | Promise<unknown>;
 export type MCPMiddleware = (request: MCPRequestLike, next?: MCPNext) => Promise<unknown>;
 
 export interface MCPMiddlewareOptions {
-  helixClient: Pick<HelixClient, 'verifyVP' | 'verifySessionToken'>;
+  helixClient: Pick<HelixClient, 'verifySessionToken'>;
+  verifyVP?: (signedVP: SignedVP) => Promise<VerifyVPResult>;
   requiredScopes?: string[];
   allowSession?: boolean;
   sessionPublicKeyHex?: string;
-}
-
-export interface VPTemplateClient {
-  createVPTemplate(options: {
-    agentDid: string;
-    userDid: string;
-    targetService: string;
-    vcType?: string;
-    vcId?: string;
-  }): Promise<{ unsignedVP: UnsignedVP; vpId?: string; expiresAt?: string }>;
 }
 
 export interface WalletLoader {
@@ -78,7 +64,6 @@ export interface WalletData {
 }
 
 export interface VPAttachOptions {
-  helixClient: VPTemplateClient;
   walletPassphrase: string;
   walletFilePath: string;
   targetService: string;
@@ -96,8 +81,8 @@ export function helixidMCPMiddleware(options: MCPMiddlewareOptions): MCPMiddlewa
     let context: VerifiedHelixContext;
     if (parsed.scheme === 'HelixVP') {
       const signedVP = decodeBase64UrlJson<SignedVP>(parsed.token);
-      const result = await options.helixClient.verifyVP(signedVP);
-      context = contextFromVerifyResult(result);
+      const result = await (options.verifyVP ?? verifyVP)(signedVP);
+      context = contextFromVerifyResult(result, signedVP);
     } else if (parsed.scheme === 'HelixSession') {
       if (!options.allowSession) return failure(-32001, 'Unsupported authorization scheme');
       if (!options.sessionPublicKeyHex) return failure(-32001, 'Missing session public key');
@@ -134,20 +119,24 @@ export async function attachHelixVP(toolCall: MCPToolCall, options: VPAttachOpti
 
 async function createSignedVP(options: VPAttachOptions): Promise<SignedVP> {
   const wallet = await (options.walletLoader ?? new AgentWallet()).load(options.walletPassphrase, options.walletFilePath);
-  const vcId = options.vcId ?? selectOnlyMatchingCredentialId(wallet, options.vcType ?? 'HelixAgentCredential');
-  const template = await options.helixClient.createVPTemplate({
-    agentDid: wallet.did,
+  const credential = selectMatchingCredential(wallet, options.vcType ?? 'HelixAgentCredential', options.vcId);
+  const vc = JSON.parse(credential.vcJson) as SignedVC;
+  return new VPBuilder({
+    vc,
+    holderDid: wallet.did,
     userDid: options.userDid,
     targetService: options.targetService,
-    ...(options.vcType ? { vcType: options.vcType } : {}),
-    vcId,
-  });
-  return new VPBuilder(template.unsignedVP).sign(wallet.privateKeyHex, `${wallet.did}#key-1`);
+  }).sign(wallet.privateKeyHex, `${wallet.did}#key-1`);
 }
 
-function selectOnlyMatchingCredentialId(wallet: WalletData, vcType: string): string {
+function selectMatchingCredential(
+  wallet: WalletData,
+  vcType: string,
+  vcId: string | undefined,
+): WalletData['credentials'][number] {
   const now = Date.now();
   const matches = wallet.credentials.filter((credential) => {
+    if (vcId && credential.vcId !== vcId) return false;
     if (!credential.type.includes(vcType)) return false;
     const vc = JSON.parse(credential.vcJson) as { validUntil?: unknown; expirationDate?: unknown };
     const expiresAt = typeof vc.validUntil === 'string'
@@ -157,7 +146,7 @@ function selectOnlyMatchingCredentialId(wallet: WalletData, vcType: string): str
         : undefined;
     return !expiresAt || Date.parse(expiresAt) > now;
   });
-  if (matches.length === 1) return matches[0]!.vcId;
+  if (matches.length === 1) return matches[0]!;
   throw new Error(`Helix MCP adapter requires vcId when the wallet has ${matches.length} matching active credentials. Select the credential in application code.`);
 }
 
@@ -169,12 +158,12 @@ function parseAuthorization(headers: MCPRequestLike['headers']): { scheme: strin
   return { scheme, token };
 }
 
-function contextFromVerifyResult(result: VerifyResult): VerifiedHelixContext {
+function contextFromVerifyResult(result: VerifyVPResult, signedVP: SignedVP): VerifiedHelixContext {
   return {
     agentDid: result.agentDid,
-    userDid: result.userDid,
-    targetService: result.targetService,
-    scopes: result.scopes ?? result.privilegeScopes ?? [],
+    userDid: signedVP.delegatedBy,
+    targetService: signedVP.targetService,
+    scopes: result.privilegeScopes,
   };
 }
 

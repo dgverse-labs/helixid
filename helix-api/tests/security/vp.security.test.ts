@@ -1,6 +1,5 @@
 import { describe, expect, it, beforeEach, afterAll, beforeAll } from 'vitest';
 import { randomBytes } from 'node:crypto';
-import { VPBuilder } from '@helix-id/sdk-js';
 import Fastify, { FastifyInstance } from 'fastify';
 import { getPublicKey } from '@noble/ed25519';
 import { base58btcEncode, hashCanonicalPayload, signBytes, type AuditEvent, type AuditEventType } from '@helix-id/core';
@@ -73,6 +72,7 @@ describe('VP security API', () => {
   let vcService: MockVCService;
   let auditLogger: TestAuditLogger;
   let repository: InMemoryVPRepository;
+  let service: VPService;
 
   const privateKeyHex = randomBytes(32).toString('hex');
   const wrongPrivateKeyHex = randomBytes(32).toString('hex');
@@ -91,12 +91,14 @@ describe('VP security API', () => {
     auditLogger = new TestAuditLogger();
     repository = new InMemoryVPRepository();
 
-    const service = new VPService(
+    service = new VPService(
       repository,
       didService,
       vcService,
       new ServiceRegistryRepository(['amazon']),
-      auditLogger
+      auditLogger,
+      300,
+      { signingKey: privateKeyHex, issuerDid: defaultDid, ttlSeconds: 600 }
     );
     await app.register(vpRoutes, { prefix: '/v1/vp', vpService: service });
     await app.ready();
@@ -140,16 +142,29 @@ describe('VP security API', () => {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getSignedVP = async (mutateTmpl?: (t: any) => any, useWrongKey = false): Promise<any> => {
-    const tmplRes = await app.inject({
-      method: 'POST',
-      url: '/v1/vp/template',
-      payload: { agentDid: defaultDid, userDid: 'did:hedera:testnet:user1', targetService: 'amazon', vcType: 'HelixAgentCredential' }
-    });
-    let tmpl = tmplRes.json().unsignedVP;
+    const template = await service.generateVPTemplate(
+      {
+        agentDid: defaultDid,
+        userDid: 'did:hedera:testnet:user1',
+        targetService: 'amazon',
+        vcType: 'HelixAgentCredential',
+      },
+      'req_security',
+    );
+    let tmpl = template.unsignedVP;
     if (mutateTmpl) tmpl = mutateTmpl(tmpl);
     
-    const builder = new VPBuilder(tmpl);
-    return builder.sign(useWrongKey ? wrongPrivateKeyHex : privateKeyHex, `${defaultDid}#key-1`);
+    const signatureHex = await signBytes(hashCanonicalPayload(tmpl), useWrongKey ? wrongPrivateKeyHex : privateKeyHex);
+    return {
+      ...tmpl,
+      proof: {
+        type: 'Ed25519Signature2020',
+        created: new Date().toISOString(),
+        verificationMethod: `${defaultDid}#key-1`,
+        proofPurpose: 'assertionMethod',
+        proofValue: base58btcEncode(Buffer.from(signatureHex, 'hex')),
+      },
+    };
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -161,10 +176,10 @@ describe('VP security API', () => {
   it('rejects replay same signed VP twice (first 200, second 400)', async () => {
     const signedVP = await getSignedVP();
 
-    const res1 = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP } });
+    const res1 = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } });
     expect(res1.statusCode).toBe(200);
 
-    const res2 = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP } });
+    const res2 = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } });
     expectOpaqueFailure(res2);
   });
 
@@ -172,8 +187,8 @@ describe('VP security API', () => {
     const signedVP = await getSignedVP();
 
     const [res1, res2] = await Promise.all([
-      app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP } }),
-      app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP } })
+      app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } }),
+      app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } })
     ]);
 
     const statuses = [res1.statusCode, res2.statusCode].sort((a,b) => a - b);
@@ -187,13 +202,13 @@ describe('VP security API', () => {
     const signedVP = await getSignedVP();
     signedVP.targetService = 'tampered'; // Modify after sign
     
-    const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP } });
+    const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } });
     expectOpaqueFailure(res);
   });
 
   it('rejects wrong private key signature', async () => {
     const signedVP = await getSignedVP(undefined, true);
-    const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP } });
+    const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } });
     expectOpaqueFailure(res);
   });
 
@@ -201,7 +216,7 @@ describe('VP security API', () => {
     const signedVP = await getSignedVP();
     repository.expire(signedVP.id);
 
-    const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP } });
+    const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } });
     expectOpaqueFailure(res);
   });
 
@@ -209,7 +224,7 @@ describe('VP security API', () => {
     const signedVP = await getSignedVP();
     vcService.setStatus('revoked');
 
-    const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP } });
+    const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } });
     expectOpaqueFailure(res);
   });
 
@@ -227,14 +242,14 @@ describe('VP security API', () => {
     }));
     const signedVP = await getSignedVP();
 
-    const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP } });
+    const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } });
     expectOpaqueFailure(res);
   });
 
   it('rejects unknown vpId', async () => {
     const signedVP = await getSignedVP((t) => ({ ...t, id: 'vp:helix:fake123' }));
     
-    const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP } });
+    const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } });
     expectOpaqueFailure(res);
   });
 });

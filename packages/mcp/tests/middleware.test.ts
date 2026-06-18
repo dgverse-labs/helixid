@@ -1,34 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
-import { randomUUID } from 'node:crypto';
-import { generateKeyPair, type UnsignedVP } from '@helix-id/core';
+import { generateKeyPair } from '@helix-id/core';
 import { attachHelixVP, encodeBase64UrlJson, helixidMCPMiddleware } from '../src/index.js';
-
-function unsignedVP(privateKeyDid: string): UnsignedVP {
-  return {
-    '@context': ['https://www.w3.org/ns/credentials/v2'],
-    type: ['VerifiablePresentation'],
-    id: `vp:helix:${randomUUID()}`,
-    holder: privateKeyDid,
-    verifiableCredential: [{ id: 'vc:test', type: ['VerifiableCredential'] }],
-    nonce: 'a'.repeat(64),
-    expirationDate: new Date(Date.now() + 60_000).toISOString(),
-    delegatedBy: 'did:hedera:testnet:user',
-    targetService: 'orders',
-  };
-}
 
 describe('@helix-id/mcp', () => {
   it('verifies a VP authorization header and attaches context', async () => {
     const verifyVP = vi.fn().mockResolvedValue({
       valid: true,
       agentDid: 'did:agent',
-      userDid: 'did:user',
-      targetService: 'orders',
-      verifiedAt: new Date().toISOString(),
-      scopes: ['read:orders'],
+      privilegeScopes: ['read:orders'],
+      vpId: 'vp:helix:test',
+      delegationChain: [],
     });
     const middleware = helixidMCPMiddleware({
-      helixClient: { verifyVP, verifySessionToken: vi.fn() },
+      helixClient: { verifySessionToken: vi.fn() },
+      verifyVP,
       requiredScopes: ['read:orders'],
     });
     const next = vi.fn().mockReturnValue('ok');
@@ -44,7 +29,7 @@ describe('@helix-id/mcp', () => {
 
   it('returns an MCP error when authorization is missing', async () => {
     const middleware = helixidMCPMiddleware({
-      helixClient: { verifyVP: vi.fn(), verifySessionToken: vi.fn() },
+      helixClient: { verifySessionToken: vi.fn() },
     });
 
     await expect(middleware({})).resolves.toMatchObject({
@@ -56,16 +41,15 @@ describe('@helix-id/mcp', () => {
   it('returns an MCP error when required scopes are missing', async () => {
     const middleware = helixidMCPMiddleware({
       helixClient: {
-        verifyVP: vi.fn().mockResolvedValue({
-          valid: true,
-          agentDid: 'did:agent',
-          userDid: 'did:user',
-          targetService: 'orders',
-          verifiedAt: new Date().toISOString(),
-          scopes: ['read:orders'],
-        }),
         verifySessionToken: vi.fn(),
       },
+      verifyVP: vi.fn().mockResolvedValue({
+        valid: true,
+        agentDid: 'did:agent',
+        privilegeScopes: ['read:orders'],
+        vpId: 'vp:helix:test',
+        delegationChain: [],
+      }),
       requiredScopes: ['write:orders'],
     });
 
@@ -90,7 +74,7 @@ describe('@helix-id/mcp', () => {
       vpId: 'vp:helix:test',
     });
     const middleware = helixidMCPMiddleware({
-      helixClient: { verifyVP: vi.fn(), verifySessionToken },
+      helixClient: { verifySessionToken },
       allowSession: true,
       sessionPublicKeyHex: 'public-key',
       requiredScopes: ['read:orders'],
@@ -105,13 +89,10 @@ describe('@helix-id/mcp', () => {
   it('attaches a locally signed VP to an outbound tool call', async () => {
     const keyPair = generateKeyPair();
     const did = 'did:hedera:testnet:agent';
-    const verifyVP = vi.fn();
-    const createVPTemplate = vi.fn().mockResolvedValue({ unsignedVP: unsignedVP(did) });
 
     const result = await attachHelixVP(
       { name: 'orders.lookup', headers: { Existing: 'true' } },
       {
-        helixClient: { createVPTemplate, verifyVP } as never,
         walletPassphrase: 'pass',
         walletFilePath: '/unused',
         targetService: 'orders',
@@ -123,7 +104,14 @@ describe('@helix-id/mcp', () => {
             privateKeyHex: keyPair.privateKey,
             credentials: [{
               vcId: 'vc:selected',
-              vcJson: JSON.stringify({ validUntil: new Date(Date.now() + 60_000).toISOString() }),
+              vcJson: JSON.stringify({
+                id: 'vc:selected',
+                type: ['VerifiableCredential', 'HelixAgentCredential'],
+                issuer: 'did:issuer',
+                validUntil: new Date(Date.now() + 60_000).toISOString(),
+                credentialSubject: { id: did, privilegeScopes: ['read:orders'] },
+                proof: { type: 'Ed25519Signature2020' },
+              }),
               type: ['VerifiableCredential', 'HelixAgentCredential'],
               addedAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -137,13 +125,6 @@ describe('@helix-id/mcp', () => {
 
     expect(result.headers?.Authorization).toMatch(/^HelixVP /);
     expect(result.headers?.Existing).toBe('true');
-    expect(createVPTemplate).toHaveBeenCalledWith({
-      agentDid: did,
-      userDid: 'did:hedera:testnet:user',
-      targetService: 'orders',
-      vcId: 'vc:selected',
-    });
-    expect(verifyVP).not.toHaveBeenCalled();
     expect(result.headers?.Authorization).not.toContain(keyPair.privateKey);
   });
 
@@ -155,7 +136,6 @@ describe('@helix-id/mcp', () => {
       attachHelixVP(
         { name: 'orders.lookup' },
         {
-          helixClient: { createVPTemplate: vi.fn(), verifyVP: vi.fn() } as never,
           walletPassphrase: 'pass',
           walletFilePath: '/unused',
           targetService: 'orders',

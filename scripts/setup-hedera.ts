@@ -6,7 +6,7 @@ import {
   publicKeyToMultibase,
   signBytes,
 } from '../helix-core/src/index.js';
-import { HieroHederaClient } from '../helix-api/src/hedera/HieroHederaClient.js';
+import { HieroHederaClient } from '@helix-id/did-hedera';
 
 const envPath = fileURLToPath(new URL('../.env', import.meta.url));
 const args = new Set(process.argv.slice(2));

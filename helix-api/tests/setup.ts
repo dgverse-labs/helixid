@@ -29,3 +29,5 @@ process.env['HELIX_SIGNING_KEY'] ??= 'a'.repeat(64);
 process.env['HELIX_ISSUER_DID'] ??= 'did:hedera:testnet:helixissuer';
 process.env['JWT_SESSION_TTL_SECONDS'] ??= '600';
 process.env['HELIX_ADMIN_API_KEY'] ??= 'test-admin-key-0001';
+process.env['DID_METHOD'] ??= 'hedera';
+process.env['HEDERA_MOCK'] ??= 'true';

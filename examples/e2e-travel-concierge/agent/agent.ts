@@ -1,11 +1,12 @@
+// e2e travel concierge/ agent /agent.ts
 import { writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import 'dotenv/config';
-import { AgentWallet, HelixClient, VPBuilder } from '@helix-id/sdk-js';
-import type { SignedVP, UnsignedVP } from '@helix-id/core';
+import { AgentWallet, VPBuilder } from '@helix-id/sdk-js';
+import type { SignedVC, SignedVP } from '@helix-id/core';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const exampleRoot = dirname(__dirname);
@@ -56,24 +57,21 @@ async function callPlatform(route: string, signedVP: SignedVP): Promise<{ status
   };
 }
 
-async function buildFreshVP(client: HelixClient, agentDid: string, privateKeyHex: string, vcId: string): Promise<{ signedVP: SignedVP; vpId: string }> {
-  // A fresh VP template is needed for every action because the vpId is single-use,
+async function buildFreshVP(agentDid: string, privateKeyHex: string, vc: SignedVC): Promise<{ signedVP: SignedVP; vpId: string }> {
+  // A fresh VP is needed for every action because the vpId is single-use,
   // the nonce is fresh, and the target service binding is part of the signed payload.
-  const template = await client.createVPTemplate({
-    agentDid,
+  const signedVP = await new VPBuilder({
+    vc,
+    holderDid: agentDid,
     userDid: userDID,
     targetService,
-    vcType: 'HelixAgentCredential',
-    vcId,
-  });
-
-  console.log(`        -> VP template received: ${template.vpId} (single-use)`);
+  }).sign(privateKeyHex, `${agentDid}#key-1`);
 
   // Signing happens locally through the SDK's Ed25519 VP builder. The private key
   // is loaded from the encrypted wallet and never transmitted to Helix ID or the platform.
   return {
-    signedVP: await new VPBuilder(template.unsignedVP as UnsignedVP).sign(privateKeyHex, `${agentDid}#key-1`),
-    vpId: template.vpId,
+    signedVP,
+    vpId: signedVP.id,
   };
 }
 
@@ -92,17 +90,17 @@ async function saveFixtureOnce(signedVP: SignedVP, vpId: string): Promise<void> 
   console.log(`        -> Saved signed VP fixture to ${fixturePath}`);
 }
 
-async function runAction(client: HelixClient, agentDid: string, privateKeyHex: string, vcId: string, action: Action): Promise<void> {
+async function runAction(agentDid: string, privateKeyHex: string, vc: SignedVC, action: Action): Promise<void> {
   console.log(`\n[Agent] ${action.label}`);
-  console.log('        -> Requesting VP template');
+  console.log('        -> Building VP locally');
   let signedVP: SignedVP;
   let vpId: string;
   try {
-    const fresh = await buildFreshVP(client, agentDid, privateKeyHex, vcId);
+    const fresh = await buildFreshVP(agentDid, privateKeyHex, vc);
     signedVP = fresh.signedVP;
     vpId = fresh.vpId;
   } catch (error) {
-    const code = error && typeof error === 'object' && 'code' in error ? String((error as { code: unknown }).code) : 'VP_TEMPLATE_FAILED';
+    const code = error && typeof error === 'object' && 'code' in error ? String((error as { code: unknown }).code) : 'VP_BUILD_FAILED';
     console.log(`        <- DENIED (${code})`);
     if (action.templateDeniedLine) {
       console.log(`        ${action.templateDeniedLine}`);
@@ -147,7 +145,7 @@ async function main(): Promise<void> {
   const wallet = await walletStore.load(walletPassphrase, walletPath);
   const credential = await walletStore.getLatestCredential({ vcType: 'HelixAgentCredential' }, walletPassphrase, walletPath);
   if (!credential) throw new Error('Wallet has no credentials');
-  const vc = JSON.parse(credential.vcJson) as WalletVC;
+  const vc = JSON.parse(credential.vcJson) as WalletVC & SignedVC;
 
   console.log(`[Agent] Loaded wallet for ${wallet.did}`);
   console.log(`[Agent] Credential expires at ${vc.validUntil}`);
@@ -156,27 +154,25 @@ async function main(): Promise<void> {
   // user DID verification flow before the agent acts on the user's behalf.
   console.log(`[Agent] Simulated authenticated user: ${userDID}`);
 
-  const client = new HelixClient(helixApiUrl);
-
-  await runAction(client, wallet.did, wallet.privateKeyHex, credential.vcId, {
+  await runAction(wallet.did, wallet.privateKeyHex, vc, {
     label: 'Searching flights to London...',
     route: '/flights/search',
     successLine: () => 'Found 12 flights.',
   });
 
-  await runAction(client, wallet.did, wallet.privateKeyHex, credential.vcId, {
+  await runAction(wallet.did, wallet.privateKeyHex, vc, {
     label: 'Searching hotels in London...',
     route: '/hotels/search',
     successLine: () => 'Found 2 hotels.',
   });
 
-  await runAction(client, wallet.did, wallet.privateKeyHex, credential.vcId, {
+  await runAction(wallet.did, wallet.privateKeyHex, vc, {
     label: 'Booking flight BOM-LHR...',
     route: '/flights/book',
     successLine: () => 'Flight booking confirmed.',
   });
 
-  await runAction(client, wallet.did, wallet.privateKeyHex, credential.vcId, {
+  await runAction(wallet.did, wallet.privateKeyHex, vc, {
     label: 'Booking hotel - The Langham...',
     route: '/hotels/book',
     successLine: () => 'Hotel booking confirmed.',
@@ -185,11 +181,11 @@ async function main(): Promise<void> {
 
   await waitForRevocation(credential.vcId);
 
-  await runAction(client, wallet.did, wallet.privateKeyHex, credential.vcId, {
+  await runAction(wallet.did, wallet.privateKeyHex, vc, {
     label: 'Booking another flight after revocation...',
     route: '/flights/book',
     successLine: () => 'Flight booking confirmed.',
-    templateDeniedLine: 'My credential has been revoked, so Helix ID will not issue a fresh presentation template.',
+    templateDeniedLine: 'My credential has been revoked, so local VP construction cannot continue.',
     deniedLine: 'My credential has been revoked, so the platform no longer trusts this presentation.',
   });
 }

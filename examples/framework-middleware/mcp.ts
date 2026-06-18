@@ -19,9 +19,6 @@ async function main(): Promise<void> {
 
   const realVerifier = {
     verifySessionToken: client.verifySessionToken.bind(client),
-    async verifyVP(signedVP: SignedVP) {
-      return verifyWithScopes(client, signedVP);
-    },
   };
 
   logStep('MCP', `Loaded wallet for ${wallet.did}.`);
@@ -29,7 +26,6 @@ async function main(): Promise<void> {
   const outboundCall = await attachHelixVP(
     { name: 'orders.lookup', arguments: { orderId: 'ORD-1001' } },
     {
-      helixClient: client,
       walletPassphrase,
       walletFilePath: walletPath,
       vcId: credential.vcId,
@@ -44,6 +40,7 @@ async function main(): Promise<void> {
 
   const requireReadOrders = helixidMCPMiddleware({
     helixClient: realVerifier,
+    verifyVP: verifyWithScopes,
     requiredScopes: ['read:orders'],
   });
   const accepted = await requireReadOrders(
@@ -55,7 +52,6 @@ async function main(): Promise<void> {
   const deniedCall = await attachHelixVP(
     { name: 'inventory.admin', arguments: { sku: 'SKU-1001' } },
     {
-      helixClient: client,
       walletPassphrase,
       walletFilePath: walletPath,
       vcId: credential.vcId,
@@ -66,6 +62,7 @@ async function main(): Promise<void> {
   );
   const requireWriteInventory = helixidMCPMiddleware({
     helixClient: realVerifier,
+    verifyVP: verifyWithScopes,
     requiredScopes: ['write:inventory'],
   });
   const denied = await requireWriteInventory({ headers: deniedCall.headers, context: {} });

@@ -68,6 +68,18 @@ export class DIDNotFoundError extends HelixError {
   }
 }
 
+export class DIDMethodNotAvailableError extends HelixError {
+  constructor(message: string) {
+    super('DID_METHOD_NOT_AVAILABLE', message, 501);
+  }
+}
+
+export class UnsupportedDIDMethodError extends HelixError {
+  constructor(did: string) {
+    super('UNSUPPORTED_DID_METHOD', `Unsupported DID method: ${did}`, 400, { did });
+  }
+}
+
 export class DIDAlreadyExistsError extends HelixError {
   constructor() {
     super('DID_ALREADY_EXISTS', 'A DID already exists for this public key.', 409);
@@ -115,22 +127,20 @@ export class ServiceEndpointAlreadyExistsError extends HelixError {
 }
 
 export class HederaAnchorFailedError extends HelixError {
-  constructor() {
-    super(
-      'HEDERA_ANCHOR_FAILED',
-      'Failed to anchor the DID document on Hedera. Please retry.',
-      502,
-    );
+  constructor(
+    message = 'Failed to anchor the DID document on Hedera. Please retry.',
+    details?: Record<string, unknown>,
+  ) {
+    super('HEDERA_ANCHOR_FAILED', message, 502, details);
   }
 }
 
 export class HederaResolutionFailedError extends HelixError {
-  constructor() {
-    super(
-      'HEDERA_RESOLUTION_FAILED',
-      'Failed to resolve the DID document from Hedera.',
-      502,
-    );
+  constructor(
+    message = 'Failed to resolve the DID document from Hedera.',
+    details?: Record<string, unknown>,
+  ) {
+    super('HEDERA_RESOLUTION_FAILED', message, 502, details);
   }
 }
 
@@ -170,6 +180,12 @@ export class VCExpiredError extends HelixError {
   }
 }
 
+export class VCNotYetValidError extends HelixError {
+  constructor(message = 'The Verifiable Credential is not valid yet') {
+    super('VC_NOT_YET_VALID', message, 400);
+  }
+}
+
 export class VCSubjectDIDNotFoundError extends HelixError {
   constructor(did: string) {
     super('VC_SUBJECT_DID_NOT_FOUND', `Subject DID not found: ${did}`, 404);
@@ -191,6 +207,24 @@ export class StatusListIndexExhaustedError extends HelixError {
 export class VCSignatureInvalidError extends HelixError {
   constructor(message = 'The Verifiable Credential signature is invalid') {
     super('VC_SIGNATURE_INVALID', message, 400);
+  }
+}
+
+export class SelfSignedVCNotAllowedError extends HelixError {
+  constructor(message = 'Self-signed VCs are not allowed unless allowSelfSigned is true') {
+    super('SELF_SIGNED_VC_NOT_ALLOWED', message, 403);
+  }
+}
+
+export class ScopeEscalationDeniedError extends HelixError {
+  constructor(scope: string) {
+    super('SCOPE_ESCALATION_DENIED', `Delegated scope is not permitted by the parent credential: ${scope}`, 400);
+  }
+}
+
+export class MaxDelegationDepthExceededError extends HelixError {
+  constructor(message = 'Maximum delegation depth has been exceeded') {
+    super('MAX_DELEGATION_DEPTH_EXCEEDED', message, 400);
   }
 }
 
@@ -242,6 +276,42 @@ export class DelegationParentVCRevokedError extends HelixError {
   }
 }
 
+export class WalletAlreadyExistsError extends HelixError {
+  constructor(message = 'Wallet file already exists. Use AgentWallet.load() to load an existing wallet.') {
+    super('WALLET_ALREADY_EXISTS', message, 409);
+  }
+}
+
+export class NoCredentialInWalletError extends HelixError {
+  constructor(message = 'Wallet has no credentials') {
+    super('NO_CREDENTIAL_IN_WALLET', message, 400);
+  }
+}
+
+export class CredentialNotForThisAgentError extends HelixError {
+  constructor(message = 'Credential subject does not match this wallet DID') {
+    super('CREDENTIAL_NOT_FOR_THIS_AGENT', message, 400);
+  }
+}
+
+export class CredentialAlreadyInWalletError extends HelixError {
+  constructor(message = 'Credential is already in this wallet') {
+    super('CREDENTIAL_ALREADY_IN_WALLET', message, 409);
+  }
+}
+
+export class SDKOnlyModeNoAPIError extends HelixError {
+  constructor(message = 'This operation requires a HelixID API URL. Pass the API URL to HelixClient constructor: new HelixClient("http://your-api")') {
+    super('SDK_ONLY_MODE_NO_API', message, 400);
+  }
+}
+
+export class InsufficientScopeError extends HelixError {
+  constructor(requiredScope: string) {
+    super('INSUFFICIENT_SCOPE', `Required scope: ${requiredScope}`, 403);
+  }
+}
+
 export class VPNotFoundError extends HelixError {
   constructor(message = 'VP not found') {
     super('VP_NOT_FOUND', message, 404);
@@ -263,6 +333,12 @@ export class VPAlreadyConsumedError extends HelixError {
 export class VPVerificationFailedError extends HelixError {
   constructor(message = 'The Verifiable Presentation could not be verified') {
     super('VP_VERIFICATION_FAILED', message, 400);
+  }
+}
+
+export class VPSignatureInvalidError extends HelixError {
+  constructor(message = 'The Verifiable Presentation signature is invalid') {
+    super('VP_SIGNATURE_INVALID', message, 400);
   }
 }
 

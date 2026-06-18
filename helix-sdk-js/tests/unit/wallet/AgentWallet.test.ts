@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { AgentWallet } from '../../../src/wallet/AgentWallet.js';
+import type { SignedVC } from '@helix-id/core';
 
 const credential = AgentWallet.credentialFromVC('v', {
   id: 'v',
@@ -102,5 +103,61 @@ describe('AgentWallet Branch Coverage', () => {
     await w.removeCredential('v', path, 'pass');
     await expect(w.listCredentials('pass', path)).resolves.toHaveLength(1);
     await rm(dir, { recursive: true, force: true });
+  });
+
+  it('creates and loads an encrypted did:key wallet', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'helix-wallet-'));
+    const path = join(dir, 'wallet.json');
+
+    try {
+      const created = await AgentWallet.create(path, 'pass');
+      expect(created.getDID()).toMatch(/^did:key:z/);
+      expect(created.getPublicKey()).toMatch(/^[0-9a-f]{64}$/);
+      await expect(AgentWallet.create(path, 'pass')).rejects.toMatchObject({
+        code: 'WALLET_ALREADY_EXISTS',
+      });
+
+      const loaded = await AgentWallet.load(path, 'pass');
+      expect(loaded.getDID()).toBe(created.getDID());
+      expect(loaded.credentials).toEqual([]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('self-issues and persists credentials for the loaded wallet', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'helix-wallet-'));
+    const path = join(dir, 'wallet.json');
+
+    try {
+      const wallet = await AgentWallet.create(path, 'pass');
+      const vc = await wallet.selfIssueVC({
+        scopes: ['read:orders', 'write:orders'],
+        maxDelegationDepth: 1,
+      });
+      expect(vc.credentialSubject.id).toBe(wallet.getDID());
+      expect(wallet.credentials).toHaveLength(1);
+
+      await expect(wallet.addCredential(vc)).rejects.toMatchObject({
+        code: 'CREDENTIAL_ALREADY_IN_WALLET',
+      });
+
+      const reloaded = await AgentWallet.load(path, 'pass');
+      expect(reloaded.credentials[0]?.id).toBe(vc.id);
+
+      const wrongAgentVC: SignedVC = {
+        ...vc,
+        id: 'vc:helix:wrong-agent',
+        credentialSubject: {
+          ...vc.credentialSubject,
+          id: 'did:key:zWrongAgent',
+        },
+      } as SignedVC;
+      await expect(reloaded.addCredential(wrongAgentVC)).rejects.toMatchObject({
+        code: 'CREDENTIAL_NOT_FOR_THIS_AGENT',
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

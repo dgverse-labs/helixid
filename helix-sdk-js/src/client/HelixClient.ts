@@ -1,6 +1,7 @@
 import {
   generateKeyPair,
   getBit,
+  SDKOnlyModeNoAPIError,
   verifyJWT,
   signBytes,
   type DIDDocument,
@@ -8,12 +9,9 @@ import {
   type KeyPair,
   type ServiceEndpoint,
   type SignedVC,
-  type SignedVP,
-  type UnsignedVP,
 } from '@helix-id/core';
 import { HttpAdapter } from '../http/HttpAdapter.js';
 import { AgentWallet } from '../wallet/AgentWallet.js';
-import { VPBuilder } from '../vp/VPBuilder.js';
 
 interface PendingKeyPair {
   publicKey: string;
@@ -64,38 +62,6 @@ export interface StatusListCredentialResponse {
   [key: string]: unknown;
 }
 
-export interface VPVerificationResult {
-  valid: true;
-  agentDid: string;
-  userDid: string;
-  targetService: string;
-  verifiedAt: string;
-  session?: {
-    token: string;
-    expiresAt: string;
-    publicKeyEndpoint: string;
-  };
-}
-
-export interface DelegateVCOptions {
-  delegateeAgentDid: string;
-  requestedScopes: string[];
-  expiresInSeconds?: number;
-  walletPassphrase: string;
-  walletFilePath: string;
-  vcId?: string;
-}
-
-export interface DelegateVCResult {
-  vcId: string;
-  delegateeAgentDid: string;
-  delegatedFrom: string;
-  delegationDepth: number;
-  scopes: string[];
-  expiresAt: string;
-  vc: Record<string, unknown>;
-}
-
 export interface SessionPublicKeyResponse {
   publicKeyHex: string;
   publicKeyMultibase: string;
@@ -116,11 +82,20 @@ export class HelixClient {
   private http: HttpAdapterLike;
   private readonly wallet = new AgentWallet();
   private pendingKeyPair: PendingKeyPair | null = null;
+  private readonly sdkOnlyMode: boolean;
 
+  constructor(apiUrl?: string);
   constructor(baseUrl: string, options?: HelixClientOptions);
   constructor(http: HttpAdapter, baseUrl: string);
-  constructor(first: string | HttpAdapter, second?: string | HelixClientOptions) {
-    this.http = typeof first === 'string'
+  constructor(first?: string | HttpAdapter, second?: string | HelixClientOptions) {
+    this.sdkOnlyMode = first === undefined;
+    this.http = first === undefined
+      ? {
+          post: async () => {
+            throw new SDKOnlyModeNoAPIError();
+          },
+        }
+      : typeof first === 'string'
       ? new HttpAdapter(first, typeof second === 'object' ? second : {})
       : first;
   }
@@ -214,28 +189,14 @@ export class HelixClient {
     if (validUntil && new Date(validUntil).getTime() <= Date.now()) {
       return 'expired';
     }
+    if (!vc.credentialStatus) {
+      throw new Error('VC has no credentialStatus');
+    }
     const { statusListCredential, statusListIndex } = vc.credentialStatus;
     if (!this.http.get) throw new Error('GET not implemented by adapter');
     const listCredential = await this.http.get<StatusListCredentialResponse>(statusListCredential);
     const encodedList = listCredential.credentialSubject.encodedList;
     return getBit(encodedList, Number(statusListIndex)) === 1 ? 'revoked' : 'active';
-  }
-
-  async verifyVP(signedVP: SignedVP, options: { session?: boolean } = {}): Promise<VPVerificationResult> {
-    return this.http.post('/v1/vp/verify', {
-      signedVP,
-      ...(options.session === true ? { session: true } : {}),
-    });
-  }
-
-  async createVPTemplate(options: {
-    agentDid: string;
-    userDid: string;
-    targetService: string;
-    vcType?: string;
-    vcId?: string;
-  }): Promise<{ unsignedVP: UnsignedVP; vpId: string; expiresAt: string }> {
-    return this.http.post('/v1/vp/template', options);
   }
 
   async fetchSessionPublicKey(): Promise<string> {
@@ -248,32 +209,11 @@ export class HelixClient {
     return verifyJWT(token, publicKeyHex);
   }
 
-  async delegate(options: DelegateVCOptions): Promise<DelegateVCResult> {
-    const wallet = await new AgentWallet().load(options.walletPassphrase, options.walletFilePath);
-    const template = await this.http.post<{
-      unsignedVP: UnsignedVP;
-      vpId: string;
-      expiresAt: string;
-    }>('/v1/vp/template', {
-      agentDid: wallet.did,
-      userDid: options.delegateeAgentDid,
-      targetService: 'helix-delegation',
-      vcType: 'HelixAgentCredential',
-      ...(options.vcId ? { vcId: options.vcId } : {}),
-    });
-    const signedVP = await new VPBuilder(template.unsignedVP).sign(wallet.privateKeyHex, `${wallet.did}#key-1`);
-    return this.http.post('/v1/vcs/delegate', {
-      delegatorVP: signedVP,
-      delegateeAgentDid: options.delegateeAgentDid,
-      requestedScopes: options.requestedScopes,
-      ...(options.expiresInSeconds === undefined ? {} : { expiresInSeconds: options.expiresInSeconds }),
-    });
-  }
-
   async requestOnboardingChallenge(
     enrollmentToken: string,
     domains: string[] = [],
   ): Promise<{ challengeId: string; nonce: string; expiresAt: string; didCreateSigningPayloadHex?: string }> {
+    this.assertAPIConfigured();
     const keyPair = generateKeyPair();
     this.pendingKeyPair = { publicKey: keyPair.publicKey, privateKey: keyPair.privateKey };
     const challenge = await this.http.post<{
@@ -296,6 +236,7 @@ export class HelixClient {
     walletPassphrase: string,
     walletFilePath: string,
   ): Promise<{ agentDid: string; vcId: string; walletSaved: true }> {
+    this.assertAPIConfigured();
     if (!this.pendingKeyPair) throw new Error('No pending onboarding keypair');
     const signature = await signBytes(Buffer.from(nonce, 'hex'), this.pendingKeyPair.privateKey);
     const didCreateSignature = await this.signPendingDidCreatePayload(challengeId);
@@ -359,5 +300,11 @@ export class HelixClient {
       Buffer.from(this.pendingKeyPair.didCreateSigningPayloadHex, 'hex'),
       this.pendingKeyPair.privateKey,
     );
+  }
+
+  private assertAPIConfigured(): void {
+    if (this.sdkOnlyMode) {
+      throw new SDKOnlyModeNoAPIError();
+    }
   }
 }

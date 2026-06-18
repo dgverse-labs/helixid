@@ -6,7 +6,6 @@ export {
   type LangChainMiddlewareOptions,
   type RunnableConfigLike,
   type StructuredToolLike,
-  type VPTemplateClient,
   type WalletData,
   type WalletLoader,
 } from './middleware.js';

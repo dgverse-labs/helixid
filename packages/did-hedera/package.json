@@ -1,0 +1,34 @@
+{
+  "name": "@helix-id/did-hedera",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Optional Hedera DID method support for HelixID",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests",
+    "test:non-live": "vitest run --passWithNoTests",
+    "test:unit": "vitest run tests --passWithNoTests",
+    "lint": "eslint src tests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hashgraph/sdk": "^2.49.0",
+    "@helix-id/core": "workspace:*",
+    "@hiero-did-sdk/registrar": "^0.1.0"
+  },
+  "devDependencies": {
+    "@helix-id/core": "workspace:*",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.8"
+  }
+}

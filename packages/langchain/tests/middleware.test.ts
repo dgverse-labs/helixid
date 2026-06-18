@@ -1,34 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import { randomUUID } from 'node:crypto';
-import { generateKeyPair, type UnsignedVP } from '@helix-id/core';
+import { generateKeyPair } from '@helix-id/core';
 import { HelixIDMiddleware, HelixIDToolWrapper } from '../src/index.js';
 
-function unsignedVP(holder: string): UnsignedVP {
-  return {
-    '@context': ['https://www.w3.org/ns/credentials/v2'],
-    type: ['VerifiablePresentation'],
-    id: `vp:helix:${randomUUID()}`,
-    holder,
-    verifiableCredential: [{ id: 'vc:test', type: ['VerifiableCredential'] }],
-    nonce: 'b'.repeat(64),
-    expirationDate: new Date(Date.now() + 60_000).toISOString(),
-    delegatedBy: 'did:hedera:testnet:user',
-    targetService: 'orders',
-  };
-}
-
-function options(verifyVP = vi.fn()) {
+function options() {
   const keyPair = generateKeyPair();
   const did = 'did:hedera:testnet:agent';
   return {
     keyPair,
     did,
-    verifyVP,
     value: {
-      helixClient: {
-        createVPTemplate: vi.fn().mockResolvedValue({ unsignedVP: unsignedVP(did) }),
-        verifyVP,
-      },
       walletPassphrase: 'pass',
       walletFilePath: '/unused',
       targetService: 'orders',
@@ -40,7 +20,14 @@ function options(verifyVP = vi.fn()) {
           privateKeyHex: keyPair.privateKey,
           credentials: [{
             vcId: 'vc:selected',
-            vcJson: JSON.stringify({ validUntil: new Date(Date.now() + 60_000).toISOString() }),
+            vcJson: JSON.stringify({
+              id: 'vc:selected',
+              type: ['VerifiableCredential', 'HelixAgentCredential'],
+              issuer: 'did:issuer',
+              validUntil: new Date(Date.now() + 60_000).toISOString(),
+              credentialSubject: { id: did, privilegeScopes: ['read:orders'] },
+              proof: { type: 'Ed25519Signature2020' },
+            }),
             type: ['VerifiableCredential', 'HelixAgentCredential'],
             addedAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
@@ -63,12 +50,6 @@ describe('@helix-id/langchain', () => {
 
     expect(input._helixVP).toEqual(expect.any(String));
     expect(String(input._helixVP)).not.toContain(setup.keyPair.privateKey);
-    expect(setup.value.helixClient.createVPTemplate).toHaveBeenCalledWith({
-      agentDid: setup.did,
-      userDid: 'did:hedera:testnet:user',
-      targetService: 'orders',
-      vcId: 'vc:selected',
-    });
   });
 
   it('wraps a tool and passes the VP to the original _call input', async () => {
@@ -79,16 +60,6 @@ describe('@helix-id/langchain', () => {
 
     await expect(wrapped._call(input)).resolves.toBe('done');
     expect(originalCall).toHaveBeenCalledWith(expect.objectContaining({ _helixVP: expect.any(String) }));
-  });
-
-  it('does not call verifyVP while attaching outbound proof', async () => {
-    const verifyVP = vi.fn();
-    const setup = options(verifyVP);
-    const middleware = HelixIDMiddleware(setup.value);
-
-    await middleware.callbacks[0]!.handleToolStart({ name: 'orders' }, {});
-
-    expect(verifyVP).not.toHaveBeenCalled();
   });
 
   it('propagates wallet load failures before calling the tool', async () => {

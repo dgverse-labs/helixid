@@ -153,6 +153,23 @@ describe('VC API Integration', () => {
     });
   });
 
+  describe('POST /v1/vcs/delegate', () => {
+    it('is removed from the API', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v1/vcs/delegate',
+        headers: { 'x-admin-api-key': 'test-admin-key-0001' },
+        payload: {
+          delegatorVP: {},
+          delegateeAgentDid: didId,
+          requestedScopes: ['read:orders'],
+        },
+      });
+
+      expect(response.statusCode).toBe(404);
+    });
+  });
+
   describe('GET /v1/vcs/:vcId', () => {
     it('resolves an existing VC', async () => {
       const vcId = await issueUserVC();

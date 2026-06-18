@@ -26,7 +26,9 @@ This document is the single source of truth for all architectural, structural, s
 
 ## 1. Project Overview
 
-Helix ID is an agent identity and trust infrastructure platform. It issues cryptographically verifiable identities (DIDs) and credentials (VCs) to agents and users, anchors them on the Hedera network, and enables external services to verify agent actions without depending on Helix ID as a single point of trust.
+Helix ID is an agent identity and trust infrastructure platform. It issues cryptographically verifiable identities (DIDs) and credentials (VCs) to agents and users, anchors them on the Hedera network.
+
+The issuer service is self-hostable; Helix ID does not need to operate it on behalf of platform operators. Agents may self-sign delegation VCs using delegation — the SDK enforces scope subset and depth constraints locally without an issuer call.
 
 Open core model. The core platform is Apache 2.0 licensed and self-hostable. SaaS and Enterprise tiers extend it with managed infrastructure, advanced policy engines, and compliance tooling.
 
@@ -42,6 +44,7 @@ The JWT Session Bridge may mint short-lived stateless JWT sessions only after fu
 helix-id/
 ├── helix-core/          # Shared primitives — VC schema, crypto, OpenAPI spec, config, error types
 ├── helix-api/           # Fastify HTTP API — self-hostable, stateful operations
+helix-cli/           # Operator CLI — DID creation, VC issuance, revocation, StatusList management
 ├── helix-sdk-js/        # TypeScript/JS SDK — HelixClient, local signing, wallet management
 ├── helix-sdk-py/        # (Future) Python SDK — mirrors JS SDK, OpenAPI spec as shared truth
 ├── packages/            # Framework adapters only — MCP, LangChain, future CrewAI, etc.
@@ -63,7 +66,8 @@ Rules:
 - Root scripts are permitted only for developer setup, validation, and repository maintenance. They must not contain API runtime logic.
 - helix-core has no monorepo siblings as dependencies — it is a pure library
 - packages/* is reserved for thin framework adapters. These packages may depend on helix-sdk-js, helix-core types, or the future helix-sdk-py, but they must not introduce new trust semantics, API endpoints, or core primitives.
-- helix-contracts is scaffolded but empty until custom HCS message schema work begins (note: DID anchoring uses the Hiero DID SDK from Story 1 — helix-contracts is for future custom message types beyond DIDs)
+- helix-contracts is scaffolded but empty until custom HCS message schema work begins (note: DID anchoring uses the Hiero DID SDK from Story 1 — helix-contracts is for future custom message types beyond DIDs, Hedera is optional too)
+- helix-cli is a thin wrapper around SDK and helix-core operations. It contains no business logic beyond CLI argument parsing and output formatting.
 - turbo.json lives at the workspace root and is the task graph definition — no application logic
 - Each package has its own package.json, tsconfig.json, and README.md
 
@@ -164,6 +168,20 @@ helix-sdk-py/
 └── README.md
 ```
 
+### helix-cli
+```
+helix-cli/
+├── src/
+│   ├── commands/
+│   │   ├── did.ts        # did create --method web|hedera|key
+│   │   ├── vc.ts         # vc issue, vc revoke
+│   │   └── status-list.ts # status-list create
+│   └── index.ts
+├── package.json
+├── tsconfig.json
+└── README.md
+```
+
 ### packages/* Framework Adapters
 
 ```
@@ -225,6 +243,14 @@ e2e/
 | Monorepo workspace | pnpm workspaces + Turborepo | Shared helix-core primitives; Turborepo ensures correct build order and enables remote cache |
 | Remote cache | turborepo-remote-cache (self-hosted) | MIT licensed; prevents redundant CI builds; set up before team grows beyond 2 people |
 
+### DID methods
+
+| DID method  | Use case                        | Hosting required        |
+|-------------|---------------------------------|-------------------------|
+| did:key     | Local dev, ephemeral agents     | None                    |
+| did:web     | Default production              | HTTPS /.well-known/     |
+| did:hedera  | Enterprise, immutable anchoring | Hedera operator account |
+
 ### Hedera
 
 | Decision | Choice | Rationale |
@@ -234,6 +260,7 @@ e2e/
 | Network client | @hashgraph/sdk | Official Hedera SDK; required for operator account and HBAR payment |
 
 DID format: `did:hedera:testnet:<identifier>` — standard did:hedera method, not a custom did:helix format.
+did:hedera is optional. did:web is the default production DID method. did:key is for local development and ephemeral agents
 
 ### Cryptography
 
@@ -276,7 +303,7 @@ These rules are non-negotiable. No user story, no implementation shortcut, no ex
 
 **SA-3 — Enrollment token is single-use.** Every enrollment token is burned on first use. A second attempt with the same token is rejected regardless of validity. Token expiry is 15–30 minutes.
 
-**SA-4 — vpId is consumed on first verification.** Every VP carries a unique vpId issued by Helix ID. The verify API marks it consumed on first call. Any subsequent call with the same vpId is rejected. This is Helix ID's responsibility — self-verifying services must implement equivalent nonce checking per the documented obligation.
+**SA-4 — replay Attack is out of scope for helix id.** The SDK returns the vpId from every verified VP. The verifier is responsible for persisting consumed vpIds in their own store and rejecting duplicates. The self-hosted API implements this for operators who use it. Service providers using SDK-only verification must implement equivalent nonce checking — an example implementation using Redis is provided in examples/replay-protection/
 
 **SA-5 — VP expiry is enforced.** Every VP has a short expiry timestamp. Expired VPs are rejected at verification regardless of signature validity.
 
@@ -296,10 +323,11 @@ These rules are non-negotiable. No user story, no implementation shortcut, no ex
 
 **SA-13 — Delegation depth is explicit and enforced.** Root agent VCs default to `maxDelegationDepth = 0`. Delegation is impossible unless the agent owner explicitly allows it. Each child VC increments `delegationDepth`; delegation fails when `delegationDepth >= maxDelegationDepth`.
 
-**SA-14 — Helix ID is the only VC signer.** Agents may request delegation by proving authority with a signed VP, but agents never sign VCs. Root and delegated VCs are issued and signed only by Helix ID.
+**SA-14** — Root VCs are signed by the issuer only. Root VCs establishing an agent's initial authority are signed by the platform operator's issuer service. Agents may self-sign delegation VCs (Option A delegation) granting a subset of their own scopes to another agent. The SDK enforces that delegated scopes are a strict subset of the delegator's active VC scopes and that delegation depth limits are respected. Self-signed delegation VCs carry no issuer trust anchor and are validated by chain integrity alone.".
 
 **SA-15 — A broken parent breaks the chain.** If any parent or intermediary VC in a delegation chain is expired, revoked, missing, tampered, invalidly signed, or linked incorrectly, the leaf VP must fail verification.
 
+**SA-16 ** — Self-signed VCs are rejected in production verification by default. The SDK's verifyVP() rejects VCs where issuer === credentialSubject.id unless { allowSelfSigned: true } is explicitly passed. This flag is for local development only. Framework adapters must never pass allowSelfSigned: true in production configurations.
 ---
 
 ## 6. API Contract Rules
@@ -384,6 +412,8 @@ helix-sdk-py does not import from helix-core. It maintains its own Python-native
 
 **EV-4 — .env files with real credentials are never committed.** .env, .env.local, .env.production are gitignored. CI uses GitHub Actions secrets. Local development uses .env.test (gitignored) populated from .env.example.
 
+**EV-5** HELIX_SIGNING_KEY and HELIX_ISSUER_DID are required only when running the self-hosted issuer service. SDK-only deployments do not require these variables."
+
 ### Variable Categories
 
 | Category | Variables |
@@ -451,6 +481,7 @@ The JWT Session Bridge adds no database table. JWTs are stateless; replay protec
 
 **HR-2 — All Hedera calls go through IHederaClient.** A TypeScript interface IHederaClient defines the contract for all Hedera DID operations. The production implementation wraps the Hiero DID SDK. Tests use a test double that records calls without writing to the network.
 
+
 ```typescript
 interface IHederaClient {
   anchorDocument(payload: string): Promise<HederaTransactionResult>
@@ -463,6 +494,8 @@ interface IHederaClient {
 **HR-4 — Hedera operator credentials are never hardcoded.** Operator account ID and private key come from environment variables only. No test fixture, seed file, or code comment contains real Hedera credentials.
 
 **HR-5 — HBAR costs are the API's responsibility.** The SDK never holds Hedera credentials or pays for transactions. The API operator account pays for all HCS writes. This is by design — the agent's private key and the Hedera operator key are entirely separate concerns.
+
+HR-6 — Hedera is optional. The system must operate correctly with HELIX_DID_METHOD=web or HELIX_DID_METHOD=key without any Hedera credentials configured. Hedera-dependent code paths must be gated on HELIX_DID_METHOD=hedera and must not execute or fail loudly when Hedera is not configured."
 
 ---
 
@@ -592,6 +625,10 @@ Every item on this list must have a corresponding test. This is a checklist, not
 - [ ] Verify JWT with wrong public key — verification must fail
 - [ ] Verify JWT past expiry — must be rejected
 - [ ] Raw JWT session token and JWT session private key must never appear in audit log
+- [ ] Self-signed VC presented to production verifier (allowSelfSigned not set) — must be rejected
+- [ ] Delegated VC with scopes exceeding parent — SDK must reject before presentation
+- [ ] Delegation depth exceeded — SDK must reject
+- [ ] Replay protection — same vpId presented to SDK verifier twice — second must be rejected by caller store example
 
 ### Coverage Minimums
 

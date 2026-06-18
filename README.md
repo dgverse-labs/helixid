@@ -379,6 +379,29 @@ Planned open-source coverage includes `did:key` local identity, OPA policy evalu
 - [ ] Kubernetes admission controller
 - [ ] HelixID Cloud managed service
 
+## Parked Items
+
+### Bitstring Status List Hosting
+
+Revisit soon: status list URL conventions and hosting model.
+
+The current W3C spec is [Bitstring Status List v1.0](https://www.w3.org/TR/vc-bitstring-status-list/), published as a W3C Recommendation on 15 May 2025. It does not mandate a fixed URL path for status lists. The `statusListCredential` URL embedded in a VC must point to a valid signed `BitstringStatusListCredential` that verifiers can fetch and verify.
+
+There is no `/.well-known/` equivalent for status lists. That differs from `did:web`, where deterministic resolution requires a fixed path. Status list resolution is pointer-based: the verifier is told the exact URL inside the VC, so the issuer controls where the list lives.
+
+De facto implementations often use a path like:
+
+```text
+https://issuer.example.com/credentials/status/{listId}
+```
+
+Practical constraints to revisit:
+
+- The URL should remain stable for the VC lifetime.
+- The URL should be HTTPS and publicly reachable by verifiers.
+- The response should be a signed `BitstringStatusListCredential`.
+- The read path can be static: CDN, S3, object storage, or the HelixID API can serve the signed JSON.
+
 ## Project Structure
 
 ```

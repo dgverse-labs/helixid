@@ -12,7 +12,7 @@
 
 import { FastifyPluginAsync } from 'fastify';
 import { AdminAuthRequiredError } from '@helix-id/core';
-import type { IVCService, IssueVCParams, RenewVCOptions, DelegateVCParams } from '../../services/vc/vc.service.js';
+import type { IVCService, IssueVCParams, RenewVCOptions } from '../../services/vc/vc.service.js';
 import type { IVPService } from '../../services/vp/IVPService.js';
 
 export interface VcRouteOptions {
@@ -44,13 +44,6 @@ const vcRoutes: FastifyPluginAsync<VcRouteOptions> = async (fastify, options) =>
     requireAdmin(request);
     const params = request.body as IssueVCParams;
     const result = await vcService.issueVC(params, request.id);
-    return reply.status(201).send(result);
-  });
-
-  // POST /v1/vcs/delegate - Issue a delegated VC after verifying delegator authority.
-  fastify.post('/delegate', async (request, reply) => {
-    requireAdmin(request);
-    const result = await vcService.delegateVC(request.body as DelegateVCParams, request.id);
     return reply.status(201).send(result);
   });
 

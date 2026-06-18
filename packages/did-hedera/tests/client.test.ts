@@ -1,7 +1,7 @@
-// Copyright 2026 DgVerse LLP
 import { AccountId, Client, PrivateKey } from '@hashgraph/sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { HieroHederaClient } from '../../../src/hedera/HieroHederaClient.js';
+import { HieroHederaClient } from '../src/client.js';
+import * as mirror from '../src/mirror.js';
 
 describe('HieroHederaClient', () => {
   type Registrar = NonNullable<ConstructorParameters<typeof HieroHederaClient>[1]>;
@@ -37,9 +37,18 @@ describe('HieroHederaClient', () => {
       .rejects.toThrow(/prepareDIDCreation\/submitDIDCreation/);
   });
 
-  it('fetchMessage throws until live message fetching is implemented', async () => {
-    await expect(makeClient().fetchMessage('topic', 1))
-      .rejects.toThrow(/Live Hedera message fetching is not implemented/);
+  it('fetchMessage reads from the Hedera mirror node', async () => {
+    vi.spyOn(mirror, 'fetchTopicMessage').mockResolvedValue({
+      sequenceNumber: 2,
+      consensusTimestamp: '123.456',
+      contents: '{"id":"did:hedera:testnet:0.0.789"}',
+    });
+
+    await expect(makeClient().fetchMessage('0.0.789', 2)).resolves.toEqual({
+      sequenceNumber: 2,
+      consensusTimestamp: '123.456',
+      contents: '{"id":"did:hedera:testnet:0.0.789"}',
+    });
   });
 
   it('prepares DID creation with Hiero registrar and closes the client', async () => {

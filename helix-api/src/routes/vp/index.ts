@@ -5,6 +5,7 @@
 //    http://www.apache.org/licenses/LICENSE-2.0
 
 import type { FastifyPluginAsync } from 'fastify';
+import { ErrorCode } from '@helix-id/core';
 import type { IVPService } from '../../services/vp/IVPService.js';
 import { mapErrorToResponse } from '../../services/vp/vp.service.js';
 
@@ -13,36 +14,6 @@ interface VPRouteOptions {
 }
 
 const vpRoutes: FastifyPluginAsync<VPRouteOptions> = async (fastify, options) => {
-  fastify.post('/template', {
-    schema: {
-      body: {
-        type: 'object',
-        required: ['agentDid', 'userDid', 'targetService', 'vcType'],
-        properties: {
-          agentDid: { type: 'string', minLength: 1 },
-          userDid: { type: 'string', minLength: 1 },
-          targetService: { type: 'string', minLength: 1 },
-          vcType: { type: 'string', minLength: 1 },
-          vcId: { type: 'string', minLength: 1 }
-        }
-      }
-    }
-  }, async (request, reply) => {
-    try {
-      const requestId = request.id;
-      const result = await options.vpService.generateVPTemplate(
-        request.body as { agentDid: string; userDid: string; targetService: string; vcType: string; vcId?: string },
-        requestId
-      );
-      return reply.code(201).send(result);
-    } catch (error) {
-      const mapped = mapErrorToResponse(error);
-      return reply.code(mapped.statusCode).send({
-        error: { code: mapped.code, message: mapped.message, requestId: request.id }
-      });
-    }
-  });
-
   fastify.post('/verify', {
     schema: {
       body: {
@@ -57,6 +28,16 @@ const vpRoutes: FastifyPluginAsync<VPRouteOptions> = async (fastify, options) =>
   }, async (request, reply) => {
     try {
       const body = request.body as { signedVP: Parameters<IVPService['verifyVP']>[0]; session?: boolean };
+      if (body.session !== true) {
+        return reply.code(410).send({
+          error: {
+            code: ErrorCode.SDK_ONLY_MODE_NO_API,
+            message:
+              'VP verification is now handled by the SDK. Use verifyVP() from @helix-id/sdk-js. Pass session: true to this endpoint only if you need a session JWT.',
+            requestId: request.id,
+          },
+        });
+      }
       const result = await options.vpService.verifyVP(body.signedVP, request.id, { issueSession: body.session === true });
       return reply.code(200).send(result);
     } catch (error) {

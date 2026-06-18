@@ -1,0 +1,11 @@
+version: '3.9'
+
+services:
+  api:
+    environment:
+      DID_METHOD: hedera
+      HEDERA_NETWORK: ${HEDERA_NETWORK:-testnet}
+      HEDERA_OPERATOR_ID: ${HEDERA_OPERATOR_ID}
+      HEDERA_OPERATOR_KEY: ${HEDERA_OPERATOR_KEY}
+      HEDERA_TOPIC_ID: ${HEDERA_TOPIC_ID:-}
+      HELIX_ISSUER_DID: ${HELIX_ISSUER_DID}

@@ -5,7 +5,6 @@ import {
   type StructuredToolLike,
 } from '../../packages/langchain/src/index.js';
 import {
-  createHelixClient,
   decodeHelixVP,
   logStep,
   loadWalletSummary,
@@ -17,14 +16,12 @@ import {
 } from './shared.js';
 
 async function main(): Promise<void> {
-  const client = createHelixClient();
   const { wallet, credential } = await loadWalletSummary();
 
   logStep('LangChain', `Loaded wallet for ${wallet.did}.`);
   logStep('LangChain', `Using VC ${credential.vcId} for target service ${targetService}.`);
 
   const middleware = HelixIDMiddleware({
-    helixClient: client,
     walletPassphrase,
     walletFilePath: walletPath,
     vcId: credential.vcId,
@@ -38,10 +35,9 @@ async function main(): Promise<void> {
   logStep('LangChain', `_helixVP injected into tool input (${String(input._helixVP).length} base64url chars).`);
 
   const signedVP = decodeHelixVP(input._helixVP);
-  const verified = await verifyWithScopes(client, signedVP);
+  const verified = await verifyWithScopes(signedVP);
   logStep('Helix ID', `Verified injected VP for ${verified.agentDid}; scopes: ${verified.scopes.join(', ')}.`);
 
-  const verifierClient = createHelixClient();
   const ordersTool: StructuredToolLike = {
     name: 'orders.lookup',
     async _call(toolInput: unknown): Promise<string> {
@@ -52,7 +48,7 @@ async function main(): Promise<void> {
       // This is the receiving side of the integration. In a real LangChain app,
       // the protected tool or service verifies the VP before trusting the call.
       const toolVP = decodeHelixVP((toolInput as Record<string, unknown>)._helixVP);
-      const toolVerification = await verifyWithScopes(verifierClient, toolVP);
+      const toolVerification = await verifyWithScopes(toolVP);
       if (toolVerification.targetService !== targetService) {
         throw new Error(`VP target service mismatch: ${toolVerification.targetService}`);
       }
@@ -66,7 +62,6 @@ async function main(): Promise<void> {
   };
 
   const wrappedTool = HelixIDToolWrapper(ordersTool, {
-    helixClient: client,
     walletPassphrase,
     walletFilePath: walletPath,
     vcId: credential.vcId,

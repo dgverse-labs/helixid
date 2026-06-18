@@ -21,11 +21,13 @@ describe('Config', () => {
   it('loads valid configuration from environment', async () => {
     process.env.API_BASE_URL = 'https://api.test.com';
     process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.DID_METHOD = 'hedera';
     process.env.HEDERA_OPERATOR_ID = '0.0.123';
     process.env.HEDERA_OPERATOR_KEY = '302e020100300506032b657004220420...';
     process.env.HEDERA_TOPIC_ID = '0.0.456';
     process.env.HELIX_SIGNING_KEY = 'a'.repeat(64);
     process.env.HELIX_ISSUER_DID = 'did:hedera:testnet:testissuer';
+    process.env.HELIX_ADMIN_API_KEY = 'test-admin-key-0001';
     process.env.NODE_ENV = 'test';
 
     const { loadConfigFromEnv } = await import('../../src/config/index.js');
@@ -35,14 +37,40 @@ describe('Config', () => {
     expect(config.NODE_ENV).toBe('test');
   });
 
+  it('defaults to did:web and derives the issuer DID from DID_DOMAIN', async () => {
+    process.env.API_BASE_URL = 'https://api.test.com';
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.DID_DOMAIN = 'api.test.com';
+    process.env.HELIX_SIGNING_KEY = 'a'.repeat(64);
+    process.env.HELIX_ADMIN_API_KEY = 'test-admin-key-0001';
+    process.env.NODE_ENV = 'test';
+
+    const { loadConfigFromEnv } = await import('../../src/config/index.js');
+    const config = loadConfigFromEnv();
+    expect(config.HELIX_ISSUER_DID).toBe('did:web:api.test.com');
+    expect(config.HEDERA_OPERATOR_ID).toBe('');
+  });
+
+  it('requires DID_DOMAIN for did:web startup', async () => {
+    process.env.API_BASE_URL = 'https://api.test.com';
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.HELIX_SIGNING_KEY = 'a'.repeat(64);
+    process.env.HELIX_ADMIN_API_KEY = 'test-admin-key-0001';
+
+    const { loadConfigFromEnv } = await import('../../src/config/index.js');
+    expect(() => loadConfigFromEnv()).toThrow(/DID_DOMAIN: required when DID_METHOD=web/);
+  });
+
   it('accepts a PKCS8 DER seed Helix signing key', async () => {
     process.env.API_BASE_URL = 'https://api.test.com';
     process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.DID_METHOD = 'hedera';
     process.env.HEDERA_OPERATOR_ID = '0.0.123';
     process.env.HEDERA_OPERATOR_KEY = '302e020100300506032b657004220420...';
     process.env.HEDERA_TOPIC_ID = '0.0.456';
     process.env.HELIX_SIGNING_KEY = '302e020100300506032b657004220420' + 'a'.repeat(64);
     process.env.HELIX_ISSUER_DID = 'did:hedera:testnet:testissuer';
+    process.env.HELIX_ADMIN_API_KEY = 'test-admin-key-0001';
 
     const { loadConfigFromEnv } = await import('../../src/config/index.js');
     expect(loadConfigFromEnv().HELIX_SIGNING_KEY).toHaveLength(96);
@@ -56,6 +84,7 @@ describe('Config', () => {
   });
 
   it('prevents mainnet network outside production', async () => {
+    process.env.DID_METHOD = 'hedera';
     process.env.HEDERA_NETWORK = 'mainnet';
     process.env.NODE_ENV = 'development';
     process.env.API_BASE_URL = 'https://api.test.com';
@@ -65,8 +94,21 @@ describe('Config', () => {
     process.env.HEDERA_TOPIC_ID = 'topic';
     process.env.HELIX_SIGNING_KEY = 'a'.repeat(64);
     process.env.HELIX_ISSUER_DID = 'did:hedera:testnet:testissuer';
+    process.env.HELIX_ADMIN_API_KEY = 'test-admin-key-0001';
 
     const { loadConfigFromEnv } = await import('../../src/config/index.js');
     expect(() => loadConfigFromEnv()).toThrow(/HEDERA_NETWORK=mainnet is only permitted when NODE_ENV=production/);
+  });
+
+  it('requires Hedera credentials only when DID_METHOD=hedera', async () => {
+    process.env.DID_METHOD = 'hedera';
+    process.env.API_BASE_URL = 'https://api.test.com';
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.HELIX_SIGNING_KEY = 'a'.repeat(64);
+    process.env.HELIX_ISSUER_DID = 'did:hedera:testnet:testissuer';
+    process.env.HELIX_ADMIN_API_KEY = 'test-admin-key-0001';
+
+    const { loadConfigFromEnv } = await import('../../src/config/index.js');
+    expect(() => loadConfigFromEnv()).toThrow(/HEDERA_OPERATOR_ID: required when DID_METHOD=hedera/);
   });
 });

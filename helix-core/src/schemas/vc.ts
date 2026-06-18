@@ -80,7 +80,7 @@ const VCBaseSchema = z.object({
   issuer: z.string(),
   validFrom: z.string().datetime(),
   validUntil: z.string().datetime(),
-  credentialStatus: VCCredentialStatusSchema,
+  credentialStatus: VCCredentialStatusSchema.optional(),
   proof: VCProofSchema.optional(),
 });
 

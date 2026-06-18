@@ -11,6 +11,5 @@ export {
   type MCPToolCall,
   type VerifiedHelixContext,
   type VPAttachOptions,
-  type VPTemplateClient,
   type WalletLoader,
 } from './middleware.js';

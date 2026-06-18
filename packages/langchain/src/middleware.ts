@@ -1,5 +1,5 @@
-import { AgentWallet, VPBuilder, type HelixClient } from '@helix-id/sdk-js';
-import type { SignedVP, UnsignedVP } from '@helix-id/core';
+import { AgentWallet, VPBuilder } from '@helix-id/sdk-js';
+import type { SignedVC, SignedVP } from '@helix-id/core';
 
 export interface RunnableConfigLike {
   callbacks: Array<{
@@ -11,16 +11,6 @@ export interface StructuredToolLike {
   name?: string;
   _call(input: unknown, ...rest: unknown[]): unknown | Promise<unknown>;
   [key: string]: unknown;
-}
-
-export interface VPTemplateClient {
-  createVPTemplate(options: {
-    agentDid: string;
-    userDid: string;
-    targetService: string;
-    vcType?: string;
-    vcId?: string;
-  }): Promise<{ unsignedVP: UnsignedVP; vpId?: string; expiresAt?: string }>;
 }
 
 export interface WalletData {
@@ -45,7 +35,6 @@ export interface WalletLoader {
 }
 
 export interface LangChainMiddlewareOptions {
-  helixClient: Pick<HelixClient, 'createVPTemplate'> | VPTemplateClient;
   walletPassphrase: string;
   walletFilePath: string;
   targetService: string;
@@ -88,20 +77,24 @@ export async function attachVPToInput(input: unknown, options: LangChainMiddlewa
 
 async function createSignedVP(options: LangChainMiddlewareOptions): Promise<SignedVP> {
   const wallet = await (options.walletLoader ?? new AgentWallet()).load(options.walletPassphrase, options.walletFilePath);
-  const vcId = options.vcId ?? selectOnlyMatchingCredentialId(wallet, options.vcType ?? 'HelixAgentCredential');
-  const template = await options.helixClient.createVPTemplate({
-    agentDid: wallet.did,
+  const credential = selectMatchingCredential(wallet, options.vcType ?? 'HelixAgentCredential', options.vcId);
+  const vc = JSON.parse(credential.vcJson) as SignedVC;
+  return new VPBuilder({
+    vc,
+    holderDid: wallet.did,
     userDid: options.userDid,
     targetService: options.targetService,
-    ...(options.vcType ? { vcType: options.vcType } : {}),
-    vcId,
-  });
-  return new VPBuilder(template.unsignedVP).sign(wallet.privateKeyHex, `${wallet.did}#key-1`);
+  }).sign(wallet.privateKeyHex, `${wallet.did}#key-1`);
 }
 
-function selectOnlyMatchingCredentialId(wallet: WalletData, vcType: string): string {
+function selectMatchingCredential(
+  wallet: WalletData,
+  vcType: string,
+  vcId: string | undefined,
+): WalletData['credentials'][number] {
   const now = Date.now();
   const matches = wallet.credentials.filter((credential) => {
+    if (vcId && credential.vcId !== vcId) return false;
     if (!credential.type.includes(vcType)) return false;
     const vc = JSON.parse(credential.vcJson) as { validUntil?: unknown; expirationDate?: unknown };
     const expiresAt = typeof vc.validUntil === 'string'
@@ -111,7 +104,7 @@ function selectOnlyMatchingCredentialId(wallet: WalletData, vcType: string): str
         : undefined;
     return !expiresAt || Date.parse(expiresAt) > now;
   });
-  if (matches.length === 1) return matches[0]!.vcId;
+  if (matches.length === 1) return matches[0]!;
   throw new Error(`Helix LangChain adapter requires vcId when the wallet has ${matches.length} matching active credentials. Select the credential in application code.`);
 }
 

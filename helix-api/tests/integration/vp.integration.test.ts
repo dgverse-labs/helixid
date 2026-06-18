@@ -1,9 +1,8 @@
 import { describe, expect, it, beforeEach, afterAll, beforeAll } from 'vitest';
 import { randomBytes } from 'node:crypto';
-import { VPBuilder } from '@helix-id/sdk-js';
 import Fastify, { FastifyInstance } from 'fastify';
 import { getPublicKey } from '@noble/ed25519';
-import { base58btcEncode, hashCanonicalPayload, signBytes, type AuditEvent, type AuditEventType } from '@helix-id/core';
+import { base58btcEncode, hashCanonicalPayload, signBytes, type AuditEvent, type AuditEventType, type SignedVP } from '@helix-id/core';
 
 import { VPRepository, type VpIdRecord } from '../../src/repositories/vp.repository.js';
 import { ServiceRegistryRepository } from '../../src/repositories/service-registry.repository.js';
@@ -68,6 +67,7 @@ describe('VP integration API', () => {
   let vcService: MockVCService;
   let auditLogger: TestAuditLogger;
   let repository: InMemoryVPRepository;
+  let service: VPService;
 
   const privateKeyHex = randomBytes(32).toString('hex');
   let publicKeyHex = '';
@@ -85,7 +85,7 @@ describe('VP integration API', () => {
     auditLogger = new TestAuditLogger();
     repository = new InMemoryVPRepository();
 
-    const service = new VPService(
+    service = new VPService(
       repository,
       didService,
       vcService,
@@ -133,84 +133,18 @@ describe('VP integration API', () => {
     };
   }
 
-  it('POST /v1/vp/template success (201 with unsignedVP, vpId, expiresAt)', async () => {
+  it('POST /v1/vp/template is removed from the API', async () => {
     const response = await app.inject({
       method: 'POST',
       url: '/v1/vp/template',
       payload: { agentDid: defaultDid, userDid: 'did:hedera:testnet:user1', targetService: 'amazon', vcType: 'HelixAgentCredential' }
     });
 
-    expect(response.statusCode).toBe(201);
-    const body = response.json();
-    expect(body.vpId).toBeDefined();
-    expect(body.expiresAt).toBeDefined();
-    expect(body.unsignedVP).toBeDefined();
-    expect(body.unsignedVP.holder).toBe(defaultDid);
-  });
-
-  it('POST /v1/vp/template uses explicit vcId when provided', async () => {
-    const response = await app.inject({
-      method: 'POST',
-      url: '/v1/vp/template',
-      payload: {
-        agentDid: defaultDid,
-        userDid: 'did:hedera:testnet:user1',
-        targetService: 'amazon',
-        vcType: 'HelixAgentCredential',
-        vcId: 'vc:test:1',
-      }
-    });
-
-    expect(response.statusCode).toBe(201);
-    expect(response.json().unsignedVP.verifiableCredential[0].id).toBe('vc:test:1');
-  });
-
-  it('fails with 404 for unknown agentDid', async () => {
-    didService.setShouldThrow(true);
-    const response = await app.inject({
-      method: 'POST',
-      url: '/v1/vp/template',
-      payload: { agentDid: 'did:hedera:testnet:unknown', userDid: 'did:hedera:testnet:user1', targetService: 'amazon', vcType: 'HelixAgentCredential' }
-    });
-    
     expect(response.statusCode).toBe(404);
-    expect(response.json().error.code).toBe('VP_AGENT_DID_NOT_FOUND');
   });
 
-  it('fails with 404 for unknown targetService', async () => {
-    const response = await app.inject({
-      method: 'POST',
-      url: '/v1/vp/template',
-      payload: { agentDid: defaultDid, userDid: 'did:hedera:testnet:user1', targetService: 'unknown', vcType: 'HelixAgentCredential' }
-    });
-    
-    expect(response.statusCode).toBe(404);
-    expect(response.json().error.code).toBe('SERVICE_NOT_FOUND');
-  });
-
-  it('fails with 400 when no active VC is found', async () => {
-    vcService.setActiveVC(null);
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/v1/vp/template',
-      payload: { agentDid: defaultDid, userDid: 'did:hedera:testnet:user1', targetService: 'amazon', vcType: 'HelixAgentCredential' }
-    });
-    
-    expect(response.statusCode).toBe(400);
-    expect(response.json().error.code).toBe('VP_NO_ACTIVE_VC');
-  });
-
-  it('POST /v1/vp/verify success -> 200 and setting consumedAt DB assertion', async () => {
-    const tmplRes = await app.inject({
-      method: 'POST',
-      url: '/v1/vp/template',
-      payload: { agentDid: defaultDid, userDid: 'did:hedera:testnet:user1', targetService: 'amazon', vcType: 'HelixAgentCredential' }
-    });
-    const template = tmplRes.json();
-
-    const builder = new VPBuilder(template.unsignedVP);
-    const signedVP = await builder.sign(privateKeyHex, `${defaultDid}#key-1`);
+  it('POST /v1/vp/verify without session returns 410 with SDK redirect', async () => {
+    const { signedVP } = await createSignedVP();
 
     const verifyRes = await app.inject({
       method: 'POST',
@@ -218,21 +152,12 @@ describe('VP integration API', () => {
       payload: { signedVP }
     });
 
-    expect(verifyRes.statusCode).toBe(200);
-    expect(verifyRes.json().valid).toBe(true);
-
-    const dbRecord = await repository.findByVpId(template.vpId);
-    expect(dbRecord?.consumedAt).not.toBeNull();
+    expect(verifyRes.statusCode).toBe(410);
+    expect(verifyRes.json().error.message).toContain('VP verification is now handled by the SDK');
   });
 
   it('POST /v1/vp/verify with session true returns a JWT session', async () => {
-    const tmplRes = await app.inject({
-      method: 'POST',
-      url: '/v1/vp/template',
-      payload: { agentDid: defaultDid, userDid: 'did:hedera:testnet:user1', targetService: 'amazon', vcType: 'HelixAgentCredential' }
-    });
-    const template = tmplRes.json();
-    const signedVP = await new VPBuilder(template.unsignedVP).sign(privateKeyHex, `${defaultDid}#key-1`);
+    const { signedVP, vpId } = await createSignedVP();
 
     const verifyRes = await app.inject({
       method: 'POST',
@@ -246,5 +171,31 @@ describe('VP integration API', () => {
     });
     expect(verifyRes.json().session.token).toMatch(/^[^.]+\.[^.]+\.[^.]+$/);
     expect(auditLogger.events.some((entry) => entry.event.event === 'JWT_ISSUED')).toBe(true);
+    const dbRecord = await repository.findByVpId(vpId);
+    expect(dbRecord?.consumedAt).not.toBeNull();
   });
+
+  async function createSignedVP(): Promise<{ signedVP: SignedVP; vpId: string }> {
+    const template = await service.generateVPTemplate(
+      {
+        agentDid: defaultDid,
+        userDid: 'did:hedera:testnet:user1',
+        targetService: 'amazon',
+        vcType: 'HelixAgentCredential',
+      },
+      'req_test',
+    );
+    const signatureHex = await signBytes(hashCanonicalPayload(template.unsignedVP), privateKeyHex);
+    const signedVP = {
+      ...template.unsignedVP,
+      proof: {
+        type: 'Ed25519Signature2020',
+        created: new Date().toISOString(),
+        verificationMethod: `${defaultDid}#key-1`,
+        proofPurpose: 'assertionMethod',
+        proofValue: base58btcEncode(Buffer.from(signatureHex, 'hex')),
+      },
+    } as SignedVP;
+    return { signedVP, vpId: template.vpId };
+  }
 });

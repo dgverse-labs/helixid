@@ -10,6 +10,16 @@ paths:
       responses:
         "200":
           description: API health
+  /.well-known/did.json:
+    get:
+      summary: Get hosted did:web issuer DID document
+      responses:
+        "200":
+          description: Issuer DID document
+          headers:
+            Cache-Control:
+              schema:
+                type: string
   /v1/dids:
     post:
       summary: Create a DID
@@ -105,23 +115,6 @@ paths:
       responses:
         "200":
           description: VC details
-  /v1/vcs/delegate:
-    post:
-      summary: Issue a delegated VC
-      description: Verifies a delegator VP, enforces scope subset and delegation depth, then issues a Helix-signed child VC.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/DelegateVCRequest"
-      responses:
-        "201":
-          description: Delegated VC issued
-        "400":
-          description: Invalid delegation request, scope escalation, depth exceeded, or VP verification failure
-        "403":
-          description: Delegation not permitted
   /v1/vcs/{vcId}/revoke:
     post:
       summary: Revoke a VC
@@ -166,18 +159,14 @@ paths:
       responses:
         "200":
           description: Status list credential
-  /v1/vp/template:
-    post:
-      summary: Generate unsigned VP template
-      responses:
-        "201":
-          description: VP template generated
   /v1/vp/verify:
     post:
-      summary: Verify signed VP, optionally issuing a JWT session
+      summary: Verify signed VP only for JWT session bridge flow
       responses:
         "200":
-          description: VP verified
+          description: VP verified and JWT session issued
+        "410":
+          description: SDK-only VP verification must use verifyVP() from @helix-id/sdk-js
   /v1/sessions/public-key:
     get:
       summary: Get JWT session verification public key
@@ -292,22 +281,3 @@ components:
           minimum: 0
           maximum: 5
           default: 0
-    DelegateVCRequest:
-      type: object
-      required: [delegatorVP, delegateeAgentDid, requestedScopes]
-      properties:
-        delegatorVP:
-          type: object
-          additionalProperties: true
-        delegateeAgentDid:
-          type: string
-        requestedScopes:
-          type: array
-          minItems: 1
-          items:
-            type: string
-        expiresInSeconds:
-          type: integer
-          minimum: 60
-          maximum: 86400
-          default: 3600

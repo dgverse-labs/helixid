@@ -1,15 +1,14 @@
-// Copyright 2026 DgVerse LLP
-// Licensed under the Apache License, Version 2.0
 import { createRequire } from 'node:module';
 import type { Config } from '@helix-id/core';
 import { AccountId, Client, PrivateKey } from '@hashgraph/sdk';
+import { fetchTopicMessage } from './mirror.js';
 import type {
   HederaDIDCreationRequest,
   HederaDIDCreationResult,
   HederaMessage,
   HederaTransactionResult,
-  IHederaClient
-} from './IHederaClient.js';
+  IHederaClient,
+} from './types.js';
 
 type HieroRegistrar = {
   generateCreateDIDRequest(
@@ -52,9 +51,7 @@ export class HieroHederaClient implements IHederaClient {
     const client = this.getClient();
     try {
       const request = await this.registrarClient.generateCreateDIDRequest(
-        {
-          multibasePublicKey: publicKeyMultibase,
-        },
+        { multibasePublicKey: publicKeyMultibase },
         { client },
       );
       return {
@@ -69,22 +66,32 @@ export class HieroHederaClient implements IHederaClient {
   async submitDIDCreation(stateJson: string, signatureHex: string): Promise<HederaDIDCreationResult> {
     const client = this.getClient();
     try {
-      const state = JSON.parse(stateJson);
+      const state = JSON.parse(stateJson) as {
+        message?: number[] | { type?: string; data?: number[] } | Record<string, number>;
+      };
+      const mutableState = state as { message?: unknown };
       if (Array.isArray(state.message)) {
-        state.message = Uint8Array.from(state.message);
-      } else if (state.message?.type === 'Buffer' && Array.isArray(state.message.data)) {
-        state.message = Uint8Array.from(state.message.data);
+        mutableState.message = Uint8Array.from(state.message);
+      } else if (
+        state.message &&
+        typeof state.message === 'object' &&
+        'type' in state.message &&
+        state.message.type === 'Buffer' &&
+        'data' in state.message &&
+        Array.isArray(state.message.data)
+      ) {
+        mutableState.message = Uint8Array.from(state.message.data);
       } else if (state.message && typeof state.message === 'object') {
-        state.message = Uint8Array.from(
-          Object.keys(state.message)
+        mutableState.message = Uint8Array.from(
+          Object.keys(state.message as Record<string, number>)
             .sort((a, b) => Number(a) - Number(b))
-            .map((key) => state.message[key]),
+            .map((key) => (state.message as Record<string, number>)[key]!),
         );
       }
 
       const result = await this.registrarClient.submitCreateDIDRequest(
         {
-          state,
+          state: mutableState,
           signature: Buffer.from(signatureHex, 'hex'),
           waitForDIDVisibility: true,
           visibilityTimeoutMs: 180_000,
@@ -109,10 +116,14 @@ export class HieroHederaClient implements IHederaClient {
     throw new Error('Use prepareDIDCreation/submitDIDCreation for live did:hedera anchoring.');
   }
 
-  async fetchMessage(_topicId: string, _sequenceNumber: number): Promise<HederaMessage> {
-    void _topicId;
-    void _sequenceNumber;
-    throw new Error('Live Hedera message fetching is not implemented yet.');
+  async fetchMessage(topicId: string, sequenceNumber: number): Promise<HederaMessage> {
+    const network = this.config.HEDERA_NETWORK;
+    const message = await fetchTopicMessage(network, topicId, sequenceNumber || undefined);
+    return {
+      sequenceNumber: message.sequenceNumber,
+      consensusTimestamp: message.consensusTimestamp,
+      contents: message.contents,
+    };
   }
 
   private getClient(): Client {
@@ -134,7 +145,7 @@ export class HieroHederaClient implements IHederaClient {
 }
 
 function extractTopicId(did: string): string {
-  const match = did.match(/_(0\.0\.\d+)$/);
+  const match = did.match(/(0\.0\.\d+)$/);
   return match?.[1] ?? '';
 }
 

@@ -7,12 +7,11 @@ import pg from 'pg';
 import { Redis } from 'ioredis';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { buildDIDDocument, derivePublicKey, generateKeyPair, loadConfigFromEnv, type DIDDocument } from '@helix-id/core';
+import { buildDIDDocument, derivePublicKey, generateKeyPair, loadConfigFromEnv, resolveDidMethod, type DIDDocument } from '@helix-id/core';
 
 import { errorHandler } from './middleware/errorHandler.js';
 import { ApiAuditLogger } from './audit/index.js';
-import { MockHederaClient } from './hedera/mock/MockHederaClient.js';
-import { HieroHederaClient } from './hedera/HieroHederaClient.js';
+import { createHederaClient } from './hedera/createHederaClient.js';
 import { DidRepository } from './repositories/did.repository.js';
 import { VcRepository } from './repositories/vc.repository.js';
 import { VPRepository } from './repositories/vp.repository.js';
@@ -25,6 +24,7 @@ import { VCService } from './services/vc/vc.service.js';
 import { VPService } from './services/vp/vp.service.js';
 import { AgentService } from './services/agent/agent.service.js';
 import didRoutes from './routes/did/index.js';
+import didWebRoutes from './routes/did-web/index.js';
 import vcRoutes from './routes/vc/index.js';
 import statusListRoutes from './routes/status-list/index.js';
 import vpRoutes from './routes/vp/index.js';
@@ -53,9 +53,8 @@ const serviceRegistry = new ServiceRegistryRepository();
 
 await ensureIssuerDidCached();
 
-const hederaClient = process.env['HEDERA_MOCK'] === 'true'
-  ? new MockHederaClient()
-  : new HieroHederaClient(config);
+const didMethod = resolveDidMethod(process.env);
+const hederaClient = await createHederaClient(config);
 const didCache = createDidCache<DIDDocument>(config, redis);
 const statusListCache = createStatusListCache<string>(config, redis);
 const jwtSessionKeyPair = generateKeyPair();
@@ -92,6 +91,12 @@ const app = Fastify({
   },
   genReqId: () => `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`,
 });
+
+if (didMethod !== 'hedera' && config.NODE_ENV !== 'test') {
+  app.log.warn(
+    `DID_METHOD=${didMethod}: Hedera client disabled. Set DID_METHOD=hedera for on-chain anchoring.`,
+  );
+}
 
 app.addSchema({
   $id: 'Error',
@@ -158,6 +163,7 @@ async function ensureIssuerDidCached(): Promise<void> {
 }
 
 await app.register(didRoutes, { didService });
+await app.register(didWebRoutes, { issuerDid: config.HELIX_ISSUER_DID, didRepository });
 await app.register(vcRoutes, { prefix: '/v1/vcs', vcService, vpService, adminApiKey: config.HELIX_ADMIN_API_KEY });
 await app.register(statusListRoutes, { prefix: '/v1/status-list', vcService });
 await app.register(vpRoutes, { prefix: '/v1/vp', vpService });

@@ -1,8 +1,8 @@
 import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { SignedVP } from '@helix-id/core';
-import { AgentWallet, HelixClient } from '@helix-id/sdk-js';
+import type { SignedVP, VerifyVPResult } from '@helix-id/core';
+import { AgentWallet, HelixClient, verifyVP } from '@helix-id/sdk-js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -15,11 +15,11 @@ export const userDid = process.env.HELIX_USER_DID ?? 'did:hedera:testnet:user-fr
 export const requestedScopes = ['read:orders', 'write:orders', 'read:catalog'];
 export const requestedDomains = ['https://framework-middleware.example.com'];
 
-type VPVerificationResult = Awaited<ReturnType<HelixClient['verifyVP']>>;
-
-export type VerificationWithScopes = VPVerificationResult & {
+export type VerificationWithScopes = VerifyVPResult & {
   scopes: string[];
   privilegeScopes: string[];
+  userDid: string;
+  targetService: string;
 };
 
 export type WalletVC = {
@@ -70,13 +70,15 @@ export function extractScopes(signedVP: SignedVP): string[] {
   return Array.isArray(scopes) ? scopes.filter((scope): scope is string => typeof scope === 'string') : [];
 }
 
-export async function verifyWithScopes(client: HelixClient, signedVP: SignedVP): Promise<VerificationWithScopes> {
-  const verified = await client.verifyVP(signedVP);
+export async function verifyWithScopes(signedVP: SignedVP): Promise<VerificationWithScopes> {
+  const verified = await verifyVP(signedVP);
   const scopes = extractScopes(signedVP);
   return {
     ...verified,
     scopes,
     privilegeScopes: scopes,
+    userDid: signedVP.delegatedBy,
+    targetService: signedVP.targetService,
   };
 }
 
