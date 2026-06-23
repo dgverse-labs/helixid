@@ -9,7 +9,7 @@ import {
   type SignedVP,
   unsignedVPSchema,
   base58btcDecode
-} from '@helix-id/core';
+} from '@helixid/core';
 
 export class VPBuilder {
   constructor(private unsignedVP: UnsignedVP) {}

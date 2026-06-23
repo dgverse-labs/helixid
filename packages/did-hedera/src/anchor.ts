@@ -1,5 +1,5 @@
 import type { Client } from '@hashgraph/sdk';
-import { HederaAnchorFailedError } from '@helix-id/core';
+import { HederaAnchorFailedError } from '@helixid/core';
 import { buildHederaClient, extractTopicId, privateKeyFromHex } from './hiero-client.js';
 import type { HederaAnchorOptions } from './types.js';
 

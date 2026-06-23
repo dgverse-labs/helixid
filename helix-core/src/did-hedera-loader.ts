@@ -6,7 +6,7 @@ export type DidHederaResolver = (did: string) => Promise<DIDDocument>;
 export function loadDidHederaResolver(): DidHederaResolver | null {
   try {
     const require = createRequire(import.meta.url);
-    const module = require('@helix-id/did-hedera') as {
+    const module = require('@helixid/did-hedera') as {
       resolveDID?: DidHederaResolver;
       resolveDid?: DidHederaResolver;
       resolveDidHedera?: DidHederaResolver;

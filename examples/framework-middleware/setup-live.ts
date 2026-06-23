@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { access } from 'node:fs/promises';
-import { AgentWallet } from '@helix-id/sdk-js';
+import { AgentWallet } from '@helixid/sdk-js';
 import {
   createHelixClient,
   ensureAgentDirectory,

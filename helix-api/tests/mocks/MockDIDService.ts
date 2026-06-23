@@ -1,4 +1,4 @@
-import { publicKeyToMultibase } from '@helix-id/core';
+import { publicKeyToMultibase } from '@helixid/core';
 import type {
   CreateDIDResult,
   DIDCreationProof,

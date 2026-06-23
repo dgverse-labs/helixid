@@ -1,4 +1,4 @@
-import type { SignedVP } from '@helix-id/core';
+import type { SignedVP } from '@helixid/core';
 
 export interface MCPToolCall {
   name?: string;

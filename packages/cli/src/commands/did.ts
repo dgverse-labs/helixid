@@ -1,4 +1,4 @@
-import { buildDIDDocument, generateKeyPair, publicKeyToMultibase } from '@helix-id/core';
+import { buildDIDDocument, generateKeyPair, publicKeyToMultibase } from '@helixid/core';
 import { access } from 'node:fs/promises';
 import { requireHederaOperator, requirePassphrase } from '../lib/env.js';
 import { error, success } from '../lib/output.js';
@@ -49,11 +49,11 @@ export async function runDidCreate(options: DidCreateOptions): Promise<void> {
   }
 
   if (options.method === 'hedera') {
-    let anchorDidHedera: typeof import('@helix-id/did-hedera').anchorDidHedera;
+    let anchorDidHedera: typeof import('@helixid/did-hedera').anchorDidHedera;
     try {
-      ({ anchorDidHedera } = await import('@helix-id/did-hedera'));
+      ({ anchorDidHedera } = await import('@helixid/did-hedera'));
     } catch {
-      error('Hedera DID method requires: npm install @helix-id/did-hedera');
+      error('Hedera DID method requires: npm install @helixid/did-hedera');
     }
 
     const network = options.network ?? 'testnet';

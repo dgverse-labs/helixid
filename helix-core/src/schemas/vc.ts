@@ -21,7 +21,7 @@ import {
  */
 export const VC_CONTEXTS = [
   'https://www.w3.org/ns/credentials/v2',
-  'https://helix-id.io/contexts/v1'
+  'https://helixid.io/contexts/v1'
 ] as const;
 
 /**

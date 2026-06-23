@@ -1,5 +1,5 @@
-import { NoCredentialInWalletError, type SignedVC } from '@helix-id/core';
-import { AgentWallet, VPBuilder } from '@helix-id/sdk-js';
+import { NoCredentialInWalletError, type SignedVC } from '@helixid/core';
+import { AgentWallet, VPBuilder } from '@helixid/sdk-js';
 import type { AttachHelixVPOptions, MCPToolCall } from './types.js';
 
 export async function attachHelixVP(

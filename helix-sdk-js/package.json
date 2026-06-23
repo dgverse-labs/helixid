@@ -1,5 +1,5 @@
 {
-  "name": "@helix-id/sdk-js",
+  "name": "@helixid/sdk-js",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -25,7 +25,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@helix-id/core": "workspace:*",
+    "@helixid/core": "workspace:*",
     "@noble/ed25519": "^2.3.0"
   },
   "devDependencies": {

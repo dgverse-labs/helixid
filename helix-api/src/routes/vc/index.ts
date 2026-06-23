@@ -11,7 +11,7 @@
 // limitations under the License.
 
 import { FastifyPluginAsync } from 'fastify';
-import { AdminAuthRequiredError } from '@helix-id/core';
+import { AdminAuthRequiredError } from '@helixid/core';
 import type { IVCService, IssueVCParams, RenewVCOptions } from '../../services/vc/vc.service.js';
 
 export interface VcRouteOptions {

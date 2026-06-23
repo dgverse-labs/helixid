@@ -27,7 +27,7 @@
         "issuer": "did:hedera:testnet:3GyeSet8RyahYaPyUoSmD9dfftpCmtZDmKwjGdzdBnkq_0.0.7553278",
         "@context": [
           "https://www.w3.org/ns/credentials/v2",
-          "https://helix-id.io/contexts/v1"
+          "https://helixid.io/contexts/v1"
         ],
         "validFrom": "2026-06-02T21:38:21.033Z",
         "validUntil": "2026-06-03T22:38:21.033Z",

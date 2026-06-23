@@ -8,7 +8,7 @@ import {
   setBit,
   signBytes,
   type SignedVC,
-} from '@helix-id/core';
+} from '@helixid/core';
 
 export interface IssuerKeyMaterial {
   did: string;
@@ -109,7 +109,7 @@ export async function issueAgentCredential(options: {
   const vcId = `urn:uuid:${randomUUID()}`;
 
   const credential = {
-    '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helix-id.io/contexts/v1'],
+    '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helixid.io/contexts/v1'],
     id: vcId,
     type: ['VerifiableCredential', 'HelixAgentCredential'],
     issuer: options.issuer.did,

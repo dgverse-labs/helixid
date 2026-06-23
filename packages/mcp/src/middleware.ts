@@ -1,5 +1,5 @@
-import { HelixError, VPMissingError, VPVerificationFailedError, type SignedVP } from '@helix-id/core';
-import { requireScope, verifyVP } from '@helix-id/sdk-js';
+import { HelixError, VPMissingError, VPVerificationFailedError, type SignedVP } from '@helixid/core';
+import { requireScope, verifyVP } from '@helixid/sdk-js';
 import type { MCPToolCall, MCPMiddlewareOptions } from './types.js';
 
 export function helixidMCPMiddleware(options: MCPMiddlewareOptions) {

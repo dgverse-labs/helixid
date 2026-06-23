@@ -1,5 +1,5 @@
 {
-  "name": "@helix-id/mcp",
+  "name": "@helixid/mcp",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -20,8 +20,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@helix-id/core": "workspace:*",
-    "@helix-id/sdk-js": "workspace:*"
+    "@helixid/core": "workspace:*",
+    "@helixid/sdk-js": "workspace:*"
   },
   "peerDependencies": {
     "@modelcontextprotocol/sdk": "*"

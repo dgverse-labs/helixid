@@ -35,7 +35,7 @@ import {
   DelegationChainInvalidError,
   DelegationParentVCNotFoundError,
   DelegationParentVCRevokedError
-} from '@helix-id/core';
+} from '@helixid/core';
 
 /**
  * Maps a structured API error response to a typed HelixError instance.

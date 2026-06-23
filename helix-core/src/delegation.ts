@@ -69,7 +69,7 @@ export async function buildDelegationVC(
   const expiresAt = new Date(now.getTime() + options.expiresIn * 1000);
   const parentChain = options.fromVC.delegationChain ?? [];
   const payload = {
-    '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helix-id.io/contexts/v1'],
+    '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helixid.io/contexts/v1'],
     id: `vc:helix:delegation:${randomUUID()}`,
     type: ['VerifiableCredential', 'HelixAgentCredential'],
     issuer: wallet.did,

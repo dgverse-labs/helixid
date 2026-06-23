@@ -2,7 +2,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
 import { verifyJWT } from '../helix-core/src/index.js';
-import { SessionManager, verifyVP } from '@helix-id/sdk-js';
+import { SessionManager, verifyVP } from '@helixid/sdk-js';
 import { createFreshSignedVP } from './verifier-example-utils.js';
 
 // API session bridge example

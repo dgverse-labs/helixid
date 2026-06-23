@@ -1,5 +1,5 @@
 {
-  "name": "@helix-id/cli",
+  "name": "@helixid/cli",
   "version": "0.1.0",
   "private": true,
   "description": "HelixID CLI for Platform Operator setup",
@@ -16,13 +16,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@helix-id/core": "workspace:*",
-    "@helix-id/sdk-js": "workspace:*",
+    "@helixid/core": "workspace:*",
+    "@helixid/sdk-js": "workspace:*",
     "chalk": "^5.4.1",
     "commander": "^11.1.0"
   },
   "optionalDependencies": {
-    "@helix-id/did-hedera": "workspace:*"
+    "@helixid/did-hedera": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

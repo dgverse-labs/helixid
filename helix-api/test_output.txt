@@ -1,5 +1,5 @@
 
-> @helix-id/api@0.1.0 test /Users/harishharidas/Documents/projects/dgverse/helixid/helix-api
+> @helixid/api@0.1.0 test /Users/harishharidas/Documents/projects/dgverse/helixid/helix-api
 > vitest run --coverage --passWithNoTests
 
 

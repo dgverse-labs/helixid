@@ -2,7 +2,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
 import { verifyVP } from '../helix-core/src/index.js';
-import { SessionManager } from '@helix-id/sdk-js';
+import { SessionManager } from '@helixid/sdk-js';
 import { createFreshSignedVP } from './verifier-example-utils.js';
 
 // SDK-local verification + local session demo

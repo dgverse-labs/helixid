@@ -1,5 +1,5 @@
 import { access } from 'node:fs/promises';
-import { AgentWallet } from '@helix-id/sdk-js';
+import { AgentWallet } from '@helixid/sdk-js';
 import chalk from 'chalk';
 import type { IssuerKeyMaterial } from './issuer-ops.js';
 

@@ -26,5 +26,5 @@ export type {
   VerifyVPOptions,
   VerifyVPResult,
   VPBuilderOptions,
-} from '@helix-id/core';
+} from '@helixid/core';
 export type { SessionClaims, SessionIssueInput, SessionManagerOptions } from './session/index.js';

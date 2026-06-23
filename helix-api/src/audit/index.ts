@@ -14,7 +14,7 @@ import { mkdirSync } from 'node:fs';
 import { appendFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { PrismaClient } from '@prisma/client';
-import { IAuditLogger, AuditEvent, AuditEventType, type Config } from '@helix-id/core';
+import { IAuditLogger, AuditEvent, AuditEventType, type Config } from '@helixid/core';
 import type { SqliteStore } from '../storage/sqlite.js';
 import { sqliteLiteral } from '../storage/sqlite.js';
 

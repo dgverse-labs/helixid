@@ -1,4 +1,4 @@
-import type { DIDDocument } from '@helix-id/core';
+import type { DIDDocument } from '@helixid/core';
 import { fetchTopicMessage, parseDidDocumentFromMessage, parseHederaDid } from './mirror.js';
 
 export async function resolveDidHedera(did: string): Promise<DIDDocument> {

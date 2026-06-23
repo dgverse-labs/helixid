@@ -1,2 +1,2 @@
-export { verifyVP } from '@helix-id/core';
-export type { VerifyVPOptions, VerifyVPResult } from '@helix-id/core';
+export { verifyVP } from '@helixid/core';
+export type { VerifyVPOptions, VerifyVPResult } from '@helixid/core';

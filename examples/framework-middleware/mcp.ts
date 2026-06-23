@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { attachHelixVP, helixidMCPMiddleware } from '../../packages/mcp/src/index.js';
-import type { SignedVP } from '@helix-id/core';
+import type { SignedVP } from '@helixid/core';
 import {
   createHelixClient,
   extractScopes,

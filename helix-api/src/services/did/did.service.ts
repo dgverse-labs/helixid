@@ -21,7 +21,7 @@ import {
   type IAuditLogger,
   type DIDDocument,
   type ServiceEndpoint
-} from '@helix-id/core';
+} from '@helixid/core';
 import type { DidRepository } from '../../repositories/did.repository.js';
 import type { IHederaClient } from '../../hedera/IHederaClient.js';
 import type { ICache } from '../../cache/ICache.js';

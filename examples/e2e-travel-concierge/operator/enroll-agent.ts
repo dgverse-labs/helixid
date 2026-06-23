@@ -2,7 +2,7 @@ import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import 'dotenv/config';
-import { AgentWallet, HelixClient } from '@helix-id/sdk-js';
+import { AgentWallet, HelixClient } from '@helixid/sdk-js';
 
 type AgentVC = {
   id: string;

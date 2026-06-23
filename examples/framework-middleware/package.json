@@ -1,5 +1,5 @@
 {
-  "name": "@helix-id/example-framework-middleware",
+  "name": "@helixid/example-framework-middleware",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,10 +10,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@helix-id/core": "workspace:*",
-    "@helix-id/langchain": "workspace:*",
-    "@helix-id/mcp": "workspace:*",
-    "@helix-id/sdk-js": "workspace:*",
+    "@helixid/core": "workspace:*",
+    "@helixid/langchain": "workspace:*",
+    "@helixid/mcp": "workspace:*",
+    "@helixid/sdk-js": "workspace:*",
     "dotenv": "^17.4.2",
     "tsx": "^4.0.0"
   },

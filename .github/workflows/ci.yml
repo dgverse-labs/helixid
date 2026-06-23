@@ -50,7 +50,7 @@ jobs:
         run: pnpm run typecheck
 
       - name: Prepare test database
-        run: pnpm --filter @helix-id/api db:test:prepare
+        run: pnpm --filter @helixid/api db:test:prepare
         env:
           DATABASE_URL: postgresql://helixid_test:helixid_test@localhost:5433/helixid_test
           NODE_ENV: test

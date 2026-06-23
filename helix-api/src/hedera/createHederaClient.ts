@@ -1,6 +1,6 @@
 // Copyright 2026 DgVerse LLP
 // Licensed under the Apache License, Version 2.0 (the "License");
-import { resolveDidMethod, type Config } from '@helix-id/core';
+import { resolveDidMethod, type Config } from '@helixid/core';
 import { DisabledHederaClient } from './DisabledHederaClient.js';
 import { MockHederaClient } from './mock/MockHederaClient.js';
 import type { IHederaClient } from './IHederaClient.js';
@@ -12,7 +12,7 @@ type HederaModule = {
 export async function createHederaClient(
   config: Config,
   env: NodeJS.ProcessEnv = process.env,
-  loadHederaModule: () => Promise<HederaModule> = () => import('@helix-id/did-hedera') as Promise<HederaModule>,
+  loadHederaModule: () => Promise<HederaModule> = () => import('@helixid/did-hedera') as Promise<HederaModule>,
 ): Promise<IHederaClient> {
   if (env.HEDERA_MOCK === 'true') {
     return new MockHederaClient();
@@ -29,7 +29,7 @@ export async function createHederaClient(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
-      'DID_METHOD=hedera requires @helix-id/did-hedera to be installed and importable. ' +
+      'DID_METHOD=hedera requires @helixid/did-hedera to be installed and importable. ' +
         message,
     );
   }

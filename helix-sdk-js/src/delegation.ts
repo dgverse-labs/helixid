@@ -2,7 +2,7 @@ import {
   buildDelegationVC,
   NoCredentialInWalletError,
   type SignedVC,
-} from '@helix-id/core';
+} from '@helixid/core';
 import type { AgentWallet } from './wallet/AgentWallet.js';
 
 export interface DelegateOptions {

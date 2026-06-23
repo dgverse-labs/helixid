@@ -101,7 +101,7 @@ async function resolveDidHedera(did: string): Promise<DIDDocument> {
   const resolve = loadDidHederaResolver();
   if (!resolve) {
     throw new DIDMethodNotAvailableError(
-      'did:hedera resolution requires: npm install @helix-id/did-hedera',
+      'did:hedera resolution requires: npm install @helixid/did-hedera',
     );
   }
 

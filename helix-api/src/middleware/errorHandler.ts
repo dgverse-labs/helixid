@@ -11,7 +11,7 @@
 // limitations under the License.
 
 import type { FastifyRequest, FastifyReply, FastifyError } from 'fastify';
-import { HelixError, InternalError } from '@helix-id/core';
+import { HelixError, InternalError } from '@helixid/core';
 
 /**
  * Global Fastify error handler.

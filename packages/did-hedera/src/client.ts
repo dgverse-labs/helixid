@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import type { Config } from '@helix-id/core';
+import type { Config } from '@helixid/core';
 import type { Client } from '@hashgraph/sdk';
 import { buildHederaClient, extractTopicId, patchAccountIdFromString } from './hiero-client.js';
 import type {

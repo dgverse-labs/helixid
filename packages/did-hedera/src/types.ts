@@ -1,4 +1,4 @@
-import type { SignedVC } from '@helix-id/core';
+import type { SignedVC } from '@helixid/core';
 
 export interface HederaTransactionResult {
   transactionId: string;

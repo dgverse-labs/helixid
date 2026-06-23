@@ -1,4 +1,4 @@
-import { AgentWallet } from '@helix-id/sdk-js';
+import { AgentWallet } from '@helixid/sdk-js';
 
 export interface StructuredTool {
   name: string;

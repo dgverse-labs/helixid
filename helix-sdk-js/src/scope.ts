@@ -1,7 +1,7 @@
 import {
   InsufficientScopeError,
   type VerifyVPResult,
-} from '@helix-id/core';
+} from '@helixid/core';
 
 export function checkScope(result: VerifyVPResult, requiredScope: string): boolean {
   return result.privilegeScopes.includes(requiredScope);

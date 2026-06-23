@@ -11,7 +11,7 @@ import {
   type SelfIssueOptions,
   type ServiceEndpoint,
   type SignedVC,
-} from '@helix-id/core';
+} from '@helixid/core';
 import type { HelixClient } from '../client/HelixClient.js';
 
 export interface WalletData {

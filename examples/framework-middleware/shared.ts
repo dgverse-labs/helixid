@@ -1,8 +1,8 @@
 import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { SignedVP, VerifyVPResult } from '@helix-id/core';
-import { AgentWallet, HelixClient, verifyVP } from '@helix-id/sdk-js';
+import type { SignedVP, VerifyVPResult } from '@helixid/core';
+import { AgentWallet, HelixClient, verifyVP } from '@helixid/sdk-js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

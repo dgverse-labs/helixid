@@ -26,7 +26,7 @@ import {
   type HelixVC,
   type SignedVC,
   VPMultipleActiveVCError,
-} from '@helix-id/core';
+} from '@helixid/core';
 import * as crypto from 'node:crypto';
 import { VcRepository } from '../../repositories/vc.repository.js';
 import type { IDIDService } from '../did/did.service.js';
@@ -257,7 +257,7 @@ export class VCService implements IVCService {
     const credential: HelixVC =
       params.subjectType === 'agent'
         ? {
-            '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helix-id.io/contexts/v1'],
+            '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helixid.io/contexts/v1'],
             id: vcId,
             type: ['VerifiableCredential', 'HelixAgentCredential'],
             issuer: this.issuerDid,
@@ -280,7 +280,7 @@ export class VCService implements IVCService {
             },
           }
         : {
-            '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helix-id.io/contexts/v1'],
+            '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helixid.io/contexts/v1'],
             id: vcId,
             type: ['VerifiableCredential', 'HelixUserCredential'],
             issuer: this.issuerDid,

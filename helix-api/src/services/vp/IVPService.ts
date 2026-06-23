@@ -1,4 +1,4 @@
-import type { SignedVP, UnsignedVP } from '@helix-id/core';
+import type { SignedVP, UnsignedVP } from '@helixid/core';
 
 export interface VPTemplateParams {
   agentDid: string;

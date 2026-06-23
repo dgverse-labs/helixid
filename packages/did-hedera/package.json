@@ -1,5 +1,5 @@
 {
-  "name": "@helix-id/did-hedera",
+  "name": "@helixid/did-hedera",
   "version": "0.1.0",
   "private": true,
   "description": "Optional Hedera DID method support for HelixID",
@@ -22,13 +22,13 @@
   },
   "dependencies": {
     "@hashgraph/sdk": "^2.49.0",
-    "@helix-id/core": "workspace:*",
+    "@helixid/core": "workspace:*",
     "@hiero-did-sdk/hcs": "^0.1.8",
     "@hiero-did-sdk/registrar": "^0.1.8",
     "@hiero-did-sdk/resolver": "^0.1.8"
   },
   "devDependencies": {
-    "@helix-id/core": "workspace:*",
+    "@helixid/core": "workspace:*",
     "@types/node": "^20.0.0",
     "typescript": "^5.4.0",
     "vitest": "^4.1.8"

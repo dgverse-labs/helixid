@@ -23,7 +23,7 @@ import {
   type AgentVC,
   type HelixJWTPayload,
   type SignedVP,
-} from '@helix-id/core';
+} from '@helixid/core';
 import type { IDIDService } from '../did/IDIDService.js';
 import type { IVCService } from '../vc/IVCService.js';
 import type { VPRepository } from '../../repositories/vp.repository.js';

@@ -1,8 +1,8 @@
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { AgentWallet, HelixClient, VPBuilder } from '@helix-id/sdk-js';
-import type { SignedVC, SignedVP } from '@helix-id/core';
+import { AgentWallet, HelixClient, VPBuilder } from '@helixid/sdk-js';
+import type { SignedVC, SignedVP } from '@helixid/core';
 
 // Utility helpers for verifier examples
 //

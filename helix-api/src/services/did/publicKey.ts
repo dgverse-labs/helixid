@@ -1,7 +1,7 @@
 // Copyright 2026 DgVerse LLP
 // Licensed under the Apache License, Version 2.0
 
-import { HelixError, ErrorCode, multibaseToPublicKeyHex } from '@helix-id/core';
+import { HelixError, ErrorCode, multibaseToPublicKeyHex } from '@helixid/core';
 
 type DIDVerificationMethodLike = {
   type?: unknown;

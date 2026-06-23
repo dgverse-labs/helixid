@@ -1,5 +1,5 @@
 import type { Client } from '@hashgraph/sdk';
-import { HederaAnchorFailedError } from '@helix-id/core';
+import { HederaAnchorFailedError } from '@helixid/core';
 import { buildHederaClient } from './hiero-client.js';
 import type { HederaAnchorOptions } from './types.js';
 
@@ -22,7 +22,7 @@ async function loadHcsMessageService(): Promise<HcsMessageServiceClass> {
  * HTTPS status list files remain authoritative for revocation checks.
  */
 export async function publishStatusListToHCS(
-  statusListVC: import('@helix-id/core').SignedVC,
+  statusListVC: import('@helixid/core').SignedVC,
   options: HederaAnchorOptions & { topicId: string },
 ): Promise<{ transactionId: string }> {
   console.warn(

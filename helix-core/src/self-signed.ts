@@ -26,7 +26,7 @@ export async function selfIssueVC(
   const now = new Date();
   const expiresAt = new Date(now.getTime() + parseDuration(options.expiresIn ?? '24h'));
   const payload = {
-    '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helix-id.io/contexts/v1'],
+    '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helixid.io/contexts/v1'],
     id: `vc:helix:self:${randomUUID()}`,
     type: ['VerifiableCredential', 'HelixAgentCredential'],
     issuer: wallet.did,

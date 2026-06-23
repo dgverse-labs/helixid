@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import type { DIDDocument } from '@helix-id/core';
+import type { DIDDocument } from '@helixid/core';
 
 interface DidWebRouteOptions {
   issuerDid: string;

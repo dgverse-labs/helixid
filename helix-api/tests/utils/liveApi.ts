@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { expect } from 'vitest';
-import { AgentWallet, HelixClient } from '@helix-id/sdk-js';
+import { AgentWallet, HelixClient } from '@helixid/sdk-js';
 import { createTestPrisma } from './prisma.js';
 
 export const LIVE_HEDERA_TIMEOUT_MS = 240_000;

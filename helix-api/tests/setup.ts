@@ -18,7 +18,7 @@ if (existsSync('.env.test')) {
   }
 }
 
-// Provide required environment variables for @helix-id/core config validation
+// Provide required environment variables for @helixid/core config validation
 process.env['NODE_ENV'] ??= 'test';
 process.env['API_BASE_URL'] ??= 'http://localhost:3000';
 process.env['DATABASE_URL'] ??= 'postgresql://helixid_test:helixid_test@localhost:5433/helixid_test';

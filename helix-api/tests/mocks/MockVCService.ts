@@ -1,4 +1,4 @@
-import { createStatusList, setBit } from '@helix-id/core';
+import { createStatusList, setBit } from '@helixid/core';
 import type {
   IVCService,
   IssueVCInput,

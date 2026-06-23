@@ -2,8 +2,8 @@
 import { writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { AgentWallet, VPBuilder } from '@helix-id/sdk-js';
-import type { SignedVC, SignedVP } from '@helix-id/core';
+import { AgentWallet, VPBuilder } from '@helixid/sdk-js';
+import type { SignedVC, SignedVP } from '@helixid/core';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const exampleRoot = dirname(__dirname);

@@ -166,7 +166,7 @@ paths:
         "200":
           description: VP verified and JWT session issued
         "410":
-          description: SDK-only VP verification must use verifyVP() from @helix-id/sdk-js
+          description: SDK-only VP verification must use verifyVP() from @helixid/sdk-js
   /v1/sessions/public-key:
     get:
       summary: Get JWT session verification public key

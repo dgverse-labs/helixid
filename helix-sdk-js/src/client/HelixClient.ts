@@ -10,7 +10,7 @@ import {
   type KeyPair,
   type ServiceEndpoint,
   type SignedVC,
-} from '@helix-id/core';
+} from '@helixid/core';
 import { HttpAdapter } from '../http/HttpAdapter.js';
 import { AgentWallet } from '../wallet/AgentWallet.js';
 

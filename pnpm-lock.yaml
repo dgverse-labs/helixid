@@ -39,7 +39,7 @@ importers:
 
   e2e:
     devDependencies:
-      '@helix-id/sdk-js':
+      '@helixid/sdk-js':
         specifier: workspace:*
         version: link:../helix-sdk-js
       '@types/node':
@@ -54,10 +54,10 @@ importers:
 
   examples/e2e-travel-concierge:
     dependencies:
-      '@helix-id/core':
+      '@helixid/core':
         specifier: workspace:*
         version: link:../../helix-core
-      '@helix-id/sdk-js':
+      '@helixid/sdk-js':
         specifier: workspace:*
         version: link:../../helix-sdk-js
       dotenv:
@@ -79,16 +79,16 @@ importers:
 
   examples/framework-middleware:
     dependencies:
-      '@helix-id/core':
+      '@helixid/core':
         specifier: workspace:*
         version: link:../../helix-core
-      '@helix-id/langchain':
+      '@helixid/langchain':
         specifier: workspace:*
         version: link:../../packages/langchain
-      '@helix-id/mcp':
+      '@helixid/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
-      '@helix-id/sdk-js':
+      '@helixid/sdk-js':
         specifier: workspace:*
         version: link:../../helix-sdk-js
       dotenv:
@@ -116,10 +116,10 @@ importers:
       '@fastify/swagger-ui':
         specifier: ^5.2.6
         version: 5.2.6
-      '@helix-id/core':
+      '@helixid/core':
         specifier: workspace:*
         version: link:../helix-core
-      '@helix-id/did-hedera':
+      '@helixid/did-hedera':
         specifier: workspace:*
         version: link:../packages/did-hedera
       '@prisma/adapter-pg':
@@ -150,7 +150,7 @@ importers:
         specifier: ^3.23.0
         version: 3.25.76
     devDependencies:
-      '@helix-id/sdk-js':
+      '@helixid/sdk-js':
         specifier: workspace:*
         version: link:../helix-sdk-js
       '@noble/ed25519':
@@ -241,7 +241,7 @@ importers:
 
   helix-sdk-js:
     dependencies:
-      '@helix-id/core':
+      '@helixid/core':
         specifier: workspace:*
         version: link:../helix-core
       '@noble/ed25519':
@@ -272,10 +272,10 @@ importers:
 
   packages/cli:
     dependencies:
-      '@helix-id/core':
+      '@helixid/core':
         specifier: workspace:*
         version: link:../../helix-core
-      '@helix-id/sdk-js':
+      '@helixid/sdk-js':
         specifier: workspace:*
         version: link:../../helix-sdk-js
       chalk:
@@ -285,7 +285,7 @@ importers:
         specifier: ^11.1.0
         version: 11.1.0
     optionalDependencies:
-      '@helix-id/did-hedera':
+      '@helixid/did-hedera':
         specifier: workspace:*
         version: link:../did-hedera
     devDependencies:
@@ -307,7 +307,7 @@ importers:
       '@hashgraph/sdk':
         specifier: ^2.49.0
         version: 2.81.0(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
-      '@helix-id/core':
+      '@helixid/core':
         specifier: workspace:*
         version: link:../../helix-core
       '@hiero-did-sdk/hcs':
@@ -332,10 +332,10 @@ importers:
 
   packages/langchain:
     dependencies:
-      '@helix-id/core':
+      '@helixid/core':
         specifier: workspace:*
         version: link:../../helix-core
-      '@helix-id/sdk-js':
+      '@helixid/sdk-js':
         specifier: workspace:*
         version: link:../../helix-sdk-js
       '@langchain/core':
@@ -354,10 +354,10 @@ importers:
 
   packages/mcp:
     dependencies:
-      '@helix-id/core':
+      '@helixid/core':
         specifier: workspace:*
         version: link:../../helix-core
-      '@helix-id/sdk-js':
+      '@helixid/sdk-js':
         specifier: workspace:*
         version: link:../../helix-sdk-js
       '@modelcontextprotocol/sdk':
