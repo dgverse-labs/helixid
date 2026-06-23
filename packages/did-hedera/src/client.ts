@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import type { Config } from '@helix-id/core';
-import { AccountId, Client, PrivateKey } from '@hashgraph/sdk';
-import { fetchTopicMessage } from './mirror.js';
+import type { Client } from '@hashgraph/sdk';
+import { buildHederaClient, extractTopicId, patchAccountIdFromString } from './hiero-client.js';
 import type {
   HederaDIDCreationRequest,
   HederaDIDCreationResult,
@@ -9,6 +9,7 @@ import type {
   HederaTransactionResult,
   IHederaClient,
 } from './types.js';
+import { fetchTopicMessage } from './mirror.js';
 
 type HieroRegistrar = {
   generateCreateDIDRequest(
@@ -127,51 +128,10 @@ export class HieroHederaClient implements IHederaClient {
   }
 
   private getClient(): Client {
-    let client: Client;
-    if (this.config.HEDERA_NETWORK === 'mainnet') {
-      client = Client.forMainnet();
-    } else if (this.config.HEDERA_NETWORK === 'previewnet') {
-      client = Client.forPreviewnet();
-    } else {
-      client = Client.forTestnet();
-    }
-
-    client.setOperator(
-      AccountId.fromString(this.config.HEDERA_OPERATOR_ID),
-      PrivateKey.fromString(this.config.HEDERA_OPERATOR_KEY),
-    );
-    return client;
+    return buildHederaClient({
+      network: this.config.HEDERA_NETWORK,
+      operatorId: this.config.HEDERA_OPERATOR_ID,
+      operatorKey: this.config.HEDERA_OPERATOR_KEY,
+    });
   }
-}
-
-function extractTopicId(did: string): string {
-  const match = did.match(/(0\.0\.\d+)$/);
-  return match?.[1] ?? '';
-}
-
-function patchAccountIdFromString(): void {
-  patchAccountIdClass(AccountId);
-
-  try {
-    const sdk = require('@hashgraph/sdk') as { AccountId?: typeof AccountId };
-    if (sdk.AccountId) {
-      patchAccountIdClass(sdk.AccountId);
-    }
-  } catch {
-    // ESM-only runtimes still get the ESM patch above.
-  }
-}
-
-function patchAccountIdClass(accountIdClass: typeof AccountId): void {
-  const originalFromString = accountIdClass.fromString as typeof AccountId.fromString & { _isPatched?: boolean };
-  if (originalFromString._isPatched) return;
-
-  const patched = function fromStringPatched(text: string | { toString(): string }) {
-    if (typeof text === 'object' && text !== null && text.toString) {
-      return originalFromString.call(accountIdClass, text.toString());
-    }
-    return originalFromString.call(accountIdClass, text as string);
-  } as typeof AccountId.fromString & { _isPatched?: boolean };
-  patched._isPatched = true;
-  accountIdClass.fromString = patched;
 }

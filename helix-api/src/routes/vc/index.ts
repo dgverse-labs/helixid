@@ -13,11 +13,9 @@
 import { FastifyPluginAsync } from 'fastify';
 import { AdminAuthRequiredError } from '@helix-id/core';
 import type { IVCService, IssueVCParams, RenewVCOptions } from '../../services/vc/vc.service.js';
-import type { IVPService } from '../../services/vp/IVPService.js';
 
 export interface VcRouteOptions {
   vcService: IVCService;
-  vpService?: IVPService | undefined;
   adminApiKey?: string | undefined;
 }
 

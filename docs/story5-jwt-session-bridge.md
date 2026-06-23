@@ -32,11 +32,9 @@ Config module (`helix-core/src/config/index.ts`) adds:
 ```typescript
 interface HelixJWTPayload {
   // Standard JWT claims
-  iss: string;          // Helix ID's DID — did:hedera:testnet:<operator>
   sub: string;          // agentDid
   iat: number;          // issued at (unix seconds)
   exp: number;          // expiry (unix seconds) — iat + JWT_SESSION_TTL_SECONDS
-  jti: string;          // unique JWT ID — cuid(), for future revocation
 
   // Helix ID custom claims
   userDid: string;
@@ -110,8 +108,6 @@ JWT_REJECTED — fields: reason (internal only), requestId
 ---
 
 ## 5.3 — Database Schema
-
-No new tables. JWT state is stateless — the JWT is self-verifying via the signature. If future revocation of JWTs is needed (enterprise tier), a `jwt_revocations` table would be added then. For core, expiry via `exp` claim is sufficient.
 
 The existing `vp_ids` table already records `consumedAt` — the vpId carried in the JWT payload provides an audit linkage without additional storage.
 
@@ -279,4 +275,3 @@ Add to `helix-sdk-js/src/http/HttpAdapter.ts`: error mapping for `JWT_INVALID`, 
 - [ ] SDK `verifySessionToken` is a pure local call — no network
 - [ ] `decisions.md` updated: confirm no jwt library added, Ed25519 manual JWT rationale documented
 - [ ] OpenAPI spec updated for `session` field in verify request and response, and new public-key endpoint
-- [ ] `scripts/setup-hedera.ts`/`pnpm setup:hedera` does not generate JWT signing keys; the API rotates them on startup

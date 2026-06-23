@@ -34,7 +34,6 @@ the problem Helix ID solves before introducing any solution.
 A DID is a unique identifier that an agent controls, tied to a cryptographic
 key pair. Unlike a username or API key, it does not depend on a central registry
 to be valid. Explain this in plain English. Include the DID format used in Helix ID:
-`did:hedera:testnet:z6Mk...` for production and `did:hedera:mainnet:z6Mk...`
 for mainnet deployments.
 
 #### 2.2 What a DID Document Contains
@@ -42,15 +41,12 @@ The public key and service endpoints associated with the DID. Explain what each
 of these is and why it matters for an agent identity. Emphasise: the DID document
 never contains a private key — the private key stays exclusively on the agent.
 
-#### 2.3 Why Hedera for Anchoring
 What anchoring means — writing the DID document to an immutable, public ledger
-so anyone can resolve it without asking Helix ID. Why Hedera Consensus Service
 specifically: ordered, timestamped, tamper-evident, public.
 
 #### 2.4 How DID Resolution Works
 What happens when a verifier resolves a DID: it reads the HCS topic, replays
 the messages, and arrives at the current DID document. No central server needed.
-Explain this without assuming Hedera knowledge.
 
 ### 3. Verifiable Credentials (VCs)
 
@@ -118,9 +114,7 @@ API. Verifiers who self-verify must implement their own vpId store.
 
 ### 5. The Trust Chain
 
-#### 5.1 Hedera Anchors the DID
 The foundation. Anyone can verify the DID document without trusting Helix ID
-by reading Hedera directly.
 
 #### 5.2 Helix ID Signs the VC
 The second layer. Helix ID's signature on the VC means a verifier can confirm
@@ -225,19 +219,10 @@ A child VC cannot hold more scopes than the parent — scope escalation is block
 at issuance. If an intermediary VC in a chain is revoked, the entire chain
 below it is invalid.
 
-### 11. Concepts That Are Not Yet Implemented
 A short list with one-line explanations of why each is deferred. Use only items
 from this list — do not add others:
-- `did:key` local mode — planned for local development with zero infrastructure,
-  not yet implemented
-- Python SDK — planned, not yet shipped
-- Auto VC renewal — future scope
 - OPA/Rego policy engine — parked
-- ZKP selective disclosure — SaaS future scope
-- HSM/KMS/hardware wallet integration — future scope
-- UI dashboard — separate repo, not yet available
 
-Frame each as a planned direction, not a missing feature. Do not list delegation,
 Session JWT, or service registry — these are implemented open-core features.
 
 ## Constraints

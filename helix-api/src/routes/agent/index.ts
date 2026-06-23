@@ -16,13 +16,40 @@ const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (fastify, optio
   fastify.post('/enrollment-tokens', async (request, reply) => {
     try {
       const result = await options.agentService.generateEnrollmentToken(
-        request.body as { agentName: string; requestedScopes: string[]; requestedDomains?: string[]; maxDelegationDepth?: number },
-        request.id
+        request.body as {
+          agentName: string;
+          requestedScopes: string[];
+          requestedDomains?: string[];
+          maxDelegationDepth?: number;
+        },
+        request.id,
       );
       return reply.code(201).send(result);
     } catch (error) {
       const mapped = mapAgentError(error);
-      return reply.code(mapped.statusCode).send({ error: { code: mapped.code, message: mapped.message, requestId: request.id } });
+      return reply
+        .code(mapped.statusCode)
+        .send({ error: { code: mapped.code, message: mapped.message, requestId: request.id } });
+    }
+  });
+
+  fastify.post('/enroll', async (request, reply) => {
+    try {
+      const result = await options.agentService.enroll(
+        request.body as {
+          bootstrapToken: string;
+          agentDid: string;
+          timestamp: number;
+          proofSignature: string;
+        },
+        request.id,
+      );
+      return reply.code(201).send(result);
+    } catch (error) {
+      const mapped = mapAgentError(error);
+      return reply
+        .code(mapped.statusCode)
+        .send({ error: { code: mapped.code, message: mapped.message, requestId: request.id } });
     }
   });
 
@@ -30,12 +57,14 @@ const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (fastify, optio
     try {
       const result = await options.agentService.processOnboardStep1(
         request.body as { enrollmentToken: string; publicKeyHex: string; domains?: string[] },
-        request.id
+        request.id,
       );
       return reply.code(200).send(result);
     } catch (error) {
       const mapped = mapAgentError(error);
-      return reply.code(mapped.statusCode).send({ error: { code: mapped.code, message: mapped.message, requestId: request.id } });
+      return reply
+        .code(mapped.statusCode)
+        .send({ error: { code: mapped.code, message: mapped.message, requestId: request.id } });
     }
   });
 
@@ -43,12 +72,14 @@ const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (fastify, optio
     try {
       const result = await options.agentService.processOnboardVerify(
         request.body as { challengeId: string; signature: string; didCreateSignature?: string },
-        request.id
+        request.id,
       );
       return reply.code(201).send(result);
     } catch (error) {
       const mapped = mapAgentError(error);
-      return reply.code(mapped.statusCode).send({ error: { code: mapped.code, message: mapped.message, requestId: request.id } });
+      return reply
+        .code(mapped.statusCode)
+        .send({ error: { code: mapped.code, message: mapped.message, requestId: request.id } });
     }
   });
 
@@ -56,12 +87,14 @@ const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (fastify, optio
     try {
       const result = await options.agentService.issueUserChallenge(
         request.body as { did: string; purpose: 'user_verification' },
-        request.id
+        request.id,
       );
       return reply.code(201).send(result);
     } catch (error) {
       const mapped = mapAgentError(error);
-      return reply.code(mapped.statusCode).send({ error: { code: mapped.code, message: mapped.message, requestId: request.id } });
+      return reply
+        .code(mapped.statusCode)
+        .send({ error: { code: mapped.code, message: mapped.message, requestId: request.id } });
     }
   });
 
@@ -69,11 +102,17 @@ const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (fastify, optio
     try {
       const params = request.params as { challengeId: string };
       const body = request.body as { signature: string };
-      const result = await options.agentService.verifyUserChallenge(params.challengeId, body, request.id);
+      const result = await options.agentService.verifyUserChallenge(
+        params.challengeId,
+        body,
+        request.id,
+      );
       return reply.code(200).send(result);
     } catch (error) {
       const mapped = mapAgentError(error);
-      return reply.code(mapped.statusCode).send({ error: { code: mapped.code, message: mapped.message, requestId: request.id } });
+      return reply
+        .code(mapped.statusCode)
+        .send({ error: { code: mapped.code, message: mapped.message, requestId: request.id } });
     }
   });
 
@@ -89,7 +128,9 @@ const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (fastify, optio
       return reply.code(200).send(result);
     } catch (error) {
       const mapped = mapAgentError(error);
-      return reply.code(mapped.statusCode).send({ error: { code: mapped.code, message: mapped.message, requestId: request.id } });
+      return reply
+        .code(mapped.statusCode)
+        .send({ error: { code: mapped.code, message: mapped.message, requestId: request.id } });
     }
   });
 
@@ -104,12 +145,14 @@ const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (fastify, optio
           apiEndpoint: string;
           metadata: Record<string, unknown>;
         },
-        request.id
+        request.id,
       );
       return reply.code(201).send(result);
     } catch (error) {
       const mapped = mapAgentError(error);
-      return reply.code(mapped.statusCode).send({ error: { code: mapped.code, message: mapped.message, requestId: request.id } });
+      return reply
+        .code(mapped.statusCode)
+        .send({ error: { code: mapped.code, message: mapped.message, requestId: request.id } });
     }
   });
 };

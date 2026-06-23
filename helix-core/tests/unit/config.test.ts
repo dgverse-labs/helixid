@@ -35,6 +35,8 @@ describe('Config', () => {
     expect(config.API_BASE_URL).toBe('https://api.test.com');
     expect(config.HELIX_ISSUER_DID).toBe('did:hedera:testnet:testissuer');
     expect(config.NODE_ENV).toBe('test');
+    expect(config.HELIX_STORAGE_ADAPTER).toBe('sqlite');
+    expect(config.HELIX_CACHE_ADAPTER).toBe('memory');
   });
 
   it('defaults to did:web and derives the issuer DID from DID_DOMAIN', async () => {
@@ -78,7 +80,7 @@ describe('Config', () => {
 
   it('throws on invalid configuration', async () => {
     process.env.API_BASE_URL = 'invalid-url';
-    
+
     const { loadConfigFromEnv } = await import('../../src/config/index.js');
     expect(() => loadConfigFromEnv()).toThrow(/Environment configuration is invalid/);
   });
@@ -97,18 +99,45 @@ describe('Config', () => {
     process.env.HELIX_ADMIN_API_KEY = 'test-admin-key-0001';
 
     const { loadConfigFromEnv } = await import('../../src/config/index.js');
-    expect(() => loadConfigFromEnv()).toThrow(/HEDERA_NETWORK=mainnet is only permitted when NODE_ENV=production/);
+    expect(() => loadConfigFromEnv()).toThrow(
+      /HEDERA_NETWORK=mainnet is only permitted when NODE_ENV=production/,
+    );
   });
 
   it('requires Hedera credentials only when DID_METHOD=hedera', async () => {
     process.env.DID_METHOD = 'hedera';
     process.env.API_BASE_URL = 'https://api.test.com';
-    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
     process.env.HELIX_SIGNING_KEY = 'a'.repeat(64);
     process.env.HELIX_ISSUER_DID = 'did:hedera:testnet:testissuer';
     process.env.HELIX_ADMIN_API_KEY = 'test-admin-key-0001';
 
     const { loadConfigFromEnv } = await import('../../src/config/index.js');
-    expect(() => loadConfigFromEnv()).toThrow(/HEDERA_OPERATOR_ID: required when DID_METHOD=hedera/);
+    expect(() => loadConfigFromEnv()).toThrow(
+      /HEDERA_OPERATOR_ID: required when DID_METHOD=hedera/,
+    );
+  });
+
+  it('requires DATABASE_URL when HELIX_STORAGE_ADAPTER=postgres', async () => {
+    process.env.API_BASE_URL = 'https://api.test.com';
+    process.env.HELIX_STORAGE_ADAPTER = 'postgres';
+    process.env.DID_DOMAIN = 'api.test.com';
+    process.env.HELIX_SIGNING_KEY = 'a'.repeat(64);
+    process.env.HELIX_ADMIN_API_KEY = 'test-admin-key-0001';
+
+    const { loadConfigFromEnv } = await import('../../src/config/index.js');
+    expect(() => loadConfigFromEnv()).toThrow(
+      /DATABASE_URL: required when HELIX_STORAGE_ADAPTER=postgres/,
+    );
+  });
+
+  it('requires REDIS_URL when HELIX_CACHE_ADAPTER=redis', async () => {
+    process.env.API_BASE_URL = 'https://api.test.com';
+    process.env.HELIX_CACHE_ADAPTER = 'redis';
+    process.env.DID_DOMAIN = 'api.test.com';
+    process.env.HELIX_SIGNING_KEY = 'a'.repeat(64);
+    process.env.HELIX_ADMIN_API_KEY = 'test-admin-key-0001';
+
+    const { loadConfigFromEnv } = await import('../../src/config/index.js');
+    expect(() => loadConfigFromEnv()).toThrow(/REDIS_URL: required when HELIX_CACHE_ADAPTER=redis/);
   });
 });

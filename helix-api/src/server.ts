@@ -2,12 +2,21 @@
 // Licensed under the Apache License, Version 2.0
 import './loadEnv.js';
 import crypto from 'node:crypto';
+import { dirname, isAbsolute, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
 import pg from 'pg';
 import { Redis } from 'ioredis';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { buildDIDDocument, derivePublicKey, generateKeyPair, loadConfigFromEnv, resolveDidMethod, type DIDDocument } from '@helix-id/core';
+import {
+  buildDIDDocument,
+  derivePublicKey,
+  generateKeyPair,
+  loadConfigFromEnv,
+  resolveDidMethod,
+  type DIDDocument,
+} from '@helix-id/core';
 
 import { errorHandler } from './middleware/errorHandler.js';
 import { ApiAuditLogger } from './audit/index.js';
@@ -30,25 +39,48 @@ import statusListRoutes from './routes/status-list/index.js';
 import vpRoutes from './routes/vp/index.js';
 import agentRoutes from './routes/agent/index.js';
 import sessionRoutes from './routes/sessions/index.js';
+import type { RedisLike } from './cache/RedisCache.js';
+import { SqliteStore } from './storage/sqlite.js';
 
 const config = loadConfigFromEnv();
+const storageAdapter =
+  (config as unknown as { HELIX_STORAGE_ADAPTER?: 'sqlite' | 'postgres' }).HELIX_STORAGE_ADAPTER ??
+  'sqlite';
+const cacheAdapter =
+  (config as unknown as { HELIX_CACHE_ADAPTER?: 'memory' | 'redis' }).HELIX_CACHE_ADAPTER ??
+  'memory';
+const usingPostgres = storageAdapter === 'postgres';
+const usingSqlite = storageAdapter === 'sqlite';
+const apiPackageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const configuredSqlitePath =
+  (config as unknown as { HELIX_SQLITE_PATH?: string }).HELIX_SQLITE_PATH ?? 'data/helixid.sqlite';
+const sqlitePath = isAbsolute(configuredSqlitePath)
+  ? configuredSqlitePath
+  : resolve(apiPackageDir, configuredSqlitePath);
 const databaseName = getDatabaseName(config.DATABASE_URL);
-if (config.NODE_ENV !== 'test' && /test/i.test(databaseName)) {
+
+if (usingPostgres && config.NODE_ENV !== 'test' && /test/i.test(databaseName)) {
   throw new Error(
     `Refusing to start ${config.NODE_ENV} API against test database '${databaseName}'. ` +
       'Set DATABASE_URL to the working database or run with NODE_ENV=test intentionally.',
   );
 }
-const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
-const redis = config.CACHE_L2_ENABLED && config.REDIS_URL ? new Redis(config.REDIS_URL) : null;
 
-const auditLogger = new ApiAuditLogger(prisma, config);
-const didRepository = new DidRepository(prisma);
-const vcRepository = new VcRepository(prisma);
-const vpRepository = new VPRepository();
-const agentRepository = new AgentRepository(prisma);
+const pool = usingPostgres ? new pg.Pool({ connectionString: config.DATABASE_URL }) : null;
+const adapter = pool ? new PrismaPg(pool) : null;
+const prisma = adapter ? new PrismaClient({ adapter }) : undefined;
+const sqlite = usingSqlite ? new SqliteStore(sqlitePath) : undefined;
+
+const redis: RedisLike | null =
+  cacheAdapter === 'redis' && config.CACHE_L2_ENABLED && config.REDIS_URL
+    ? new Redis(config.REDIS_URL)
+    : null;
+
+const auditLogger = new ApiAuditLogger(prisma, config, sqlite);
+const didRepository = new DidRepository(prisma, sqlite);
+const vcRepository = new VcRepository(prisma, sqlite);
+const vpRepository = new VPRepository(prisma, sqlite);
+const agentRepository = new AgentRepository(prisma, sqlite);
 const serviceRegistry = new ServiceRegistryRepository();
 
 await ensureIssuerDidCached();
@@ -76,12 +108,19 @@ const vcService = new VCService(
   statusListCache,
   config.STATUS_LIST_CACHE_L1_TTL_SECONDS,
 );
-const vpService = new VPService(vpRepository, didService, vcService, serviceRegistry, auditLogger, config.VP_TTL_SECONDS, {
-  signingKey: jwtSessionKeyPair.privateKey,
-  issuerDid: config.HELIX_ISSUER_DID,
-  ttlSeconds: config.JWT_SESSION_TTL_SECONDS,
-});
-vcService.setVPService(vpService);
+const vpService = new VPService(
+  vpRepository,
+  didService,
+  vcService,
+  serviceRegistry,
+  auditLogger,
+  config.VP_TTL_SECONDS,
+  {
+    signingKey: jwtSessionKeyPair.privateKey,
+    issuerDid: config.HELIX_ISSUER_DID,
+    ttlSeconds: config.JWT_SESSION_TTL_SECONDS,
+  },
+);
 const agentService = new AgentService(agentRepository, didService, vcService, auditLogger);
 
 const app = Fastify({
@@ -92,11 +131,6 @@ const app = Fastify({
   genReqId: () => `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`,
 });
 
-if (didMethod !== 'hedera' && config.NODE_ENV !== 'test') {
-  app.log.warn(
-    `DID_METHOD=${didMethod}: Hedera client disabled. Set DID_METHOD=hedera for on-chain anchoring.`,
-  );
-}
 
 app.addSchema({
   $id: 'Error',
@@ -125,10 +159,13 @@ app.get('/health', async () => ({
   status: 'ok',
   version: '0.1.0',
   environment: config.NODE_ENV,
-  database: databaseName,
+  storageAdapter,
+  database: usingPostgres ? databaseName : usingSqlite ? sqlitePath : 'disabled',
+  cacheAdapter,
 }));
 
-function getDatabaseName(databaseUrl: string): string {
+function getDatabaseName(databaseUrl: string | undefined): string {
+  if (!databaseUrl) return 'none';
   try {
     return new URL(databaseUrl).pathname.replace(/^\//, '');
   } catch {
@@ -164,17 +201,25 @@ async function ensureIssuerDidCached(): Promise<void> {
 
 await app.register(didRoutes, { didService });
 await app.register(didWebRoutes, { issuerDid: config.HELIX_ISSUER_DID, didRepository });
-await app.register(vcRoutes, { prefix: '/v1/vcs', vcService, vpService, adminApiKey: config.HELIX_ADMIN_API_KEY });
+await app.register(vcRoutes, {
+  prefix: '/v1/vcs',
+  vcService,
+  adminApiKey: config.HELIX_ADMIN_API_KEY,
+});
 await app.register(statusListRoutes, { prefix: '/v1/status-list', vcService });
 await app.register(vpRoutes, { prefix: '/v1/vp', vpService });
-await app.register(sessionRoutes, { prefix: '/v1/sessions', publicKeyHex: jwtSessionKeyPair.publicKey });
+await app.register(sessionRoutes, {
+  prefix: '/v1/sessions',
+  publicKeyHex: jwtSessionKeyPair.publicKey,
+});
 await app.register(agentRoutes, { prefix: '/v1', agentService });
 
 const shutdown = async (): Promise<void> => {
   app.log.info('Helix ID API shutting down...');
   await app.close();
-  redis?.disconnect();
-  await prisma.$disconnect();
+  (redis as Redis | null)?.disconnect();
+  await prisma?.$disconnect();
+  await pool?.end();
   process.exit(0);
 };
 

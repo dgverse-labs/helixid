@@ -1,5 +1,3 @@
-import type { SignedVP } from '@helix-id/core';
-
 export type VCStatus = 'active' | 'revoked' | 'expired';
 
 export interface IssueVCInput {
@@ -23,8 +21,15 @@ export interface IssueVCResult {
 }
 
 export interface IVCService {
-  findActiveBySubjectDid(subjectDid: string, vcType?: string): Promise<Record<string, unknown> | null>;
-  findActiveByVcIdForSubject(vcId: string, subjectDid: string, vcType?: string): Promise<Record<string, unknown> | null>;
+  findActiveBySubjectDid(
+    subjectDid: string,
+    vcType?: string,
+  ): Promise<Record<string, unknown> | null>;
+  findActiveByVcIdForSubject(
+    vcId: string,
+    subjectDid: string,
+    vcType?: string,
+  ): Promise<Record<string, unknown> | null>;
   findRecordByVcId(vcId: string): Promise<{
     vcId: string;
     vc: Record<string, unknown>;
@@ -33,18 +38,4 @@ export interface IVCService {
   getVCStatus(vcId: string): Promise<VCStatus>;
   getStatusList(listId: string): Promise<{ credentialSubject: { encodedList: string } }>;
   issueVC(input: IssueVCInput, requestId: string): Promise<IssueVCResult>;
-  delegateVC(input: {
-    delegatorVP: SignedVP;
-    delegateeAgentDid: string;
-    requestedScopes: string[];
-    expiresInSeconds?: number;
-  }, requestId: string): Promise<{
-    vcId: string;
-    delegateeAgentDid: string;
-    delegatedFrom: string;
-    delegationDepth: number;
-    scopes: string[];
-    expiresAt: string;
-    vc: Record<string, unknown>;
-  }>;
 }

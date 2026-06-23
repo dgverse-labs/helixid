@@ -44,7 +44,6 @@ Scopes are embedded in the VC at issuance and signed by Helix ID with
 `HELIX_SIGNING_KEY`. They cannot be changed without revoking the credential and
 issuing a new one. State this as a hard constraint: over-permissioning at
 enrollment means the agent carries those permissions for the lifetime of the
-credential. Recommend erring toward narrow scopes with planned renewal cycles.
 
 #### 1.4 Examples From the Travel Concierge Example
 Use the E2E example as a concrete illustration. The travel agent was granted
@@ -99,13 +98,11 @@ Short-lived credentials (hours to days) reduce the window of exposure if
 a credential is compromised but require more frequent renewal. Long-lived
 credentials (weeks to months) are operationally simpler but carry more risk
 if the agent's key is compromised. Give concrete guidance: for agents with
-sensitive scopes (e.g. `payments:execute`), prefer short expiry with planned
 renewal. For read-only agents, longer expiry is more practical.
 
 #### 3.3 Planning for Renewal
 Set expiry with a renewal plan in mind. If the agent will be long-running,
 either set a long expiry or build a renewal trigger into the agent's operations.
-Unplanned expiry causes the agent to stop functioning until re-enrolled.
 
 ### 4. Credential Renewal
 

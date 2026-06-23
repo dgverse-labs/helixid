@@ -10,40 +10,84 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { PrismaClient } from '@prisma/client';
+import { mkdirSync } from 'node:fs';
+import { appendFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import type { PrismaClient } from '@prisma/client';
 import { IAuditLogger, AuditEvent, AuditEventType, type Config } from '@helix-id/core';
+import type { SqliteStore } from '../storage/sqlite.js';
+import { sqliteLiteral } from '../storage/sqlite.js';
+
+type AuditConfig = Pick<Config, 'AUDIT_LOG_DESTINATION' | 'AUDIT_LOG_PATH'>;
 
 /**
  * Audit logger for the API.
  * Performs dual-logging:
- * 1. Persistent storage in PostgreSQL (audit_log table).
- * 2. Structured JSON output to stdout for external log aggregators.
+ * 1. Persistent storage in PostgreSQL (audit_log table) when DB is enabled.
+ * 2. Structured JSON output to stdout and/or append-only file.
  */
 export class ApiAuditLogger implements IAuditLogger {
   constructor(
-    private prisma: PrismaClient,
-    private readonly config: Pick<Config, 'AUDIT_LOG_DESTINATION'> = { AUDIT_LOG_DESTINATION: 'stdout' },
+    private readonly prisma: PrismaClient | undefined,
+    private readonly config: AuditConfig = {
+      AUDIT_LOG_DESTINATION: 'stdout',
+      AUDIT_LOG_PATH: undefined,
+    },
+    private readonly sqlite?: SqliteStore,
   ) {}
 
   async log(
     eventOrType: AuditEvent | AuditEventType,
     payload?: Record<string, unknown> & { requestId: string; timestamp?: string },
   ): Promise<void> {
-    const event: AuditEvent = typeof eventOrType === 'string'
-      ? {
-          ...(payload ?? { requestId: 'unknown' }),
-          event: eventOrType,
-          timestamp: payload?.timestamp ?? new Date().toISOString(),
-        } as AuditEvent
-      : eventOrType;
+    const event: AuditEvent =
+      typeof eventOrType === 'string'
+        ? ({
+            ...(payload ?? { requestId: 'unknown' }),
+            event: eventOrType,
+            timestamp: payload?.timestamp ?? new Date().toISOString(),
+          } as AuditEvent)
+        : eventOrType;
     const payloadJson = JSON.stringify(event);
 
-    // 1. Log to stdout (if enabled)
-    if (this.config.AUDIT_LOG_DESTINATION === 'stdout' || this.config.AUDIT_LOG_DESTINATION === 'both') {
+    if (
+      this.config.AUDIT_LOG_DESTINATION === 'stdout' ||
+      this.config.AUDIT_LOG_DESTINATION === 'both'
+    ) {
       console.log(payloadJson);
     }
 
-    // 2. Persist to Database
+    if (
+      this.config.AUDIT_LOG_DESTINATION === 'file' ||
+      this.config.AUDIT_LOG_DESTINATION === 'both'
+    ) {
+      const path = this.config.AUDIT_LOG_PATH ?? './data/audit.log';
+      try {
+        mkdirSync(dirname(path), { recursive: true });
+        await appendFile(path, `${payloadJson}\n`, 'utf8');
+      } catch (error) {
+        console.error('FAILED_TO_WRITE_AUDIT_LOG_FILE', error);
+      }
+    }
+
+    if (this.sqlite) {
+      try {
+        this.sqlite.execute(`
+          INSERT INTO audit_log (timestamp, event_type, request_id, payload_json)
+          VALUES (
+            ${sqliteLiteral(event.timestamp)},
+            ${sqliteLiteral(event.event)},
+            ${sqliteLiteral(event.requestId)},
+            ${sqliteLiteral(payloadJson)}
+          )
+        `);
+      } catch (error) {
+        console.error('FAILED_TO_WRITE_AUDIT_LOG_SQLITE', error);
+      }
+    }
+
+    if (!this.prisma) return;
+
     try {
       await this.prisma.auditLog.create({
         data: {
@@ -54,9 +98,7 @@ export class ApiAuditLogger implements IAuditLogger {
         },
       });
     } catch (error) {
-      // We log but don't throw to prevent audit failures from blocking business operations,
-      // although in a strict environment (AL-5), this might be a critical error.
-      console.error('FAILED_TO_WRITE_AUDIT_LOG', error);
+      console.error('FAILED_TO_WRITE_AUDIT_LOG_DB', error);
     }
   }
 }

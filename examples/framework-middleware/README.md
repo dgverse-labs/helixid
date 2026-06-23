@@ -1,39 +1,32 @@
 # Framework Middleware
 
-This example demonstrates the real HelixID LangChain and MCP adapters against a live Helix API. It does not mock the Helix client, VP templates, verification, wallet loading, or Hedera onboarding path.
+This example demonstrates the real HelixID LangChain and MCP adapters against a live Helix API. It does not mock the Helix client, VP templates, verification, wallet loading, or onboarding flow.
 
 The setup flow creates a real agent DID through the current Helix onboarding API, saves an encrypted agent wallet, and issues a real `HelixAgentCredential`. The LangChain and MCP scripts then request real VP templates, sign VPs locally from the encrypted wallet, and verify them through the API.
 
 ## Who Needs What
 
-The Hedera, database, and admin prerequisites are for the setup step only. Setup enrolls the agent, anchors its DID, issues the VC, and writes the wallet. That is a one-time platform-operator action, not something every LangChain or MCP developer repeats.
+The admin prerequisites are for the setup step only. Setup enrolls the agent, issues the VC, and writes the wallet. That is a one-time platform-operator action, not something every LangChain or MCP developer repeats.
 
 | Who | Does what | Needs |
 | --- | --- | --- |
-| Platform operator | Runs `setup-live.ts` once to onboard the agent | Hedera credentials, database, running Helix API, admin-capable setup environment |
+| Platform operator | Runs `setup-live.ts` once to onboard the agent | Running Helix API, admin-capable setup environment |
 | Framework developer | Adds `HelixIDMiddleware`, `HelixIDToolWrapper`, or MCP middleware to app code | Wallet file, `WALLET_PASSPHRASE`, `HELIX_API_URL` |
 
 The middleware value is that framework developers do not handle cryptography, DID anchoring, VC issuance, or VP construction directly. Once they have an onboarded wallet, a few lines of config make every protected tool call carry a locally signed, verifiable credential.
 
 ## Prerequisites
 
-Configure the root `.env` for real Hedera testnet:
+Configure the root `.env` for the local API flow:
 
 ```sh
-HEDERA_NETWORK=testnet
-HEDERA_OPERATOR_ID=...
-HEDERA_OPERATOR_KEY=...
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/helixid
 HELIX_ADMIN_API_KEY=...
 ```
 
-Prepare the database and issuer DID:
+Prepare the environment:
 
 ```sh
 pnpm install
-docker compose up -d postgres
-pnpm --filter @helix-id/api db:deploy
-pnpm setup:hedera -- --create-issuer-did
 ```
 
 Start the API with the root environment loaded:
@@ -76,4 +69,4 @@ pnpm example:middleware:mcp
 - `HELIX_API_URL` or `API_BASE_URL`: Helix API URL, default `http://localhost:3000`
 - `WALLET_PASSPHRASE`: wallet passphrase, default `change-this-passphrase`
 - `HELIX_TARGET_SERVICE`: VP target service, default `amazon`
-- `HELIX_USER_DID`: simulated user DID, default `did:hedera:testnet:user-framework-middleware-demo`
+- `HELIX_USER_DID`: simulated user DID, default `did:web:user.example.com`

@@ -1,0 +1,29 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/credentials/v2",
+    "https://www.w3.org/ns/credentials/status/v1"
+  ],
+  "id": "https://example.com/status/1",
+  "type": [
+    "VerifiableCredential",
+    "BitstringStatusListCredential"
+  ],
+  "issuer": "did:web:example.com",
+  "validFrom": "2026-06-22T22:26:14.432Z",
+  "credentialSubject": {
+    "id": "https://example.com/status/1#list",
+    "type": "BitstringStatusList",
+    "statusPurpose": "revocation",
+    "encodedList": "H4sIAAAAAAAAE-3BMQEAAADCoPVPbQwfoAAAAAAAAAAAAAAAAAAAAIC3AYbSVKsAQAAA"
+  },
+  "helixIndexRegistry": {
+    "urn:uuid:fec9fdbb-e72b-4fbf-ada0-69bb5baa5cd5": 0
+  },
+  "proof": {
+    "type": "Ed25519Signature2020",
+    "created": "2026-06-22T22:27:55.767Z",
+    "verificationMethod": "did:web:example.com#key-1",
+    "proofPurpose": "assertionMethod",
+    "proofValue": "mGwr3rk56ML8WidfWLxqBNhFZe2wKa9qQEHgnboXky6yj1wEWytHGFJHpLp726PAAAJpHJUjefN7jLdmdvyYG37"
+  }
+}

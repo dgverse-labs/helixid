@@ -6,6 +6,7 @@ export { delegate } from './delegation.js';
 // Verifier
 export { verifyVP } from './verify.js';
 export { checkScope, requireScope } from './scope.js';
+export { SessionManager } from './session/index.js';
 
 // Enrollment only / issuer API operations
 export { HelixClient } from './client/HelixClient.js';
@@ -26,3 +27,4 @@ export type {
   VerifyVPResult,
   VPBuilderOptions,
 } from '@helix-id/core';
+export type { SessionClaims, SessionIssueInput, SessionManagerOptions } from './session/index.js';

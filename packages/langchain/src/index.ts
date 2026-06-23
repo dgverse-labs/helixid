@@ -1,11 +1,11 @@
 export {
   HelixIDMiddleware,
   HelixIDToolWrapper,
-  attachVPToInput,
   encodeBase64UrlJson,
+  type HelixIDMiddlewareOptions,
   type LangChainMiddlewareOptions,
   type RunnableConfigLike,
   type StructuredToolLike,
-  type WalletData,
-  type WalletLoader,
 } from './middleware.js';
+
+export { filterToolsByScope, type StructuredTool } from './scope-filter.js';

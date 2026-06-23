@@ -5,58 +5,58 @@
   "type": [
     "VerifiablePresentation"
   ],
-  "id": "vp:helix:2731aece05a77dd0134f40fc",
-  "holder": "did:hedera:testnet:Dd82SxQYGZKG5UPZT6nWqLPRe6iirUknTkcDHmVM2FmM_0.0.9123978",
+  "id": "vp:helix:15002635-629f-4548-9632-5686e6899ff9",
+  "holder": "did:key:z6MkjGDm51C7ng6qCNKwSqcaMiXERh6VDDAAHXLbazVn3sAz",
   "verifiableCredential": [
     {
-      "id": "vc:helix:8aaa5086ccca489e9b09d3aa",
-      "type": [
-        "VerifiableCredential",
-        "HelixAgentCredential"
-      ],
-      "proof": {
-        "type": "Ed25519Signature2020",
-        "created": "2026-06-02T20:26:52.098Z",
-        "proofValue": "4s1oEAJvtE7HskNKo5f8fJD5cp9jceUmJF9aPxLXu35n1yjRqzQJUZ9dC148CTG6jDriESwt2f8U8bUr4v2KNWvd",
-        "proofPurpose": "assertionMethod",
-        "verificationMethod": "did:hedera:testnet:3GyeSet8RyahYaPyUoSmD9dfftpCmtZDmKwjGdzdBnkq_0.0.7553278#key-1"
-      },
-      "issuer": "did:hedera:testnet:3GyeSet8RyahYaPyUoSmD9dfftpCmtZDmKwjGdzdBnkq_0.0.7553278",
       "@context": [
         "https://www.w3.org/ns/credentials/v2",
         "https://helix-id.io/contexts/v1"
       ],
-      "validFrom": "2026-06-02T20:26:52.097Z",
-      "validUntil": "2026-06-03T21:26:52.097Z",
+      "id": "vc:helix:d99e9c8b1ab449fb914fd889",
+      "type": [
+        "VerifiableCredential",
+        "HelixAgentCredential"
+      ],
+      "issuer": "did:web:localhost:3000",
+      "validFrom": "2026-06-22T16:41:47.979Z",
+      "validUntil": "2026-06-23T17:41:47.979Z",
       "credentialStatus": {
-        "id": "http://localhost:3000/v1/status-list/helix-status-list-1#15",
+        "id": "http://localhost:3000/v1/status-list/helix-status-list-1#1",
         "type": "BitstringStatusListEntry",
         "statusPurpose": "revocation",
-        "statusListIndex": "15",
+        "statusListIndex": "1",
         "statusListCredential": "http://localhost:3000/v1/status-list/helix-status-list-1"
       },
       "credentialSubject": {
-        "id": "did:hedera:testnet:Dd82SxQYGZKG5UPZT6nWqLPRe6iirUknTkcDHmVM2FmM_0.0.9123978",
+        "id": "did:key:z6MkjGDm51C7ng6qCNKwSqcaMiXERh6VDDAAHXLbazVn3sAz",
         "type": "HelixAgent",
-        "agentName": "Delegation test - Agent C",
-        "delegationDepth": 0,
         "privilegeScopes": [
           "read:orders",
           "write:orders"
         ],
+        "agentName": "Manual Test Agent",
+        "delegationDepth": 0,
         "maxDelegationDepth": 0
+      },
+      "proof": {
+        "type": "Ed25519Signature2020",
+        "created": "2026-06-22T16:41:47.983Z",
+        "verificationMethod": "did:web:localhost:3000#key-1",
+        "proofPurpose": "assertionMethod",
+        "proofValue": "5uPDpgYb3PMsGuR5SapXsGZ1pjKtjfs4jvJcpyM8N91RiNbVAVKQQgj5nNd66cdLmmqKqi6wjXsx7e2pY3ZFHENG"
       }
     }
   ],
-  "nonce": "4e981af34a484b79f85059fbc0c9229fa4d482454f5cbdfe9cd924b57faf0b74",
-  "expirationDate": "2026-06-02T20:57:51.499Z",
-  "delegatedBy": "did:hedera:testnet:replace-with-user-did",
-  "targetService": "amazon",
+  "nonce": "2fe535c6e068c6445ac3d916bf495b71a5ac8113e5c4ad57086bc7b5bb147e8c",
+  "expirationDate": "2026-06-22T17:02:41.048Z",
+  "delegatedBy": "did:web:user.example.com",
+  "targetService": "orders-service",
   "proof": {
     "type": "Ed25519Signature2020",
-    "created": "2026-06-02T20:52:51.535Z",
-    "verificationMethod": "did:hedera:testnet:Dd82SxQYGZKG5UPZT6nWqLPRe6iirUknTkcDHmVM2FmM_0.0.9123978#key-1",
+    "created": "2026-06-22T16:57:41.052Z",
+    "verificationMethod": "did:key:z6MkjGDm51C7ng6qCNKwSqcaMiXERh6VDDAAHXLbazVn3sAz#key-1",
     "proofPurpose": "assertionMethod",
-    "proofValue": "3PMUpRXh4wFvHHsEiv56pzTdk7M4uZjMn5HoLLBom6QApwBmmtP41gsE68FR6nE4VWDvHU1RV6PaccVt4dUBYcFT"
+    "proofValue": "3Zc1vpPmsGEn1aRiokPVap5gVE4Yxzc7fAX4yWJKQWDgGgL3aCXJbhcRjKG63oMYxEHNtitxKXCeLATEkx9RKMxx"
   }
 }

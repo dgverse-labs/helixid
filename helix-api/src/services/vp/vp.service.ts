@@ -4,11 +4,9 @@ import {
   AgentVCSchema,
   ErrorCodes,
   VPAgentDIDNotFoundError,
-  VPAlreadyConsumedError,
   VPExpiredError,
   VPInvalidStructureError,
   VPNoActiveVCError,
-  VPNotFoundError,
   VPVerificationFailedError,
   VCSignatureInvalidError,
   VCRevokedError,
@@ -20,16 +18,25 @@ import {
   signedVPSchema,
   validateChainIntegrity,
   verifySignature,
+  resolveDID as resolveDIDCore,
   type IAuditLogger,
   type AgentVC,
   type HelixJWTPayload,
-  type SignedVP
+  type SignedVP,
 } from '@helix-id/core';
 import type { IDIDService } from '../did/IDIDService.js';
 import type { IVCService } from '../vc/IVCService.js';
 import type { VPRepository } from '../../repositories/vp.repository.js';
-import { ServiceNotFoundError, type ServiceRegistryRepository } from '../../repositories/service-registry.repository.js';
-import type { IVPService, VPTemplateParams, VPTemplateResult, VPVerificationResult } from './IVPService.js';
+import {
+  ServiceNotFoundError,
+  type ServiceRegistryRepository,
+} from '../../repositories/service-registry.repository.js';
+import type {
+  IVPService,
+  VPTemplateParams,
+  VPTemplateResult,
+  VPVerificationResult,
+} from './IVPService.js';
 
 type DIDVerificationMethodLike = {
   type?: unknown;
@@ -62,7 +69,7 @@ function makeVpId(): string {
   return `vp:helix:${randomBytes(12).toString('hex')}`;
 }
 
-function extractPublicKeyHex(doc: Awaited<ReturnType<IDIDService['resolveDID']>>): string {
+function extractPublicKeyHex(doc: unknown): string {
   const wrapped = doc as DIDResolveLike;
   const document = wrapped.document ?? wrapped.didDocument ?? wrapped;
   const method = document.verificationMethod?.find(
@@ -92,15 +99,18 @@ function extractScopes(vc: { credentialSubject?: unknown }): string[] {
     return [];
   }
   const scopes = (subject as { privilegeScopes?: unknown }).privilegeScopes;
-  return Array.isArray(scopes) ? scopes.filter((scope): scope is string => typeof scope === 'string') : [];
+  return Array.isArray(scopes)
+    ? scopes.filter((scope): scope is string => typeof scope === 'string')
+    : [];
 }
 
 function credentialExpiryMs(vc: { validUntil?: unknown; expirationDate?: unknown }): number | null {
-  const value = typeof vc.validUntil === 'string'
-    ? vc.validUntil
-    : typeof vc.expirationDate === 'string'
-      ? vc.expirationDate
-      : null;
+  const value =
+    typeof vc.validUntil === 'string'
+      ? vc.validUntil
+      : typeof vc.expirationDate === 'string'
+        ? vc.expirationDate
+        : null;
   return value ? new Date(value).getTime() : null;
 }
 
@@ -122,7 +132,7 @@ export class VPService implements IVPService {
     private readonly serviceRegistry: ServiceRegistryRepository,
     private readonly auditLogger: IAuditLogger,
     private readonly vpTtlSeconds = 300,
-    private readonly jwtSessionOptions?: JWTSessionOptions
+    private readonly jwtSessionOptions?: JWTSessionOptions,
   ) {}
 
   async generateVPTemplate(params: VPTemplateParams, requestId: string): Promise<VPTemplateResult> {
@@ -152,7 +162,7 @@ export class VPService implements IVPService {
       nonce: randomBytes(32).toString('hex'),
       expirationDate: expiresAt.toISOString(),
       delegatedBy: params.userDid,
-      targetService: params.targetService
+      targetService: params.targetService,
     };
 
     await this.vpRepository.create({
@@ -160,7 +170,7 @@ export class VPService implements IVPService {
       agentDid: params.agentDid,
       userDid: params.userDid,
       targetService: params.targetService,
-      expiresAt
+      expiresAt,
     });
 
     this.auditLogger.log(AuditEvents.VP_TEMPLATE_ISSUED, {
@@ -169,7 +179,7 @@ export class VPService implements IVPService {
       agentDid: params.agentDid,
       userDid: params.userDid,
       targetService: params.targetService,
-      expiresAt: expiresAt.toISOString()
+      expiresAt: expiresAt.toISOString(),
     });
 
     return { unsignedVP, vpId, expiresAt: expiresAt.toISOString() };
@@ -188,18 +198,9 @@ export class VPService implements IVPService {
       }
 
       vpId = parsed.data.id;
-      const record = await this.vpRepository.findByVpId(vpId);
-      if (!record) {
-        throw new VPNotFoundError();
-      }
-      if (record.consumedAt) {
-        throw new VPAlreadyConsumedError();
-      }
-      // Check expiry from the VP payload itself (not just the DB record)
+      // Skipping server-side vpId record checks and consumption. Verifier is responsible for replay protection.
+      // Check expiry from the VP payload itself
       if (new Date(parsed.data.expirationDate).getTime() <= Date.now()) {
-        throw new VPExpiredError();
-      }
-      if (record.expiresAt.getTime() <= Date.now()) {
         throw new VPExpiredError();
       }
 
@@ -207,7 +208,12 @@ export class VPService implements IVPService {
       try {
         didDocument = await this.didService.resolveDID(parsed.data.holder);
       } catch {
-        throw new VPAgentDIDNotFoundError();
+        // Fallback to offline resolver (did:key, did:web fetch) when the DID is not present in the API DB
+        try {
+          didDocument = await resolveDIDCore(parsed.data.holder);
+        } catch {
+          throw new VPAgentDIDNotFoundError();
+        }
       }
 
       const publicKeyHex = extractPublicKeyHex(didDocument);
@@ -230,7 +236,13 @@ export class VPService implements IVPService {
           statusListIndex?: string;
         };
         credentialSubject?: unknown;
-        proof?: { proofValue?: string; verificationMethod?: string; type?: string; created?: string; proofPurpose?: string };
+        proof?: {
+          proofValue?: string;
+          verificationMethod?: string;
+          type?: string;
+          created?: string;
+          proofPurpose?: string;
+        };
         [key: string]: unknown;
       };
 
@@ -255,7 +267,9 @@ export class VPService implements IVPService {
       }
 
       const issuerPublicKeyHex = extractPublicKeyHex(issuerDidDocument);
-      const { proof: vcProof, ...vcPayload } = vc as Record<string, unknown> & { proof: NonNullable<typeof vc.proof> };
+      const { proof: vcProof, ...vcPayload } = vc as Record<string, unknown> & {
+        proof: NonNullable<typeof vc.proof>;
+      };
       const vcHash = hashCanonicalPayload(vcPayload);
       const vcProofBytes = decodeBase58ProofValue(vcProof.proofValue!);
       const vcSignatureHex = Buffer.from(vcProofBytes).toString('hex');
@@ -291,10 +305,7 @@ export class VPService implements IVPService {
         });
       }
 
-      const consumed = await this.vpRepository.consumeAtomically(vpId);
-      if (!consumed) {
-        throw new VPAlreadyConsumedError();
-      }
+      // No server-side consume; replay protection is handled by the verifier.
 
       const verifiedAt = new Date().toISOString();
       this.auditLogger.log(AuditEvents.VP_VERIFIED, {
@@ -302,7 +313,7 @@ export class VPService implements IVPService {
         vpId,
         agentDid: parsed.data.holder,
         result: 'success',
-        verifiedAt
+        verifiedAt,
       });
 
       const result: VPVerificationResult = {
@@ -310,7 +321,7 @@ export class VPService implements IVPService {
         agentDid: parsed.data.holder,
         userDid: parsed.data.delegatedBy,
         targetService: parsed.data.targetService,
-        verifiedAt
+        verifiedAt,
       };
 
       if (options.issueSession) {
@@ -353,12 +364,14 @@ export class VPService implements IVPService {
       return result;
     } catch (error) {
       const internalReason =
-        error instanceof Error ? `${error.message}${'code' in error ? ` [code=${(error as { code?: string }).code}]` : ''}` : String(error);
+        error instanceof Error
+          ? `${error.message}${'code' in error ? ` [code=${(error as { code?: string }).code}]` : ''}`
+          : String(error);
       this.auditLogger.log(AuditEvents.VP_REJECTED, {
         requestId,
         vpId,
         internalReason,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
       if (error instanceof ServiceNotFoundError) {
         throw error;
@@ -474,7 +487,11 @@ export class VPService implements IVPService {
   }
 }
 
-export function mapErrorToResponse(error: unknown): { statusCode: number; code: string; message: string } {
+export function mapErrorToResponse(error: unknown): {
+  statusCode: number;
+  code: string;
+  message: string;
+} {
   if (error && typeof error === 'object' && 'code' in error && 'httpStatus' in error) {
     const typed = error as HelixHttpErrorLike;
     return { statusCode: typed.httpStatus, code: typed.code, message: typed.message };

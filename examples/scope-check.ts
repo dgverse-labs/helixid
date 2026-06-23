@@ -1,7 +1,7 @@
-// Helix ID verification answers authentication: is this VP cryptographically
-// valid and still trustworthy? Authorization is the verifier's next question:
-// does this verified identity allow this specific action? Both are required.
-// This file covers only the second layer and makes no network calls.
+// Scope check is the authorization-only subset of verifier logic.
+// `revocation-check.ts` demonstrates credential status transitions (active→revoked)
+// and re-enrollment. This file focuses only on: given an already-verified,
+// active payload, does the agent hold the required scope for this service?
 
 type VerifiedPayloadWithCredentialSubject = {
   valid: true;
@@ -59,11 +59,14 @@ type Scenario = {
   expectedTargetService?: string;
 };
 
-function payload(privilegeScopes: string[], targetService = thisService): VerifiedPayloadWithCredentialSubject {
+function payload(
+  privilegeScopes: string[],
+  targetService = thisService,
+): VerifiedPayloadWithCredentialSubject {
   return {
     valid: true,
-    agentDid: 'did:hedera:testnet:agent-example',
-    userDid: 'did:hedera:testnet:user-example',
+    agentDid: 'did:key:z6Mkscopeexampleagent',
+    userDid: 'did:key:z6Mkscopeexampleuser',
     targetService,
     verifiedAt: new Date().toISOString(),
     credentialSubject: { privilegeScopes },
@@ -108,8 +111,14 @@ const scenarios: Scenario[] = [
 ];
 
 const rows = scenarios.map((scenario) => {
-  const decision = requiresScope(scenario.payload, scenario.requiredScope, scenario.expectedTargetService);
-  console.log(`Scenario ${scenario.id} - ${scenario.description}: ${decision.granted ? 'GRANTED' : 'DENIED'}`);
+  const decision = requiresScope(
+    scenario.payload,
+    scenario.requiredScope,
+    scenario.expectedTargetService,
+  );
+  console.log(
+    `Scenario ${scenario.id} - ${scenario.description}: ${decision.granted ? 'GRANTED' : 'DENIED'}`,
+  );
   console.log(`  ${decision.reason}`);
   return {
     scenario,
@@ -117,17 +126,23 @@ const rows = scenarios.map((scenario) => {
   };
 });
 
-console.log('\nScenario | Agent Scopes                       | Required        | Target Match | Result');
-console.log('---------|------------------------------------|-----------------|--------------|--------');
+console.log(
+  '\nScenario | Agent Scopes                       | Required        | Target Match | Result',
+);
+console.log(
+  '---------|------------------------------------|-----------------|--------------|--------',
+);
 for (const row of rows) {
   const scopes = row.scenario.payload.credentialSubject.privilegeScopes.join(', ');
-  const targetMatch = row.scenario.payload.targetService === (row.scenario.expectedTargetService ?? thisService) ? 'yes' : 'no';
+  const targetMatch =
+    row.scenario.payload.targetService === (row.scenario.expectedTargetService ?? thisService)
+      ? 'yes'
+      : 'no';
   const result = row.decision.granted ? 'GRANTED' : 'DENIED';
   console.log(
     `${String(row.scenario.id).padEnd(8)} | ${scopes.padEnd(34)} | ${row.scenario.requiredScope.padEnd(15)} | ${targetMatch.padEnd(12)} | ${result}`,
   );
 }
 
-// If credentialSubject.privilegeScopes is not granular enough for a policy,
-// Helix ID's roadmap includes OPA/Rego policy evaluation. For now, this
-// requiresScope pattern covers the majority of verifier middleware needs.
+// If your verifier needs richer rules, extend `requiresScope` with local policy
+// checks (for example: operation-specific conditions or tenant-level constraints).

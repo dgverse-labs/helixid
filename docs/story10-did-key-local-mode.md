@@ -2,11 +2,7 @@
 
 ## Overview
 
-Add a zero-infrastructure DID mode for local development and testing. A `did:key` DID is derived entirely from the public key — no Hedera account, no HCS topic, no Redis, no network calls. Developers clone the repo, set `DID_METHOD=key`, and have a working full Helix ID flow in under a minute.
-
 `did:key` is strictly a development-only mode. It does not support DID updates, service endpoint changes, or HCS-backed revocation. It does not belong in production cross-org trust scenarios. The SDK and API enforce this separation clearly.
-
-This story introduces a resolver dispatch layer in `IDIDService` and `HelixClient` that routes based on DID prefix — `did:key:` vs `did:hedera:` — so the rest of the system never needs to care which mode is active.
 
 ---
 
@@ -15,13 +11,9 @@ This story introduces a resolver dispatch layer in `IDIDService` and `HelixClien
 Add to `.env.example` and config:
 
 ```
-DID_METHOD=hedera     # "hedera" (default, production) or "key" (local dev only)
 ```
 
 Config addition:
-- `didMethod: 'hedera' | 'key'` — default `'hedera'`
-
-When `DID_METHOD=key`: Hedera env vars (`HEDERA_OPERATOR_ID`, `HEDERA_OPERATOR_KEY`, `HEDERA_TOPIC_ID`) are not required. Server startup skips Hedera client initialisation. A warning is logged: `"DID_METHOD=key: running in local development mode. Not suitable for production."`
 
 ---
 
@@ -63,17 +55,13 @@ function isDidKey(did: string): boolean
 Returns `true` if `did` starts with `did:key:`. Used by the dispatcher.
 
 ```typescript
-function isDidHedera(did: string): boolean
 ```
-Returns `true` if `did` starts with `did:hedera:`. Used by the dispatcher.
 
 ---
 
 ## 10.3 — API: Resolver Dispatch
 
 ### `helix-api/src/services/did/did.service.ts` — add dispatcher
-
-The existing `DIDService` handles `did:hedera:` only. Add a dispatcher that sits in front of it.
 
 ### `helix-api/src/services/did/DidResolver.ts`
 
@@ -82,7 +70,6 @@ interface IDidResolver {
   resolve(did: string): Promise<DIDDocument>;
 }
 
-class HederaDidResolver implements IDidResolver {
   constructor(private didService: DIDService) {}
 
   async resolve(did: string): Promise<DIDDocument> {
@@ -99,13 +86,11 @@ class LocalDidKeyResolver implements IDidResolver {
 
 class DispatchingDidResolver implements IDidResolver {
   constructor(
-    private hederaResolver: IDidResolver,
     private keyResolver: IDidResolver,
   ) {}
 
   async resolve(did: string): Promise<DIDDocument> {
     if (isDidKey(did)) return this.keyResolver.resolve(did);
-    if (isDidHedera(did)) return this.hederaResolver.resolve(did);
     throw new InvalidDIDFormatError(did);
   }
 }
@@ -114,15 +99,11 @@ class DispatchingDidResolver implements IDidResolver {
 **Wire in `server.ts`:**
 
 ```typescript
-const hederaResolver = new HederaDidResolver(didService);
 const keyResolver = new LocalDidKeyResolver();
-const resolver = new DispatchingDidResolver(hederaResolver, keyResolver);
 
 // vpService and vcService receive resolver instead of didService
 // for DID resolution calls — they still call didService for other operations
 ```
-
-All places in `vp.service.ts` and `vc.service.ts` that call `didService.resolveDID` switch to call `resolver.resolve(did)` instead. The `didService` itself is still injected for non-resolution operations (createDID, deactivateDID, etc.) — those are `did:hedera:`-only operations and do not need dispatch.
 
 ---
 
@@ -130,17 +111,9 @@ All places in `vp.service.ts` and `vc.service.ts` that call `didService.resolveD
 
 ### `helix-api/src/services/did/did.service.ts` — `createDID` with `did:key` mode
 
-When `config.didMethod === 'key'`, `createDID` does not call Hedera. Instead:
-
 1. Accept `publicKeyHex` as normal
 2. Call `generateDidKey(publicKeyHex)` from helix-core — produces `did:key:z...`
 3. Build DID document via `buildDIDDocument`
-4. Persist to `dids` table with `hederaTopicId: 'local'`, `hederaSequenceNumber: 0`, `hederaTransactionId: 'local-' + cuid()`
-5. Return `{ did, didDocument, hederaTransactionId: result.hederaTransactionId }`
-
-The DB schema does not change — `hederaTopicId` and `hederaTransactionId` store sentinel values for local mode. This avoids nullable columns and keeps the repository layer unchanged.
-
-**`deactivateDID`, `addServiceEndpoint`, `removeServiceEndpoint`:** These operations are blocked in `did:key` mode. They throw `DIDOperationNotSupportedError` with message: `"DID updates are not supported in did:key mode. Switch to DID_METHOD=hedera for production use."`.
 
 Add error code:
 
@@ -157,8 +130,6 @@ DID_OPERATION_NOT_SUPPORTED: 'DID_OPERATION_NOT_SUPPORTED',
 ## 10.5 — SDK Changes
 
 ### `helix-sdk-js/src/client/HelixClient.ts`
-
-**`createDID` — no changes needed.** The SDK generates the keypair locally and posts the public key to the API. The API handles whether that becomes a `did:hedera:` or `did:key:` based on `DID_METHOD`. The SDK receives the resulting DID string — it stores whatever DID the API returns in the wallet.
 
 **`resolveDID` — add local resolution:**
 
@@ -192,16 +163,12 @@ When `mode: 'local'`, `resolveDID` tries local resolution first for `did:key:` D
 Add mode detection to the setup script:
 
 ```
-? Which DID method? (hedera / key)
 
 If "key":
-  - Skip Hedera credential prompts
   - Write DID_METHOD=key to .env
   - Print warning: "did:key mode is for local development only. Not suitable for production."
   - Generate HELIX_SIGNING_KEY as normal; JWT session signing keys are generated ephemerally at API startup
-  - Done — no Hedera account needed
 
-If "hedera":
   - Existing flow unchanged
 ```
 
@@ -215,25 +182,18 @@ If "hedera":
 - `generateDidKey` roundtrip: generate DID from known public key → `resolveDidKey` returns DID document with same public key
 - `generateDidKey` with two different public keys produces two different DIDs
 - `resolveDidKey` with valid `did:key:z...` returns DIDDocument with correct `id`
-- `resolveDidKey` with `did:hedera:` prefix throws `InvalidDIDFormatError`
 - `resolveDidKey` with truncated key bytes throws `InvalidDIDFormatError`
 - `resolveDidKey` with wrong multicodec prefix (not `[0xed, 0x01]`) throws `InvalidDIDFormatError`
-- `isDidKey` returns true for `did:key:z...`, false for `did:hedera:...`
-- `isDidHedera` returns true for `did:hedera:testnet:...`, false for `did:key:...`
 - `resolveDidKey` is deterministic — same input always produces identical DIDDocument
 - `resolveDidKey` produces no network calls (no mocks needed — confirmed by no I/O in implementation)
 
 ### Unit Tests — `helix-api/tests/unit/services/did-resolver.test.ts`
 
 - `DispatchingDidResolver` routes `did:key:` to `LocalDidKeyResolver`
-- `DispatchingDidResolver` routes `did:hedera:` to `HederaDidResolver`
 - `DispatchingDidResolver` throws `InvalidDIDFormatError` for unknown DID prefix
 - `LocalDidKeyResolver.resolve` calls `resolveDidKey` — returns document, no DB call
-- `HederaDidResolver.resolve` calls `didService.resolveDID`
 
 ### Integration Tests — `helix-api/tests/integration/did-key.integration.test.ts`
-
-Setup: real PostgreSQL, `DID_METHOD=key` config. No Hedera mock needed. `afterEach` truncates tables.
 
 Tests:
 
@@ -249,28 +209,20 @@ Tests:
 
 - `resolveDID` with `did:key:` and `mode: 'local'` returns document without calling HTTP adapter
 - `resolveDID` with `did:key:` and `mode: 'anchored'` calls HTTP adapter
-- `resolveDID` with `did:hedera:` always calls HTTP adapter regardless of mode
 
 ### Security Tests — `helix-api/tests/security/did-key.security.test.ts`
 
-- **No Hedera calls in `did:key` mode:** Confirm `MockHederaClient` (or spy) is never called when `DID_METHOD=key`. DID creation, resolution, and VP verification complete without any Hedera interaction.
 - **`did:key` DID cannot be updated:** Attempt `addServiceEndpoint` → 400. Confirm no DB write occurred.
 - **`did:key` DID resolution is deterministic:** Generate same public key twice → same DID document both times. A replay attacker cannot produce a different document for the same `did:key:` DID.
-- **VP verify with `did:key:` agent uses local resolution — no network:** Instrument `DispatchingDidResolver` to confirm `LocalDidKeyResolver` is called (not `HederaDidResolver`) when agent DID is `did:key:`. Confirm no outbound HTTP to Hedera mirror node.
 
 ---
 
 ## Story 10 Acceptance Criteria
 
-- [ ] `DID_METHOD=key` in `.env` enables local mode — Hedera env vars not required
-- [ ] `POST /v1/dids` with `DID_METHOD=key` creates `did:key:z...` DID from public key — no Hedera call
 - [ ] `resolveDidKey` in helix-core is a pure local function — no I/O, no dependencies beyond `@noble/curves`
-- [ ] `DispatchingDidResolver` routes correctly — `did:key:` local, `did:hedera:` Hedera
 - [ ] Full onboarding and VP verify flow works end-to-end in `did:key` mode
 - [ ] DID update operations blocked in `did:key` mode with clear error message
 - [ ] SDK `resolveDID` resolves `did:key:` DIDs locally when `mode: 'local'` — no API call
-- [ ] `scripts/setup.ts` supports `did:key` setup path — skips Hedera credential prompts
 - [ ] Warning logged on startup when `DID_METHOD=key`
 - [ ] Unit test coverage ≥ 95% for `did-key.ts` in helix-core
-- [ ] All security tests confirm no Hedera calls in `did:key` mode
 - [ ] `decisions.md` updated noting `did:key` is development-only — not added as a production trust anchor

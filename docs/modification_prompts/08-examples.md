@@ -6,6 +6,8 @@
 ## Context
 `examples/` contains the e2e-travel-concierge and framework-middleware examples. All agent-side and verifier-side code must be refactored to use standalone SDK functions. `HelixClient` stays only in operator enrollment scripts. Three new examples are added: replay protection, self-signed dev round-trip, and did:web issuer setup.
 
+After Prompt 06, `@helix-id/mcp` verifies VPs from `toolCall.input._helixVP` (raw `SignedVP` object) and throws typed `HelixError` codes — not Authorization headers, not MCP `{ ok, error: { code: -32003 } }` objects, and not `HelixSession` JWT. The framework-middleware MCP example must reflect that contract.
+
 ---
 
 ## Changes to existing examples
@@ -29,10 +31,10 @@ if (!vc) throw new Error('No credential in wallet. Run enroll-agent.ts first.')
 
 const vp = await new VPBuilder({
   vc,
-  holderDid: wallet.did,
+  holderDid: wallet.getDID(),
   targetService: 'travel-concierge',
-  userDid: 'did:key:user-demo'
-}).sign(wallet.privateKeyHex, `${wallet.did}#key-1`)
+  userDid: 'did:key:user-demo',
+}).sign(wallet.getPrivateKeyHex(), `${wallet.getDID()}#key-1`)
 
 console.log(JSON.stringify(vp, null, 2))
 ```
@@ -41,7 +43,7 @@ No `HelixClient`. No API URL. No `HELIX_API_URL` env var needed.
 
 ---
 
-### `examples/e2e-travel-concierge/booking-platform/booking-platform.ts`
+### `examples/e2e-travel-concierge/platform/booking-platform.ts`
 
 **Before:**
 ```typescript
@@ -97,7 +99,6 @@ const middleware = HelixIDMiddleware({
   walletFilePath: './agent-wallet.enc',
   vcId: process.env.AGENT_VC_ID!,
   vcType: 'HelixAgentCredential',
-  userDid: 'did:hedera:testnet:user',
   targetService: 'orders',
 })
 ```
@@ -125,38 +126,84 @@ const allowedTools = await filterToolsByScope(
 
 ### `examples/framework-middleware/mcp.ts`
 
-**Before:**
+**Before (old adapter — Authorization header, HelixClient, MCP error objects):**
 ```typescript
 const requireHelix = helixidMCPMiddleware({
   helixClient: new HelixClient(process.env.HELIX_API_URL!),
+  verifyVP: verifyWithScopes,
   requiredScopes: ['read:orders'],
 })
 
-const outboundCall = await attachHelixVP(toolCall, {
-  helixClient: new HelixClient(process.env.HELIX_API_URL!),
-  walletPassphrase: process.env.WALLET_PASSPHRASE!,
-  walletFilePath: './agent-wallet.enc',
-  vcId: process.env.AGENT_VC_ID!,
-  vcType: 'HelixAgentCredential',
-  userDid: 'did:hedera:testnet:user',
-  targetService: 'orders',
-})
+const outboundCall = await attachHelixVP(
+  { name: 'orders.lookup', arguments: { orderId: 'ORD-1001' } },
+  {
+    walletPassphrase: process.env.WALLET_PASSPHRASE!,
+    walletFilePath: './agent-wallet.enc',
+    vcId: process.env.AGENT_VC_ID!,
+    vcType: 'HelixAgentCredential',
+    targetService: 'orders',
+  },
+)
+
+// VP was attached to headers.Authorization as `HelixVP <base64url>`
+// Middleware took MCPRequestLike + optional next callback and returned { ok: false, error: { code: -32003 } }
 ```
 
-**After:**
+**After (SDK-first — `_helixVP` on tool input, typed HelixErrors):**
 ```typescript
 import { helixidMCPMiddleware, attachHelixVP } from '@helix-id/mcp'
+import { walletPassphrase, walletPath, targetService, userDid, logStep } from './shared.js'
 
-const requireHelix = helixidMCPMiddleware({
-  requiredScopes: ['read:orders'],
-})
+const toolCall = { name: 'orders.lookup', input: { orderId: 'ORD-1001' } }
 
+// Outbound — attach locally signed VP to toolCall.input._helixVP (raw SignedVP object)
 const outboundCall = await attachHelixVP(toolCall, {
-  walletPassphrase: process.env.WALLET_PASSPHRASE!,
-  walletFilePath: './agent-wallet.enc',
-  targetService: 'orders',
+  walletPassphrase,
+  walletFilePath: walletPath,
+  targetService,
+  userDid, // optional — defaults to did:key:anonymous
 })
+
+logStep('MCP', `_helixVP attached to tool input (vpId: ${(outboundCall.input?._helixVP as { id?: string }).id})`)
+
+// Inbound — verify VP and required scopes; throws on failure
+const requireReadOrders = helixidMCPMiddleware({
+  requiredScopes: ['read:orders'],
+  allowSelfSigned: false, // optional, default false — never true in production
+})
+
+const accepted = await requireReadOrders(outboundCall)
+logStep('MCP', `Allowed tool call: ${accepted.name}`)
+
+// Scope denial — middleware throws INSUFFICIENT_SCOPE (not an MCP error object)
+const requireWriteInventory = helixidMCPMiddleware({ requiredScopes: ['write:inventory'] })
+try {
+  await requireWriteInventory(outboundCall)
+} catch (error) {
+  logStep('MCP', `Denied: ${(error as { code?: string }).code}`)
+}
 ```
+
+Key differences from the old example:
+- No `HelixClient`, no `HELIX_API_URL`, no `verifyVP` override, no `MCPRequestLike`, no `next` callback
+- No `Authorization: HelixVP …` header — VP lives on `toolCall.input._helixVP` as a parsed `SignedVP` object
+- No `HelixSession` JWT path — session bridging is API-only; MCP adapter verifies VPs locally
+- Removed `vcId`, `vcType` — credential is selected from wallet (first credential, or match on `targetService` when multiple)
+- Errors throw typed `HelixError` subclasses: `VP_MISSING`, `VP_VERIFICATION_FAILED`, `INSUFFICIENT_SCOPE`, `NO_CREDENTIAL_IN_WALLET`
+- Tool call shape is `{ name, input }` — not `{ name, arguments, headers }`
+
+**Note:** `@helix-id/langchain` encodes `_helixVP` as a base64url string; `@helix-id/mcp` stores the raw `SignedVP` object. Do not mix the two encodings in the same integration.
+
+---
+
+### `examples/framework-middleware/shared.ts`
+
+Remove MCP-only helpers that existed for the old Authorization-header flow. Keep wallet loading utilities. Changes:
+
+- Remove `createHelixClient()` usage from `mcp.ts` and `langchain.ts` (keep only in `setup-live.ts` for operator enrollment)
+- Remove `verifyWithScopes()` from MCP example — `helixidMCPMiddleware` calls `verifyVP()` internally
+- Keep `decodeHelixVP` / `encodeHelixVP` for `langchain.ts` only (LangChain adapter base64url-encodes `_helixVP`)
+- Simplify `loadWalletSummary()` to use `AgentWallet.load()` static method where possible
 
 ---
 
@@ -166,16 +213,10 @@ const outboundCall = await attachHelixVP(toolCall, {
 
 Create `examples/replay-protection/README.md` and `examples/replay-protection/middleware.ts`.
 
-The example shows an Express service provider using `verifyVP()` + Redis for vpId replay protection.
-
 ```typescript
 // examples/replay-protection/middleware.ts
 import express from 'express'
-import { createClient } from 'redis'
 import { verifyVP } from '@helix-id/sdk-js'
-
-const redis = createClient({ url: process.env.REDIS_URL ?? 'redis://localhost:6379' })
-await redis.connect()
 
 const app = express()
 app.use(express.json())
@@ -200,7 +241,6 @@ async function helixAuthMiddleware(
 
   // replay protection — vpId is single-use
   const vpIdKey = `vpid:${result.vpId}`
-  const alreadySeen = await redis.get(vpIdKey)
   if (alreadySeen) {
     return res.status(401).json({ error: 'VP_REPLAY_DETECTED' })
   }
@@ -208,7 +248,6 @@ async function helixAuthMiddleware(
   // store with TTL matching VP expiry
   const vpExpiryMs = new Date(vp.verifiableCredential[0].validUntil).getTime() - Date.now()
   const vpExpirySeconds = Math.floor(vpExpiryMs / 1000)
-  await redis.set(vpIdKey, '1', { EX: vpExpirySeconds })
 
   // attach verified identity to request
   req.helixAgent = {
@@ -224,8 +263,6 @@ app.get('/orders', helixAuthMiddleware, (req, res) => {
 })
 ```
 
-README must explain: SDK does the crypto, caller owns the store. Redis is one implementation — any persistent store works (Postgres, DynamoDB, etc.).
-
 ---
 
 ### `examples/self-signed-dev/`
@@ -240,20 +277,20 @@ import { AgentWallet, VPBuilder, verifyVP } from '@helix-id/sdk-js'
 
 // ── Agent side ──────────────────────────────────────────────
 const wallet = await AgentWallet.create('./dev-wallet.enc', 'dev-passphrase')
-console.log('Agent DID:', wallet.did)
+console.log('Agent DID:', wallet.getDID())
 
 const vc = await wallet.selfIssueVC({
   scopes: ['read:orders'],
-  expiresIn: '24h'
+  expiresIn: '24h',
 })
 console.log('Self-signed VC issued (dev only)')
 
 const vp = await new VPBuilder({
   vc,
-  holderDid: wallet.did,
+  holderDid: wallet.getDID(),
   targetService: 'orders-service',
-  userDid: 'did:key:user'
-}).sign(wallet.privateKeyHex, `${wallet.did}#key-1`)
+  userDid: 'did:key:user',
+}).sign(wallet.getPrivateKeyHex(), `${wallet.getDID()}#key-1`)
 console.log('VP signed')
 
 // ── Service Provider side ────────────────────────────────────
@@ -324,7 +361,11 @@ helix revoke \
 
 All examples must have a runnable check:
 - `examples/self-signed-dev/round-trip.ts` — runs with `npx tsx round-trip.ts`, exits 0, no external services
-- `examples/replay-protection/middleware.ts` — integration test with mock Redis
-- Grep check: no `HelixClient` in agent or verifier example files
-- Grep check: no `HELIX_API_URL` in agent or verifier example files
-- Grep check: no `createVPTemplate` anywhere in examples
+- `examples/framework-middleware/mcp.ts` — runs with `pnpm example:middleware:mcp`, demonstrates attach + verify round-trip without API
+
+Grep checks (agent, verifier, and framework-middleware example files — exclude `operator/` and `setup-live.ts`):
+- No `HelixClient` import
+- No `HELIX_API_URL` or `localhost:3000`
+- No `createVPTemplate`
+- No `Authorization` / `HelixVP` header handling in `mcp.ts` (VP is on `input._helixVP`)
+- No `MCPRequestLike`, `helixClient`, or `verifyWithScopes` in `mcp.ts`

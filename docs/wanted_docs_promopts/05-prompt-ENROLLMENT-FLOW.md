@@ -31,7 +31,6 @@ and which party performs each one. The exact 13-step sequence is:
 3. Agent calls `sdk.generateKeypair()` — local, no network
 4. Agent calls `POST /v1/enroll` with `{ enrollmentToken, publicKeyHex, domains }`
 5. Helix ID validates token (must be unused and not expired), burns it immediately
-6. Helix ID calls its internal DID service to anchor DID document on Hedera HCS
 7. Helix ID returns a challenge nonce to the agent
 8. Agent signs the nonce with its private key — local, no network
 9. Agent calls `POST /v1/enroll/verify` via `sdk.completeEnrollment({ signature })`
@@ -111,12 +110,9 @@ A token that has been burned cannot be reused — not even if the enrollment
 fails at a later step. If enrollment fails after this point, the agent owner
 must generate a new token.
 
-### 7. Step 6 — Helix ID Anchors DID on Hedera
-
 #### 7.1 Who Does This
 Helix ID performs DID anchoring internally — the agent does not trigger this
 directly. After validating the enrollment token, Helix ID calls its internal
-DID service, which writes a DID document to the Hedera HCS topic.
 
 #### 7.2 What the DID Document Contains at This Stage
 The agent's public key and the Helix ID service endpoint. The agent's VC does
@@ -124,7 +120,6 @@ not exist yet — it is issued in step 11.
 
 #### 7.3 What the HCS Message Looks Like
 A DID document operation signed by the appropriate key and written to the
-Helix ID HCS topic. Timestamped and ordered by Hedera. Publicly resolvable
 by anyone reading the topic.
 
 #### 7.4 Anchoring Latency
@@ -136,7 +131,6 @@ anchoring error and the agent owner must start again with a new token.
 After DID anchoring succeeds, Helix ID generates a short-lived challenge nonce
 and returns it to the agent. This nonce has a TTL. If the agent does not respond
 before the nonce expires, enrollment fails and a new token is required.
-Explain why this step exists: Helix ID has the public key but has not yet proven
 the agent controls the corresponding private key.
 
 ### 9. Step 8 — Agent Signs the Challenge
@@ -210,7 +204,6 @@ The agent's private key was compromised. The agent owner wants to change scopes
 or delegation depth.
 
 #### 14.2 What Happens to the Old DID
-The DID persists on Hedera. It is not deleted. DID history on a public ledger
 is permanent. A new enrollment may create a new DID or update the existing one
 depending on operator policy.
 
@@ -233,8 +226,6 @@ is required. No partial state is left in Helix ID from an expired token.
 The agent did not respond to the nonce within the challenge TTL. What the agent
 should do: obtain a new enrollment token and start again.
 
-#### 15.4 Hedera Anchoring Failure
-The HCS message did not confirm within the timeout. Likely causes: Hedera network
 congestion, insufficient HBAR, wrong topic ID. The enrollment fails. The agent
 owner must issue a new token and retry.
 

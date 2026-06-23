@@ -312,6 +312,12 @@ export class InsufficientScopeError extends HelixError {
   }
 }
 
+export class VPMissingError extends HelixError {
+  constructor(message = 'No _helixVP in tool call input') {
+    super('VP_MISSING', message, 401);
+  }
+}
+
 export class VPNotFoundError extends HelixError {
   constructor(message = 'VP not found') {
     super('VP_NOT_FOUND', message, 404);

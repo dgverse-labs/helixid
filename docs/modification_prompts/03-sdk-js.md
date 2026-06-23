@@ -179,8 +179,6 @@ export type {
 
 ### 8. Remove `@hashgraph/sdk` dependency
 
-Remove from `helix-sdk-js/package.json` if present. SDK must have zero Hedera dependency.
-
 ---
 
 ## Test coverage required
@@ -200,4 +198,3 @@ Remove from `helix-sdk-js/package.json` if present. SDK must have zero Hedera de
 | `requireScope()` | Throws `INSUFFICIENT_SCOPE` when scope missing |
 | `HelixClient` | Throws on removed methods (createVPTemplate etc.) |
 | `HelixClient()` no args | SDK-only mode, throws on enrollment methods |
-| Zero Hedera import | `@hashgraph/sdk` not in dependency tree |

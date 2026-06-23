@@ -4,7 +4,6 @@
 None. This is the foundation package. All other packages depend on it. Complete this first.
 
 ## Context
-`helix-core` lives at `helix-core/` in the monorepo. It currently contains core crypto, schemas, errors, and StatusList helpers. We are adding: a unified DID resolver, VP construction logic, delegation VC construction, scope enforcement, and self-signed VC support. Hedera-specific resolution is NOT added here — that belongs in `@helix-id/did-hedera` (Prompt 02). The resolver in this package handles `did:key` and `did:web` only, with a conditional hook for `did:hedera` if the optional package is installed.
 
 ---
 
@@ -21,7 +20,6 @@ export async function resolveDID(did: string): Promise<DIDDocument>
 Rules:
 - `did:key` — resolve locally using `@digitalbazaar/did-method-key` or equivalent. Zero network. Must work fully offline.
 - `did:web` — derive URL from DID: `did:web:example.com` → `https://example.com/.well-known/did.json`, `did:web:example.com:agents:booking` → `https://example.com/agents/booking/did.json`. Fetch and validate. Cache with 5 minute TTL.
-- `did:hedera` — attempt dynamic require of `@helix-id/did-hedera`. If not installed throw `DID_METHOD_NOT_AVAILABLE` with message: `did:hedera resolution requires: npm install @helix-id/did-hedera`. If installed, delegate to its resolver. Cache with 15 minute TTL.
 - Any other method — throw `UNSUPPORTED_DID_METHOD: {did}`.
 
 Cache implementation: simple `Map<string, { doc: DIDDocument, expiresAt: number }>`. Export `clearDIDCache()` for tests.
@@ -190,7 +188,6 @@ export type { VerifyVPOptions, VerifyVPResult, DelegationLink, VPBuilderOptions 
 | `resolveDID('did:key:...')` | Resolves offline, no network call |
 | `resolveDID('did:web:...')` | Fetches correct URL, caches result |
 | `resolveDID('did:web:...')` | Cache hit on second call within TTL |
-| `resolveDID('did:hedera:...')` | Throws `DID_METHOD_NOT_AVAILABLE` when package absent |
 | `resolveDID('did:unknown:...')` | Throws `UNSUPPORTED_DID_METHOD` |
 | `VPBuilder.sign()` | Produces valid VP, vpId is UUID v4, signature verifiable |
 | `verifyVP()` | Valid VP returns `valid: true` |

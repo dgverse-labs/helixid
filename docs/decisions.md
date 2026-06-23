@@ -53,27 +53,9 @@ and every deviation from the constitution is recorded here.
 
 ---
 
-## 2025-04-18 — Hiero DID SDK for Hedera DID anchoring
-
-**Decision:** Use `@hiero-did-sdk/client`, `@hiero-did-sdk/registrar`, and `@hiero-did-sdk/resolver` instead of rolling a custom HCS message format for DID anchoring.
-
-**Reason:** These packages implement the official `did:hedera` DID method spec. DID format becomes `did:hedera:testnet:<identifier>` instead of a custom `did:helix:<hash>`. This means external resolvers can verify DIDs without depending on Helix ID at all, which strengthens the trust model and aligns with W3C DID spec interoperability goals.
-
-**Impact on constitution:** DID format updated from `did:helix:<32 hex chars>` to `did:hedera:testnet:<identifier>` throughout. The `IHederaClient` interface is retained — it wraps these SDK calls rather than raw HCS calls. The `helix-contracts` package remains scaffolded for future custom HCS message schema work unrelated to DIDs.
-
-**Alternatives considered:** Raw `@hashgraph/sdk` HCS topic message submission with custom message format — rejected because it reinvents the did:hedera method spec and breaks interoperability with standard Hedera DID resolvers.
-
 **Approved by:** [founder]
 
 ---
-
-## 2025-04-18 — @hashgraph/sdk for Hedera network interaction
-
-**Decision:** `@hashgraph/sdk` is used as the underlying Hedera network client, wrapped by the Hiero DID SDK.
-
-**Reason:** Official Hedera SDK. Required for operator account setup and HBAR payment for HCS transactions. The Hiero DID SDK depends on it.
-
-**Alternatives considered:** None — it is the only SDK for Hedera.
 
 **Approved by:** [founder]
 
@@ -102,10 +84,6 @@ and every deviation from the constitution is recorded here.
 **Approved by:** [founder]
 
 ---
-
-## 2025-04-18 — PostgreSQL as the only supported database
-
-**Decision:** PostgreSQL only. SQLite not supported.
 
 **Reason:** Concurrent write safety required for vpId consumption (SA-4) and enrollment token burning (SA-3). These are security operations requiring ACID guarantees and row-level locking. SQLite cannot safely handle concurrent writes in a multi-request server.
 
@@ -151,14 +129,6 @@ and every deviation from the constitution is recorded here.
 **Approved by:** [founder]
 
 ---
-
-## 2026-05-27 — ioredis for Optional L2 Cache
-
-**Decision:** `ioredis` is used by `helix-api` for the optional Redis-backed L2 cache.
-
-**Reason:** Story 8 adds a two-layer read cache. L1 is in-process and dependency-free; L2 is optional Redis for multi-instance deployments. `ioredis` has mature TypeScript support and a stable Redis command surface.
-
-**Alternatives considered:** `redis` official client — viable, but `ioredis` has a simpler established API for the small get/set/del surface needed here.
 
 **Approved by:** [founder]
 

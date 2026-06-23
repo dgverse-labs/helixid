@@ -1,7 +1,4 @@
-import {
-  buildDIDDocument,
-  type DIDDocument,
-} from './crypto/did.js';
+import { buildDIDDocument, type DIDDocument } from './crypto/did.js';
 import { base58btcDecode } from './crypto/vp.js';
 import { loadDidHederaResolver } from './did-hedera-loader.js';
 import {
@@ -31,19 +28,42 @@ function setCached(did: string, doc: DIDDocument, ttlMs: number): DIDDocument {
   return doc;
 }
 
+function isLoopbackHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1';
+}
+
 function didWebToUrl(did: string): string {
   const parts = did.split(':');
   if (parts.length < 3 || parts[0] !== 'did' || parts[1] !== 'web') {
     throw new ValidationError(`Invalid did:web DID: ${did}`);
   }
-  const [host, ...pathParts] = parts.slice(2).map(decodeURIComponent);
+
+  const decoded = parts.slice(2).map(decodeURIComponent);
+  let [host, ...pathParts] = decoded;
   if (!host) {
     throw new ValidationError(`Invalid did:web DID: ${did}`);
   }
-  const path = pathParts.length === 0
-    ? '/.well-known/did.json'
-    : `/${pathParts.join('/')}/did.json`;
-  return `https://${host}${path}`;
+
+  // Compatibility: accept legacy/local did:web forms like did:web:localhost:3000
+  // and did:web:127.0.0.1:3000 where port was not percent-encoded.
+  if (isLoopbackHost(host) && pathParts.length > 0 && /^\d+$/.test(pathParts[0] ?? '')) {
+    host = `${host}:${pathParts[0]}`;
+    pathParts = pathParts.slice(1);
+  }
+
+  let hostname: string;
+  try {
+    hostname = new URL(`http://${host}`).hostname;
+  } catch {
+    throw new ValidationError(`Invalid did:web DID: ${did}`);
+  }
+
+  const path =
+    pathParts.length === 0 ? '/.well-known/did.json' : `/${pathParts.join('/')}/did.json`;
+
+  const scheme = isLoopbackHost(hostname) ? 'http' : 'https';
+  return `${scheme}://${host}${path}`;
 }
 
 function resolveDidKey(did: string): DIDDocument {
@@ -70,7 +90,7 @@ async function resolveDidWeb(did: string): Promise<DIDDocument> {
   if (!response.ok) {
     throw new ValidationError(`did:web resolution failed with HTTP ${response.status}`);
   }
-  const doc = await response.json() as DIDDocument;
+  const doc = (await response.json()) as DIDDocument;
   if (doc.id !== did || !Array.isArray(doc.verificationMethod)) {
     throw new ValidationError(`Invalid DID document for ${did}`);
   }

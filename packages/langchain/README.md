@@ -3,28 +3,25 @@
 Thin LangChain/LangGraph adapter for Helix ID. It injects a locally signed VP into tool input metadata as `_helixVP`.
 
 ```ts
-import { HelixIDMiddleware, HelixIDToolWrapper } from '@helix-id/langchain';
-import { HelixClient } from '@helix-id/sdk-js';
-
-const helixClient = new HelixClient('https://helix.example.com');
+import { HelixIDMiddleware, HelixIDToolWrapper, filterToolsByScope } from '@helix-id/langchain';
 
 const helix = HelixIDMiddleware({
-  helixClient,
   walletPassphrase: process.env.AGENT_WALLET_PASSPHRASE!,
   walletFilePath: './agent-wallet.json',
-  vcId: process.env.AGENT_VC_ID!,
-  userDid: 'did:hedera:testnet:user',
   targetService: 'orders',
+  userDid: 'did:key:user', // Optional, defaults to 'did:key:anonymous'
 });
 
 const wrappedTool = HelixIDToolWrapper(existingTool, {
-  helixClient,
   walletPassphrase: process.env.AGENT_WALLET_PASSPHRASE!,
   walletFilePath: './agent-wallet.json',
-  vcId: process.env.AGENT_VC_ID!,
-  userDid: 'did:hedera:testnet:user',
   targetService: 'orders',
+  userDid: 'did:key:user',
 });
 ```
 
-If the wallet has exactly one matching, unexpired credential, the adapter can use it. If the wallet has zero or multiple matching active credentials, pass the `vcId` your application selected from its wallet or credential store. The adapter only prepares proof material for outbound tool calls. Verification remains the responsibility of the receiving service through the normal Helix ID verify path.
+## Features
+
+- **Local Signing**: signs verifiable presentations locally using the wallet keypair. No API client / network calls.
+- **Closure Cache**: loaded agent wallet is cached in the middleware closure to avoid expensive file decrypts on subsequent tool calls.
+- **Scope-based Tool Filtering**: filters a list of tools using `filterToolsByScope(tools, walletFilePath, walletPassphrase)` to only include tools whose metadata scope tag (`tool.metadata?.requiredScope`) or name matches the active privilege scopes of the agent VC.

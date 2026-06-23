@@ -26,8 +26,6 @@ Bulk enrollment
 Short section showing how to loop POST /v1/enrollment-tokens for multiple agents.
 Replay protection integration
 
-Show Express middleware example using sdk.verifyVP() and Redis for vpId store. Reference the replay protection example (link to examples/replay-protection/).
 Deployment modes table
 
-Four rows: Local dev (did:key, CLI, no API), Simple self-hosted (did:web, CLI or API, no Hedera), Full self-hosted (did:hedera, API, Hedera testnet), Cloud (did:hedera, managed API, Hedera mainnet).
 Keep all code samples TypeScript. All curl examples use localhost:3000. Link to relevant example files in examples/ where they exist.

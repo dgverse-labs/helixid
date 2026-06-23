@@ -13,7 +13,7 @@ const exampleRoot = dirname(__dirname);
 const walletPath = join(exampleRoot, 'agent', 'wallet.enc');
 const fixturePath = join(exampleRoot, 'fixtures', 'vp.json');
 
-const helixApiUrl = process.env.HELIX_API_URL ?? process.env.API_BASE_URL ?? 'http://localhost:3000';
+const helixApiUrl = process.env.API_BASE_URL ?? 'http://localhost:3000';
 const platformUrl = process.env.BOOKING_PLATFORM_URL ?? 'http://localhost:3001';
 const targetService = process.env.HELIX_TARGET_SERVICE ?? 'amazon';
 const walletPassphrase = process.env.WALLET_PASSPHRASE ?? 'change-this-passphrase';

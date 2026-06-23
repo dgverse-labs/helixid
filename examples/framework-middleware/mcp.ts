@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { attachHelixVP, helixidMCPMiddleware, type MCPRequestLike } from '../../packages/mcp/src/index.js';
+import { attachHelixVP, helixidMCPMiddleware } from '../../packages/mcp/src/index.js';
 import type { SignedVP } from '@helix-id/core';
 import {
   createHelixClient,
@@ -22,55 +22,50 @@ async function main(): Promise<void> {
   };
 
   logStep('MCP', `Loaded wallet for ${wallet.did}.`);
-  logStep('MCP', `Attaching a real HelixVP authorization header for ${targetService}.`);
+  logStep('MCP', `Attaching a real HelixVP to tool input for ${targetService}.`);
   const outboundCall = await attachHelixVP(
-    { name: 'orders.lookup', arguments: { orderId: 'ORD-1001' } },
+    { name: 'orders.lookup', input: { orderId: 'ORD-1001' } },
     {
       walletPassphrase,
       walletFilePath: walletPath,
-      vcId: credential.vcId,
-      vcType: 'HelixAgentCredential',
       userDid,
       targetService,
     },
   );
 
-  const authHeader = outboundCall.headers?.Authorization;
-  logStep('MCP', `Authorization header attached (${authHeader?.length ?? 0} chars; private key not printed).`);
+  logStep(
+    'MCP',
+    `_helixVP attached to tool input (vpId: ${(outboundCall.input?._helixVP as { id?: string })?.id ?? 'unknown'})`,
+  );
 
   const requireReadOrders = helixidMCPMiddleware({
-    helixClient: realVerifier,
-    verifyVP: verifyWithScopes,
     requiredScopes: ['read:orders'],
+    allowSelfSigned: false,
   });
-  const accepted = await requireReadOrders(
-    { headers: outboundCall.headers, context: {}, tool: outboundCall.name } satisfies MCPRequestLike,
-    (request) => ({ ok: true, helix: request.context?.helix }),
-  );
+
+  // Call the middleware with the full tool call (it expects toolCall.input._helixVP)
+  const accepted = await requireReadOrders(outboundCall as any);
   logStep('MCP', `Allowed request: ${JSON.stringify(accepted)}`);
 
   const deniedCall = await attachHelixVP(
-    { name: 'inventory.admin', arguments: { sku: 'SKU-1001' } },
+    { name: 'inventory.admin', input: { sku: 'SKU-1001' } },
     {
       walletPassphrase,
       walletFilePath: walletPath,
-      vcId: credential.vcId,
-      vcType: 'HelixAgentCredential',
       userDid,
       targetService,
     },
   );
-  const requireWriteInventory = helixidMCPMiddleware({
-    helixClient: realVerifier,
-    verifyVP: verifyWithScopes,
-    requiredScopes: ['write:inventory'],
-  });
-  const denied = await requireWriteInventory({ headers: deniedCall.headers, context: {} });
-  logStep('MCP', `Denied request: ${JSON.stringify(denied)}`);
+  const requireWriteInventory = helixidMCPMiddleware({ requiredScopes: ['write:inventory'] });
+  try {
+    await requireWriteInventory(deniedCall as any);
+    logStep('MCP', 'Denied request: unexpectedly allowed');
+  } catch (err: unknown) {
+    logStep('MCP', `Denied request: ${(err as Error).message}`);
+  }
 
-  if (authHeader?.startsWith('HelixVP ')) {
-    const encoded = authHeader.slice('HelixVP '.length);
-    const signedVP = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as SignedVP;
+  const signedVP = outboundCall.input?._helixVP as SignedVP | undefined;
+  if (signedVP) {
     logStep('MCP', `Outbound VP scopes: ${extractScopes(signedVP).join(', ')}.`);
   }
 }

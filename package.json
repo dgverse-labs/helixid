@@ -8,7 +8,7 @@
     "test:all": "pnpm test && pnpm test:live",
     "test:non-live": "turbo run test:non-live",
     "test:live": "pnpm --filter @helix-id/api test:live",
-    "test:unit": "pnpm --filter @helix-id/core test:unit && pnpm --filter @helix-id/did-hedera test:unit && pnpm --filter @helix-id/sdk-js test:unit && pnpm --filter @helix-id/api test:unit && pnpm --filter @helix-id/mcp test:unit && pnpm --filter @helix-id/langchain test:unit",
+    "test:unit": "pnpm --filter @helix-id/core test:unit && pnpm --filter @helix-id/did-hedera test:unit && pnpm --filter @helix-id/sdk-js test:unit && pnpm --filter @helix-id/api test:unit && pnpm --filter @helix-id/mcp test:unit && pnpm --filter @helix-id/langchain test:unit && pnpm --filter @helix-id/cli test:unit",
     "test:coverage": "pnpm --filter @helix-id/core test:coverage && pnpm --filter @helix-id/sdk-js test:coverage && pnpm --filter @helix-id/api test:coverage",
     "test:e2e": "turbo run test --filter=@helix-id/e2e",
     "typecheck": "turbo run typecheck",
@@ -16,14 +16,19 @@
     "setup": "pnpm --filter @helix-id/api exec tsx ../scripts/setup.ts",
     "setup:hedera": "pnpm --filter @helix-id/api exec tsx ../scripts/setup-hedera.ts",
     "example:verify-vp": "pnpm --filter @helix-id/api exec tsx ../examples/verify-vp.ts",
+    "example:verify-vp:sdk": "pnpm --filter @helix-id/api exec tsx ../examples/verify-vp-sdk.ts",
+    "example:verify-vp:session-bridge": "pnpm --filter @helix-id/api exec tsx ../examples/verify-vp-session-bridge.ts",
     "example:scope-check": "pnpm --filter @helix-id/api exec tsx ../examples/scope-check.ts",
     "example:self-verify": "pnpm --filter @helix-id/api exec tsx ../examples/self-verify.ts",
     "example:revocation-check": "pnpm --filter @helix-id/api exec tsx ../examples/revocation-check.ts",
+    "example:verifier:session": "pnpm --filter @helix-id/api exec tsx ../examples/verifier-session-cycle.ts",
+    "example:verifier:vp-cache": "pnpm --filter @helix-id/api exec tsx ../examples/verifier-vp-cache-cycle.ts",
     "example:middleware:setup": "pnpm --filter @helix-id/example-framework-middleware run setup",
     "example:middleware:langchain": "pnpm --filter @helix-id/example-framework-middleware run langchain",
     "example:middleware:mcp": "pnpm --filter @helix-id/example-framework-middleware run mcp",
     "dev": "turbo run dev",
-    "dev:api": "turbo run dev --filter=@helix-id/api"
+    "dev:api": "turbo run dev --filter=@helix-id/api",
+    "cli:dev": "pnpm --filter @helix-id/cli exec tsx src/bin/helix.ts"
   },
   "packageManager": "pnpm@9.15.2",
   "engines": {
@@ -42,6 +47,7 @@
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
+    "dotenv": "^17.4.2",
     "eslint": "^8.57.0",
     "prettier": "^3.3.0",
     "turbo": "^2.3.0",

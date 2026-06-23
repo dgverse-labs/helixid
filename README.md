@@ -8,7 +8,6 @@
   <a href="https://github.com/nicedigverse/helixid/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
   <a href="https://www.w3.org/TR/vc-data-model-2.0/"><img src="https://img.shields.io/badge/W3C-VC%202.0-green.svg" alt="W3C VC 2.0"></a>
   <a href="https://www.w3.org/TR/did-core/"><img src="https://img.shields.io/badge/W3C-DID%201.0-green.svg" alt="W3C DID 1.0"></a>
-  <a href="https://hedera.com"><img src="https://img.shields.io/badge/DLT-Hedera-blueviolet.svg" alt="Hedera"></a>
 </p>
 
 ---
@@ -33,13 +32,11 @@ HelixID is a **5-layer trust stack** for AI agents, not just an identity library
 
 | Layer              | What It Does                                                                                                     | How                                                   |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| **1. Identity**    | Every agent gets a DID (Decentralized Identifier) bound to a cryptographic keypair                               | W3C DID, `did:hedera` (anchored) or `did:key` (local) |
+| **1. Identity**    | Every agent gets a DID (Decentralized Identifier) bound to a cryptographic keypair                               | W3C DID (`did:web` default, `did:key` local) |
 | **2. Authority**   | Scoped, time-bound credentials that prove what an agent is allowed to do                                         | W3C Verifiable Credentials with delegation chains     |
-| **3. Enforcement** | Policy evaluation at the execution boundary — not just "is this credential valid?" but "is this action allowed?" | Planned: OPA (Open Policy Agent) with Rego rules      |
-| **4. Audit**       | Operational record of credential issuance, presentation, verification, revocation, and session events            | PostgreSQL `audit_log` table and structured stdout    |
-| **5. Revocation**  | Decentralized, cacheable revocation that works offline                                                           | StatusList2021 bitstring, HCS-published               |
-
-Think of it as a **passport + work visa** for AI agents. The passport (DID) proves identity. The visa (VC) proves scoped authority from a specific issuer. Border control (planned OPA/Rego) enforces the rules. HCS anchors DIDs, and the API audit log records lifecycle events.
+| **3. Enforcement** | Runtime verification and authorization checks at execution boundaries                                              | SDK/core verification + verifier-owned policy checks  |
+| **4. Audit**       | Operational record of issuance, verification/session bridge, revocation, and lifecycle events                    | Adapter-based `audit_log` store + structured stdout/file |
+| **5. Revocation**  | Decentralized, cacheable revocation that works offline                                                           | Bitstring Status List |
 
 ## Architecture
 
@@ -59,20 +56,13 @@ HelixID uses a **hybrid 3-layer architecture** that delivers the trust propertie
 │  │ • Local dev │   │   once       │   │ • Delegated VCs │  │
 │  │ • MCP tool  │   │ • Issue JWT  │   │ • StatusList    │  │
 │  │   auth      │   │   (5-15 min) │   │   revocation    │  │
-│  │             │   │ • Hot path   │   │ • HCS anchoring │  │
-│  │  ~0.1ms     │   │  ~0.1ms/req  │   │ • Cross-org     │  │
-│  │             │   │              │   │   trust          │  │
+│  │             │   │ • Hot path   │   │ • Cross-org     │  │
+│  │  ~0.1ms     │   │  ~0.1ms/req  │   │   trust          │  │
 │  └─────────────┘   └──────────────┘   └─────────────────┘  │
 │                                                             │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │           Hedera Consensus Service (HCS)              │   │
-│  │       DID anchoring · Live DID resolution source      │   │
-│  │              Write path only (~2.5-5s)                │   │
-│  └──────────────────────────────────────────────────────┘   │
-│                                                             │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │        API Audit Log (PostgreSQL/stdout)              │   │
-│  │       Issuance · VP verify · revocation · sessions    │   │
+│  │    API audit log (adapter store + stdout/file)       │   │
+│  │   Issuance · revocation · session-bridge verification │   │
 │  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -94,16 +84,14 @@ The DLT latency penalty exists only on the **write path** (DID anchoring, creden
 | Credential verification         | ~1-6 ms              | 1-5 ms                    | ~0.1 ms       |
 | DID resolution                  | ~0.01 ms (cache hit) | N/A                       | N/A           |
 | Revocation check                | ~0.01 ms (cached)    | 50-200 ms (introspection) | Not supported |
-| Policy evaluation (planned OPA) | 1-5 ms               | 1-5 ms                    | 1-5 ms        |
 | **Full verification (warm)**    | **~1-6 ms**          | **1-5 ms**                | **~0.1 ms**   |
 
 **Context:** A single LLM inference call takes 500ms-5s. HelixID verification at ~5ms is noise in that budget. You get the same verification speed as JWT, backed by cryptographic trust that JWT can never provide.
 
 **Caching architecture:**
 
-- **L1:** In-process memory (5-60 min TTL) — DID documents, status lists
-- **L2:** Redis/shared cache (15-60 min TTL) — cross-instance sharing
-- **L3:** Hedera mirror node REST — fallback, with HCS subscription for cache invalidation
+- **L1:** In-process memory cache (default for current runs) — DID documents and status lists
+- **External sources:** DID/status lookups may still read external sources as needed
 
 **Session token bridge:** For high-frequency scenarios (1000+ RPS), verify the VC once (~5ms), issue an ephemeral JWT for subsequent calls (~0.1ms). Best of both worlds.
 
@@ -120,178 +108,162 @@ This is a pnpm workspace. The current SDK package is `@helix-id/sdk-js`, backed 
 
 ### Configure the API
 
-Create or update `.env` with the Hedera and database values used by the API and live examples:
+Create or update `.env`. The default runtime is **no external infra** beyond the API process itself: `sqlite` storage + in-memory cache + `did:web`.
 
 ```bash
-HEDERA_NETWORK=testnet
-HEDERA_OPERATOR_ID=...
-HEDERA_OPERATOR_KEY=...
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/helixid
-HELIX_ADMIN_API_KEY=...
+NODE_ENV=development
+API_BASE_URL=http://localhost:3000
+
+HELIX_STORAGE_ADAPTER=sqlite
+HELIX_SQLITE_PATH=./data/helixid.sqlite
+HELIX_CACHE_ADAPTER=memory
+
+DID_METHOD=web
+DID_DOMAIN=localhost:3000
+
+HELIX_ADMIN_API_KEY=dev-admin-key-0001
+HELIX_SIGNING_KEY=<32-byte-ed25519-private-key-hex>
 ```
 
-Then prepare the database and issuer DID:
+Start the API:
 
 ```bash
-docker compose up -d postgres
-pnpm --filter @helix-id/api db:deploy
-pnpm setup:hedera -- --create-issuer-did
 set -a; source .env; set +a
 pnpm --filter @helix-id/api dev
 ```
 
-The setup path is also documented in [`examples/README.md`](examples/README.md). The live tests under `helix-api/tests/live/` exercise the same API-backed Hedera flow.
+Troubleshooting (SQLite users): if startup fails with
+`SyntaxError: The requested module '@prisma/client' does not provide an export named 'PrismaClient'`,
+it is usually an install/generation/runtime issue (not a SQLite requirement issue).
 
-### Enroll an Agent
-
-The current onboarding flow creates a one-use enrollment token, generates the agent keypair locally in the SDK, anchors the DID through the API, issues a VC, and saves an encrypted wallet.
-
-```typescript
-import { AgentWallet, HelixClient } from '@helix-id/sdk-js';
-
-const helixApiUrl = process.env.HELIX_API_URL ?? 'http://localhost:3000';
-const walletPassphrase = process.env.WALLET_PASSPHRASE ?? 'change-this-passphrase';
-const walletPath = 'agent/wallet.enc';
-const client = new HelixClient(helixApiUrl);
-
-const enrollment = await fetch(`${helixApiUrl}/v1/enrollment-tokens`, {
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({
-    agentName: 'data-processor',
-    requestedScopes: ['read:analytics', 'write:reports'],
-    requestedDomains: ['https://analytics.example.com'],
-    maxDelegationDepth: 1,
-  }),
-}).then((response) => response.json() as Promise<{ token: string }>);
-
-const challenge = await client.requestOnboardingChallenge(enrollment.token, [
-  'https://analytics.example.com',
-]);
-
-const onboarding = await client.completeOnboarding(
-  challenge.challengeId,
-  challenge.nonce,
-  walletPassphrase,
-  walletPath,
-);
-
-const wallet = await new AgentWallet().load(walletPassphrase, walletPath);
-
-console.log(onboarding.agentDid, onboarding.vcId, wallet.did);
-```
-
-For a runnable version, see `examples/e2e-travel-concierge/operator/enroll-agent.ts`.
-
-### Present and Verify a VP
-
-```typescript
-import { AgentWallet, HelixClient, VPBuilder } from '@helix-id/sdk-js';
-import type { SignedVP, UnsignedVP } from '@helix-id/core';
-
-const client = new HelixClient(process.env.HELIX_API_URL ?? 'http://localhost:3000');
-const wallet = await new AgentWallet().load('change-this-passphrase', 'agent/wallet.enc');
-const credential = wallet.credentials[0];
-if (!credential) throw new Error('Wallet has no credential');
-
-const template = await client.createVPTemplate({
-  agentDid: wallet.did,
-  userDid: 'did:hedera:testnet:user-demo',
-  targetService: 'analytics-service',
-  vcType: 'HelixAgentCredential',
-  vcId: credential.vcId,
-});
-
-const signedVP: SignedVP = await new VPBuilder(template.unsignedVP as UnsignedVP).sign(
-  wallet.privateKeyHex,
-  `${wallet.did}#key-1`,
-);
-
-const result = await client.verifyVP(signedVP, { session: true });
-console.log(result.valid, result.agentDid, result.session?.token);
-```
-
-The verifier checks VP signature, embedded VC signature, expiry, BitstringStatusList revocation, target-service binding, and single-use `vpId` replay. See `examples/e2e-travel-concierge/agent/create-vp-fixture.ts`, `examples/verify-vp.ts`, and `helix-api/tests/live/vp.live.integration.test.ts`.
-
-### Delegate Authority
-
-```typescript
-const delegatedCredential = await client.delegate({
-  delegateeAgentDid: 'did:hedera:testnet:delegatee-agent',
-  requestedScopes: ['read:analytics'],
-  expiresInSeconds: 3600,
-  walletPassphrase: 'change-this-passphrase',
-  walletFilePath: 'agent/wallet.enc',
-  vcId: credential.vcId,
-});
-
-console.log(delegatedCredential.vcId, delegatedCredential.scopes);
-```
-
-See `helix-api/tests/live/delegation.live.integration.test.ts` for the live delegation path.
-
-### Policy Enforcement (Planned OPA/Rego)
-
-OPA/Rego policy evaluation and the shared `policies/` library are planned. Today, verification enforces cryptographic validity, expiry, revocation, target-service binding, replay protection, and delegation constraints in the API.
-
-### Anchored Mode (Hedera)
+Use Node 20 LTS and regenerate Prisma client:
 
 ```bash
-pnpm setup:hedera -- --create-issuer-did
+pnpm install
+pnpm --filter @helix-id/api db:generate
 pnpm --filter @helix-id/api dev
 ```
 
-The API currently anchors `did:hedera:testnet:*` DIDs and publishes StatusList credentials. Local `did:key` mode remains part of the product direction, but the current runnable flow is the API-backed Hedera path.
+If needed, force a clean reinstall:
+
+```bash
+rm -rf node_modules helix-api/node_modules
+pnpm install --force
+pnpm --filter @helix-id/api db:generate
+pnpm --filter @helix-id/api dev
+```
+
+SQLite mode does not require running database migrations.
+
+### Enroll an Agent
+
+The onboarding flow is a single SDK round trip using a one-time **bootstrap token** (single-use, short TTL) delivered out-of-band (env var, secret manager, CI variable).
+
+```typescript
+import { AgentWallet, HelixClient } from '@helix-id/sdk-js'
+
+const wallet = await AgentWallet.create('./wallet.enc', process.env.WALLET_PASSPHRASE!)
+const client = new HelixClient(process.env.HELIX_API_URL!)
+
+const vc = await client.enroll(process.env.HELIX_BOOTSTRAP_TOKEN!, wallet)
+
+console.log(wallet.did, vc.id)
+```
+
+A bootstrap token is **not** an identity credential. It is a one-time permission slip that says: “whoever presents this may enroll one new agent with these scopes/delegation limits/domains.”
+
+Creating that token is a privileged **operator policy action** (not an agent action), because it decides authority:
+
+1. Operator decides policy (`requestedScopes`, `maxDelegationDepth`, `requestedDomains`)
+2. Operator mints token via `POST /v1/enrollment-tokens` (authenticated operator call)
+3. Operator delivers token out-of-band (env var, Kubernetes Secret, CI variable, etc.)
+4. Agent SDK presents token via `client.enroll(...)` and receives VC
+
+This boundary is intentional: if agents could mint their own bootstrap tokens, identity and authorization would collapse into self-granted authority.
+
+For a runnable version, see `examples/e2e-travel-concierge/operator/enroll-agent.ts`.
+
+### Present and Verify a VP (SDK-local)
+
+```typescript
+import { AgentWallet, VPBuilder, verifyVP } from '@helix-id/sdk-js';
+
+const wallet = await AgentWallet.load('agent/wallet.enc', 'change-this-passphrase');
+const credential = wallet.credentials[0];
+if (!credential) throw new Error('Wallet has no credential');
+
+const signedVP = await new VPBuilder({
+  vc: credential,
+  holderDid: wallet.getDID(),
+  userDid: 'did:web:user.example.com',
+  targetService: 'analytics-service',
+}).sign(wallet.getPrivateKeyHex(), `${wallet.getDID()}#key-1`);
+
+const result = await verifyVP(signedVP, {
+  expectedTargetService: 'analytics-service',
+});
+
+console.log(result.valid, result.agentDid, result.privilegeScopes);
+```
+
+`verifyVP()` runs locally (no API call): VP signature, VC signature, validity window, revocation (when credentialStatus exists), target-service checks, and delegation-chain integrity. `vpId` is returned for caller-managed replay protection. If you need a session JWT bridge, call `POST /v1/vp/verify` with `session: true`.
+
+### Delegate Authority (SDK-local, self-signed)
+
+```typescript
+import { AgentWallet, delegate } from '@helix-id/sdk-js';
+
+const wallet = await AgentWallet.load('agent/wallet.enc', 'change-this-passphrase');
+
+const delegatedCredential = await delegate(
+  {
+    to: 'did:key:z6Mk...delegatee',
+    scopes: ['read:analytics'],
+    expiresIn: 3600,
+    // optional: fromVC: specific parent VC from wallet
+  },
+  wallet,
+);
+
+console.log(
+  delegatedCredential.id,
+  delegatedCredential.credentialSubject.privilegeScopes,
+  delegatedCredential.credentialSubject.delegationDepth,
+);
+```
+
+Delegation is **Option A**: Agent A signs the child VC locally, and verifiers enforce chain integrity, scope subset, and max depth from the VC chain itself. There is no API delegation endpoint.
 
 ## Framework Integrations
-
-HelixID currently provides middleware for LangChain/LangGraph and MCP. CrewAI and n8n are planned integrations.
 
 ### LangChain / LangGraph
 
 ```typescript
 import { HelixIDMiddleware } from '@helix-id/langchain';
-import { HelixClient } from '@helix-id/sdk-js';
-
-const helixClient = new HelixClient('http://localhost:3000');
 
 const middleware = HelixIDMiddleware({
-  helixClient,
   walletPassphrase: process.env.WALLET_PASSPHRASE!,
   walletFilePath: './agent-wallet.enc',
-  vcId: process.env.AGENT_VC_ID!,
-  vcType: 'HelixAgentCredential',
-  userDid: 'did:hedera:testnet:user',
+  userDid: 'did:web:user.example.com',
   targetService: 'orders',
 });
 ```
-
-### CrewAI and n8n
-
-CrewAI and n8n integrations are planned. There are no `@helix-id/crewai` or `@helix-id/n8n` packages in the current workspace.
 
 ### MCP (Model Context Protocol)
 
 ```typescript
 import { attachHelixVP, helixidMCPMiddleware } from '@helix-id/mcp';
-import { HelixClient } from '@helix-id/sdk-js';
-
-const helixClient = new HelixClient('http://localhost:3000');
 
 const requireHelix = helixidMCPMiddleware({
-  helixClient,
   requiredScopes: ['read:orders'],
 });
 
 const outboundCall = await attachHelixVP(
-  { name: 'orders.lookup', arguments: { orderId: 'ORD-1001' } },
+  { name: 'orders.lookup', input: { orderId: 'ORD-1001' } },
   {
-    helixClient,
     walletPassphrase: process.env.WALLET_PASSPHRASE!,
     walletFilePath: './agent-wallet.enc',
-    vcId: process.env.AGENT_VC_ID!,
-    vcType: 'HelixAgentCredential',
-    userDid: 'did:hedera:testnet:user',
+    userDid: 'did:web:user.example.com',
     targetService: 'orders',
   },
 );
@@ -313,7 +285,7 @@ Ed25519 proves "this key signed this payload." HelixID proves "Organization X at
 
 ### "Verified ≠ Trusted"
 
-Correct. Verification is necessary but not sufficient. That's why HelixID is a 5-layer stack, not just a credential library. Layer 1 (identity) tells you who. Layer 2 (credentials) tells you what they're allowed to do. Layer 3, planned OPA/Rego enforcement, applies policy at runtime. Layer 4 (audit) creates the evidence trail. Layer 5 (revocation) lets you pull the plug. Trust is the emergent property of the full stack, not any single layer.
+Correct. Verification is necessary but not sufficient. HelixID combines identity, credentialed authority, verification at runtime, audit evidence, and revocation controls so trust decisions can be made from cryptographic proof instead of shared secrets.
 
 ## Standards & Ecosystem Alignment
 
@@ -322,62 +294,54 @@ HelixID builds on established and converging standards:
 - **W3C Verifiable Credentials 2.0** (Recommendation, May 2025) — credential format
 - **W3C Decentralized Identifiers 1.0** (Recommendation) — identity layer
 - **W3C StatusList2021** — decentralized revocation
-- **Hedera Consensus Service** — DID anchoring and live DID resolution source
-- **Open Policy Agent (OPA)** — planned policy enforcement
 - **W3C AI Agent Protocol Community Group** (est. June 2025) — cross-origin agent communication
 - **DIF Trusted AI Agents Working Group** — industry alignment
 - **NIST NCCoE** — AI Agent Identity and Authorization (concept paper, Feb 2026)
 
-## Self-Hosted vs Cloud
+## Self-Hosted
 
-HelixID is fully self-hostable. The open-source SDK covers:
+HelixID is fully self-hostable. The current open-source stack covers:
 
-- `did:hedera` anchored identity on Hedera testnet
-- API-backed agent onboarding with local SDK key ownership
-- VC issuance, presentation, and verification
-- Bitstring StatusList revocation
-- JWT session bridge after VP verification
+- DID methods: `did:web` (default) and `did:key` (local)
+- API-backed enrollment with local SDK key ownership
+- SDK-local VP build/verify and SDK-local delegation
+- VC issuance and revocation with Bitstring Status List hosting
+- Optional JWT session bridge via API (`/v1/vp/verify` with `session: true`)
+
+### Session tokens & secrets (JWT)
+
+HelixID supports two session-token patterns. Pick the one that matches your deployment and threat model:
+
+- API-issued EdDSA tokens (recommended for cross-service verification)
+  - The API issues Ed25519-signed JWTs (EdDSA). Verifiers check these by fetching the session public key from `/v1/sessions/public-key` and calling the EdDSA verifier (e.g. `verifyJWT(token, publicKeyHex)`). No symmetric `JWT_SECRET` is required for EdDSA verification. This is the preferred approach when tokens are shared across services or organizations.
+
+- SDK `SessionManager` (HMAC HS256 — local verifier)
+  - The SDK provides a local `SessionManager` that signs and verifies JWTs with HMAC (HS256) using a symmetric secret. The constructor requires a secret of at least 16 characters; if omitted or too short the constructor throws an error: `SessionManager secret must be at least 16 characters`.
+  - Example (verifier-managed sessions):
+
+```ts
+const session = new SessionManager({ secret: process.env.JWT_SECRET!, ttl: 600 });
+```
+
+  - Use this mode only when you control all verifiers and can securely store/rotate the secret. Do not reuse the same symmetric secret across untrusted services.
+
+Recommendations:
+
+- Prefer API-issued EdDSA tokens for production and cross-service deployments.
+- For local development, set a demo `JWT_SECRET` in `.env` (many examples fall back to a demo secret). For production, generate a strong secret and store it securely:
+
+```bash
+# generate 32 bytes hex
+openssl rand -hex 32
+# or in node
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+- If you adopt the SDK `SessionManager` pattern, ensure every verifier instance receives the secret securely (secret manager, not checked into repo) and has a rotation plan.
+
+- Note: missing `JWT_SECRET` has no effect on verifying API-issued EdDSA session tokens (those rely on the API public key), but it WILL prevent constructing a `SessionManager` for HS256 tokens in the SDK.
+
 - LangChain/LangGraph and MCP middleware
-
-Planned open-source coverage includes `did:key` local identity, OPA policy evaluation with base Rego rules, CrewAI middleware, and n8n integration.
-
-**HelixID Cloud** (coming soon) adds:
-
-- Managed DID infrastructure and key custody
-- Trust registry as a service
-- Advanced policy engine (ABAC, ZKP selective disclosure)
-- Dashboard for credential lifecycle management
-- Enterprise SSO and compliance reporting
-
-## Roadmap
-
-### Phase 1 — Foundation (Current)
-
-- [x] Architecture decisions (VC vs signing, DLT latency analysis)
-- [x] `@helix-id/core` — Core cryptography, schemas, StatusList helpers
-- [x] `@helix-id/api` — API service for DID anchoring, VC lifecycle, VP verification, revocation, and sessions
-- [x] `@helix-id/sdk-js` — JavaScript SDK with `HelixClient`, `AgentWallet`, and `VPBuilder`
-- [x] `did:hedera` anchored mode (testnet)
-- [x] Bitstring StatusList revocation
-- [ ] `did:key` local mode
-- [ ] Base Rego policy library and OPA enforcement
-
-### Phase 2 — Framework Integrations
-
-- [x] `@helix-id/langchain` — LangChain/LangGraph middleware
-- [x] `@helix-id/mcp` — MCP middleware
-- [ ] `@helix-id/crewai` — planned CrewAI integration
-- [ ] `@helix-id/n8n` — planned n8n node
-- [x] Session token bridge (VC → ephemeral JWT)
-- [ ] Trust registry v1
-
-### Phase 3 — Enterprise & Advanced
-
-- [ ] ZKP selective disclosure (ZK-SD-VCs)
-- [ ] ABAC policy engine
-- [ ] Credential monetization primitives
-- [ ] Kubernetes admission controller
-- [ ] HelixID Cloud managed service
 
 ## Parked Items
 
@@ -406,12 +370,13 @@ Practical constraints to revisit:
 
 ```
 helixid/
-├── helix-core/           # Core crypto, schemas, errors, OpenAPI, StatusList helpers
-├── helix-api/            # Fastify API, Hedera integration, Prisma persistence
-├── helix-sdk-js/         # SDK: HelixClient, AgentWallet, VPBuilder
+├── helix-core/           # Core crypto, schemas, resolver, VP/delegation/self-signed primitives
+├── helix-api/            # Fastify API: enrollment, VC lifecycle, status list, did:web, session bridge
+├── helix-sdk-js/         # SDK: AgentWallet, VPBuilder, verifyVP, delegate, HelixClient (enrollment/API ops)
 ├── packages/
 │   ├── mcp/              # MCP middleware
-│   └── langchain/        # LangChain/LangGraph integration
+│   ├── langchain/        # LangChain/LangGraph integration
+│   └── cli/              # CLI workflows
 ├── examples/
 │   ├── e2e-travel-concierge/   # Live onboarding, wallet, VP fixture flow
 │   ├── framework-middleware/   # Live LangChain and MCP middleware examples
@@ -422,7 +387,7 @@ helixid/
 ├── e2e/                  # End-to-end test package
 ├── docs/                 # Agent playbook, decisions, story docs, testing guides
 ├── scripts/              # Setup and helper scripts
-└── docker-compose.yml    # Local Postgres for API development
+└── docker-compose.yml    # Local API stack (sqlite+memory+did:web default)
 ```
 
 ## Contributing
@@ -433,8 +398,6 @@ Key areas where help is needed:
 
 - **DID method implementations** — additional DID method resolvers
 - **Framework integrations** — middleware for additional AI agent frameworks
-- **Planned Rego policy library** — common authorization patterns for agent use cases
-- **Planned benchmarks** — real-world performance testing across caching configurations
 - **Documentation** — tutorials, guides, and examples
 
 ## Community

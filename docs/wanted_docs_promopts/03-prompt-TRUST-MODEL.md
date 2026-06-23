@@ -41,7 +41,6 @@ person in a self-hosted setup but are distinct roles in a multi-tenant model.
 
 #### 1.3 The Operator
 The entity that deploys and runs the Helix ID instance. What the operator controls:
-the Helix ID signing keys, the Hedera account and HCS topic, the database, and
 the runtime environment. In a self-hosted setup the operator and agent owner are
 the same. In a managed setup they are different parties.
 
@@ -58,7 +57,6 @@ access. What the verifier controls: the decision to call the Helix ID verificati
 API, use the Session JWT path, or self-verify; the scope-to-action mapping; and
 session management after a successful verification.
 
-#### 1.6 Hedera Network
 The public ledger. Its role is narrow but foundational: it provides an immutable,
 ordered log of DID document operations that anyone can read without trusting
 any party in the system.
@@ -74,9 +72,6 @@ The verifier trusts that a VC signed by Helix ID's issuer key was issued
 legitimately. This trust is established by knowing the issuer public key,
 not by calling Helix ID at verification time.
 
-#### 2.3 Verifier Trusts Hedera for DID Resolution
-The verifier trusts that the DID document resolved from Hedera reflects the
-agent's actual public key. This trust derives from Hedera's tamper-evidence,
 not from Helix ID.
 
 #### 2.4 Agent Trusts Helix ID for VP Templates
@@ -97,8 +92,6 @@ receives no trust. The VP is the only accepted form of self-assertion.
 ### 3. What Helix ID Is Responsible For
 
 #### 3.1 DID Creation and Anchoring
-Creating the DID document, writing it to Hedera HCS, and serving DID resolution
-as a convenience API. The ground truth is Hedera, not Helix ID's database.
 
 #### 3.2 VC Issuance and Signing
 Embedding the correct `credentialSubject.privilegeScopes`, expiry, subject DID,
@@ -228,7 +221,6 @@ verifier does not check revocation. A verifier that skips the StatusList check
 is choosing to be vulnerable. This is a verifier implementation failure.
 
 #### 7.7 DID Document Tampering
-What an attacker would need: write access to the Hedera HCS topic admin key.
 If tampered, DID resolution produces an incorrect public key and VP signature
 verification fails.
 
@@ -253,7 +245,6 @@ A direct, honest list. No hedging:
 
 ### 9. Security Assumptions
 The explicit assumptions the trust model depends on:
-- The Hedera HCS topic admin key is not compromised
 - `HELIX_SIGNING_KEY` is not compromised
 - API process memory holding the startup-ephemeral JWT session key is not compromised
 - The agent owner admin key is not compromised

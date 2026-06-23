@@ -28,14 +28,11 @@ about what to do when a credential is revoked.
 ### 1. What Revocation Is and Is Not
 
 #### 1.1 Revocation vs Expiry
-Expiry is planned. It is set at issuance and the agent owner and agent both
-know when it will happen. Revocation is immediate and unplanned. It is the agent
 owner's response to something going wrong. A revoked credential is invalid from
 the moment the revocation API call completes, regardless of its expiry date.
 
 #### 1.2 What Gets Revoked — Credential, Not Agent
 Revocation targets a specific VC, not the agent's DID. The agent's identity
-on Hedera persists. The agent can be re-enrolled with a new credential if the
 agent owner decides to restore its access. Revocation is not permanent
 decommissioning unless the agent owner also deactivates the DID.
 

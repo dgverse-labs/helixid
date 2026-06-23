@@ -4,6 +4,7 @@ import {
   SDKOnlyModeNoAPIError,
   verifyJWT,
   signBytes,
+  signData,
   type DIDDocument,
   type HelixJWTPayload,
   type KeyPair,
@@ -12,6 +13,18 @@ import {
 } from '@helix-id/core';
 import { HttpAdapter } from '../http/HttpAdapter.js';
 import { AgentWallet } from '../wallet/AgentWallet.js';
+
+function bootstrapProofPayload(input: {
+  bootstrapToken: string;
+  agentDid: string;
+  timestamp: number;
+}): string {
+  return JSON.stringify({
+    bootstrapToken: input.bootstrapToken,
+    agentDid: input.agentDid,
+    timestamp: input.timestamp,
+  });
+}
 
 interface PendingKeyPair {
   publicKey: string;
@@ -62,6 +75,12 @@ export interface StatusListCredentialResponse {
   [key: string]: unknown;
 }
 
+export interface EnrollResponse {
+  agentDid?: string;
+  vc: SignedVC | Record<string, unknown>;
+  vcId?: string;
+}
+
 export interface SessionPublicKeyResponse {
   publicKeyHex: string;
   publicKeyMultibase: string;
@@ -78,6 +97,12 @@ type DIDResolveResponse = {
   document?: DIDDocument;
 } & DIDDocument;
 
+const SDK_ONLY_HTTP_ADAPTER: HttpAdapterLike = {
+  post: async <T>(): Promise<T> => {
+    throw new SDKOnlyModeNoAPIError();
+  },
+};
+
 export class HelixClient {
   private http: HttpAdapterLike;
   private readonly wallet = new AgentWallet();
@@ -89,15 +114,12 @@ export class HelixClient {
   constructor(http: HttpAdapter, baseUrl: string);
   constructor(first?: string | HttpAdapter, second?: string | HelixClientOptions) {
     this.sdkOnlyMode = first === undefined;
-    this.http = first === undefined
-      ? {
-          post: async () => {
-            throw new SDKOnlyModeNoAPIError();
-          },
-        }
-      : typeof first === 'string'
-      ? new HttpAdapter(first, typeof second === 'object' ? second : {})
-      : first;
+    this.http =
+      first === undefined
+        ? SDK_ONLY_HTTP_ADAPTER
+        : typeof first === 'string'
+          ? new HttpAdapter(first, typeof second === 'object' ? second : {})
+          : first;
   }
 
   async createDID(options: CreateDIDOptions): Promise<CreateDIDResult> {
@@ -126,7 +148,9 @@ export class HelixClient {
   ): Promise<{ did: string; didDocument: DIDDocument; source: 'cache' | 'hedera' }> {
     const query = options?.live ? '?live=true' : '';
     if (!this.http.get) throw new Error('GET not implemented by adapter');
-    const response = await this.http.get<DIDResolveResponse>(`/v1/dids/${encodeURIComponent(did)}${query}`);
+    const response = await this.http.get<DIDResolveResponse>(
+      `/v1/dids/${encodeURIComponent(did)}${query}`,
+    );
     const didDocument = response.didDocument ?? response.document ?? response;
     return {
       did,
@@ -135,12 +159,21 @@ export class HelixClient {
     };
   }
 
-  async addServiceEndpoint(did: string, endpoint: ServiceEndpoint): Promise<{ did: string; didDocument: DIDDocument }> {
-    const didDocument = await this.http.post<DIDDocument>(`/v1/dids/${encodeURIComponent(did)}/services`, endpoint);
+  async addServiceEndpoint(
+    did: string,
+    endpoint: ServiceEndpoint,
+  ): Promise<{ did: string; didDocument: DIDDocument }> {
+    const didDocument = await this.http.post<DIDDocument>(
+      `/v1/dids/${encodeURIComponent(did)}/services`,
+      endpoint,
+    );
     return { did, didDocument };
   }
 
-  async removeServiceEndpoint(did: string, endpointId: string): Promise<{ did: string; didDocument: DIDDocument }> {
+  async removeServiceEndpoint(
+    did: string,
+    endpointId: string,
+  ): Promise<{ did: string; didDocument: DIDDocument }> {
     if (!this.http.delete) throw new Error('DELETE not implemented by adapter');
     const didDocument = await this.http.delete<DIDDocument>(
       `/v1/dids/${encodeURIComponent(did)}/services/${encodeURIComponent(endpointId)}`,
@@ -174,7 +207,10 @@ export class HelixClient {
     return this.http.post(`/v1/vcs/${encodeURIComponent(vcId)}/revoke`);
   }
 
-  async renewVC(vcId: string, overrides: { privilegeScopes?: string[]; expiresInSeconds?: number } = {}): Promise<VCResponse> {
+  async renewVC(
+    vcId: string,
+    overrides: { privilegeScopes?: string[]; expiresInSeconds?: number } = {},
+  ): Promise<VCResponse> {
     return this.http.post(`/v1/vcs/${encodeURIComponent(vcId)}/renew`, overrides);
   }
 
@@ -209,10 +245,36 @@ export class HelixClient {
     return verifyJWT(token, publicKeyHex);
   }
 
+  async enroll(bootstrapToken: string, wallet: AgentWallet): Promise<SignedVC> {
+    this.assertAPIConfigured();
+    const timestamp = Date.now();
+    const agentDid = wallet.getDID();
+    const proofSignature = signData(
+      bootstrapProofPayload({ bootstrapToken, agentDid, timestamp }),
+      wallet.getPrivateKeyHex(),
+    );
+
+    const response = await this.http.post<EnrollResponse>('/v1/enroll', {
+      bootstrapToken,
+      agentDid,
+      timestamp,
+      proofSignature,
+    });
+
+    const vc = response.vc as SignedVC;
+    await wallet.addCredential(vc);
+    return vc;
+  }
+
   async requestOnboardingChallenge(
-    enrollmentToken: string,
+    bootstrapToken: string,
     domains: string[] = [],
-  ): Promise<{ challengeId: string; nonce: string; expiresAt: string; didCreateSigningPayloadHex?: string }> {
+  ): Promise<{
+    challengeId: string;
+    nonce: string;
+    expiresAt: string;
+    didCreateSigningPayloadHex?: string;
+  }> {
     this.assertAPIConfigured();
     const keyPair = generateKeyPair();
     this.pendingKeyPair = { publicKey: keyPair.publicKey, privateKey: keyPair.privateKey };
@@ -222,7 +284,7 @@ export class HelixClient {
       expiresAt: string;
       didCreateSigningPayloadHex?: string;
     }>('/v1/onboard', {
-      enrollmentToken,
+      enrollmentToken: bootstrapToken,
       publicKeyHex: keyPair.publicKey,
       domains,
     });
@@ -261,7 +323,9 @@ export class HelixClient {
     return { agentDid: result.agentDid, vcId: result.vcId, walletSaved: true };
   }
 
-  async requestUserChallenge(userDid: string): Promise<{ challengeId: string; nonce: string; expiresAt: string }> {
+  async requestUserChallenge(
+    userDid: string,
+  ): Promise<{ challengeId: string; nonce: string; expiresAt: string }> {
     return this.http.post('/v1/challenges', { did: userDid, purpose: 'user_verification' });
   }
 
@@ -274,7 +338,9 @@ export class HelixClient {
 
   async listServices(): Promise<Array<Record<string, unknown>>> {
     if (!this.http.get) throw new Error('GET not implemented by adapter');
-    const response = await this.http.get<{ services: Array<Record<string, unknown>> }>('/v1/services');
+    const response = await this.http.get<{ services: Array<Record<string, unknown>> }>(
+      '/v1/services',
+    );
     return response.services;
   }
 

@@ -127,11 +127,9 @@ Log both checks side by side:
 ```
 [Verifier] Old VC ({old_vcId}):  StatusList index {n}  bit = 1  REVOKED
 [Verifier] New VC ({new_vcId}):  StatusList index {m}  bit = 0  ACTIVE
-[Verifier] Agent DID: did:hedera:testnet:z6Mk...  (same DID — identity persists)
 ```
 
 Comment before this scenario: the difference between revoking a credential and
-revoking an agent. The agent's DID and identity on Hedera persist. Only the VC
 was revoked. The agent owner issued a new VC against the same DID. The old VC
 remains permanently revoked. The new VC has a fresh StatusList index.
 
@@ -139,7 +137,6 @@ remains permanently revoked. The new VC has a fresh StatusList index.
 
 ## Comments the file must contain
 
-1. **At the top**: why revocation exists separately from expiry. Expiry is planned
    and known in advance. Revocation is immediate and triggered by an event the
    agent owner controls. An agent that misbehaves, loses its key, or exceeds its
    authorisation needs to be stopped before its credential naturally expires.

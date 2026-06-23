@@ -68,9 +68,6 @@ Config additions:
 ```rego
 package helixid.policy
 
-import future.keywords.if
-import future.keywords.in
-
 default allow = false
 
 # Main allow rule — all conditions must pass
@@ -118,9 +115,6 @@ delegation_depth_ok if {
 
 ```rego
 package helixid.delegation
-
-import future.keywords.if
-import future.keywords.in
 
 # No scope in the chain can exceed the root's granted scopes
 no_scope_escalation if {
@@ -377,8 +371,6 @@ All unit tests mock `@styra/opa` — no real OPA sidecar.
 
 ### Integration Tests — `helix-api/tests/integration/opa.integration.test.ts`
 
-Setup: real PostgreSQL + real Redis + real OPA sidecar (from docker-compose.test.yml with base policies mounted).
-
 Tests:
 
 - Valid VP with matching scope in base policy → `POST /v1/vp/verify` returns 200
@@ -410,7 +402,6 @@ test_allow_valid_credential if {
             "isDelegated": false
         },
         "request": { "action": "read:orders", "vpId": "vp:1", "timestampUnix": 0 },
-        "policy": { "helixIssuerDid": "did:hedera:testnet:issuer" }
     }
 }
 
@@ -423,7 +414,6 @@ test_deny_wrong_scope if {
             "isDelegated": false
         },
         "request": { "action": "write:orders", "vpId": "vp:2", "timestampUnix": 0 },
-        "policy": { "helixIssuerDid": "did:hedera:testnet:issuer" }
     }
 }
 
@@ -436,7 +426,6 @@ test_deny_expired_credential if {
             "isDelegated": false
         },
         "request": { "action": "read:orders", "vpId": "vp:3", "timestampUnix": 0 },
-        "policy": { "helixIssuerDid": "did:hedera:testnet:issuer" }
     }
 }
 ```

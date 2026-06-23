@@ -1,22 +1,11 @@
-# STORY 1 — Boundary 1: DID & Hedera Integration
 
 ## Overview
-
-Implement everything related to DID lifecycle and Hedera anchoring. In the current implementation, live Hedera DID creation is performed through the Hiero DID SDK prepare/submit flow: the API prepares the DID creation payload, the SDK signs it locally with the agent key, and the API submits it to Hedera. Local DB state is then used for fast resolution by the rest of Helix ID.
-
-Current implementation boundary: live did:hedera creation is supported for onboarding through `prepareDIDCreation` and `submitDIDCreation`. Direct document anchoring via `anchorDocument`, live Mirror Node fetch resolution, DID service endpoint updates, and Hedera-backed deactivation/update flows are not production-complete yet and should not be presented as adapter-ready live Hedera flows.
-
-DID format: `did:hedera:<network>:<identifier>_<topicId>` for live Hiero-created DIDs, for example `did:hedera:testnet:<identifier>_0.0.<topic>`. Older local/mock tests may use shorter `did:hedera:testnet:<identifier>` values.
 
 ---
 
 ## What to Mock So Other Boundaries Can Start in Parallel
 
-B2 (VC issuance): inject a `MockDIDService` that returns a hardcoded valid DID document containing a known test public key for any DID string. No DB, no Hedera.
-
 B3 (VP verification): mock `resolveDID` to return a fixed DID document containing a known test public key. The mock must be injectable so security tests can simulate DID-not-found scenarios.
-
-B4 (Agent onboarding): mock `createDID` returning `{ did: 'did:hedera:testnet:testid', hederaTransactionId: 'mock-tx-1' }`. Mock `resolveDID` returning a fixed DID document.
 
 All mocks are constructor-injected interfaces. The real implementations are wired in `server.ts`.
 
@@ -27,7 +16,6 @@ All mocks are constructor-injected interfaces. The real implementations are wire
 In `helix-api`:
 
 ```bash
-pnpm install @hiero-did-sdk/registrar @hashgraph/sdk @noble/curves @noble/hashes
 ```
 
 In `helix-core`:
@@ -50,12 +38,6 @@ model Did {
   // "agent" or "user"
   subjectType          String
   publicKeyMultibase   String
-  // Hedera HCS topic ID used for anchoring
-  hederaTopicId        String
-  // Hedera sequence number of the anchoring message
-  hederaSequenceNumber Int
-  // The transaction consensus timestamp from Hedera (ISO 8601)
-  hederaTransactionId  String
   publicKey            String
   // The full DID document JSON — stored for fast resolution.
   didDocument          Json
@@ -151,7 +133,6 @@ interface ServiceEndpoint {
 
 ```typescript
 export const ErrorCode = {
-  // B1 — DID & Hedera
   INVALID_PUBLIC_KEY: 'INVALID_PUBLIC_KEY',
   INVALID_DID_FORMAT: 'INVALID_DID_FORMAT',
   DID_NOT_FOUND: 'DID_NOT_FOUND',
@@ -160,8 +141,6 @@ export const ErrorCode = {
   INVALID_SERVICE_ENDPOINT_URL: 'INVALID_SERVICE_ENDPOINT_URL',
   SERVICE_ENDPOINT_NOT_FOUND: 'SERVICE_ENDPOINT_NOT_FOUND',
   SERVICE_ENDPOINT_ALREADY_EXISTS: 'SERVICE_ENDPOINT_ALREADY_EXISTS',
-  HEDERA_ANCHOR_FAILED: 'HEDERA_ANCHOR_FAILED',
-  HEDERA_RESOLUTION_FAILED: 'HEDERA_RESOLUTION_FAILED',
 
   // General
   INTERNAL_ERROR: 'INTERNAL_ERROR',
@@ -185,8 +164,6 @@ Convenience subclasses (each calls super with correct code, message, httpStatus)
 | `InvalidServiceEndpointUrlError(url)` | `INVALID_SERVICE_ENDPOINT_URL` | 400 |
 | `ServiceEndpointNotFoundError(id)` | `SERVICE_ENDPOINT_NOT_FOUND` | 404 |
 | `ServiceEndpointAlreadyExistsError(id)` | `SERVICE_ENDPOINT_ALREADY_EXISTS` | 409 |
-| `HederaAnchorFailedError` | `HEDERA_ANCHOR_FAILED` | 502 |
-| `HederaResolutionFailedError` | `HEDERA_RESOLUTION_FAILED` | 502 |
 | `InternalError` | `INTERNAL_ERROR` | 500 |
 
 ---
@@ -198,10 +175,7 @@ Convenience subclasses (each calls super with correct code, message, httpStatus)
 B1 audit event types:
 
 ```
-DID_CREATED        — fields: did, subjectType, hederaTransactionId, publicKeyMultibase
 DID_CREATION_FAILED — fields: reason, publicKeyMultibase?
-DID_RESOLVED       — fields: did, source: 'cache' | 'hedera'
-DID_UPDATED        — fields: did, updateType, hederaTransactionId
 DID_UPDATE_FAILED  — fields: did, updateType, reason
 DID_DEACTIVATED    — fields: did, reason
 ```
@@ -228,42 +202,28 @@ Zod schema validating these env variables at startup:
 - `PORT`: coerce to number, min 1, max 65535, default 3000
 - `API_BASE_URL`: string URL
 - `DATABASE_URL`: string min 1
-- `HEDERA_NETWORK`: enum `testnet | previewnet | mainnet`, default `testnet`
-- `HEDERA_OPERATOR_ID`: string min 1
-- `HEDERA_OPERATOR_KEY`: string min 1
-- `HEDERA_TOPIC_ID`: string min 1 for legacy/manual HCS topic configuration. The live Hiero DID registrar path can return its own topic suffix in the DID; adapters should not assume this env value is the DID topic for every DID.
 - `HELIX_SIGNING_KEY`: string min 64
 - `ENROLLMENT_TOKEN_TTL_SECONDS`: coerce number, min 60, max 3600, default 900
 - `CHALLENGE_TTL_SECONDS`: coerce number, min 30, max 600, default 300
 - `VP_TTL_SECONDS`: coerce number, min 60, max 3600, default 300
 - `AUDIT_LOG_DESTINATION`: enum `stdout | file | both`, default `stdout`
 - `AUDIT_LOG_PATH`: string optional
-- `HEDERA_E2E_TESTNET`: transform string to boolean, default false
-
-**SA-9 enforcement:** After parsing, if `HEDERA_NETWORK === 'mainnet'` and `NODE_ENV !== 'production'`, throw with message `"HEDERA_NETWORK=mainnet is only permitted when NODE_ENV=production."`. Process exits.
 
 Exported as singleton `config` — loaded once at module import time. All other packages import this object. ESLint rule blocks direct `process.env` access everywhere else.
 
 ---
 
-## 1.7 — helix-api: IHederaClient Interface
-
-### `helix-api/src/hedera/IHederaClient.ts`
-
 ```typescript
-interface HederaTransactionResult {
   transactionId: string;
   sequenceNumber: number;
   topicId: string;
 }
 
-interface HederaMessage {
   sequenceNumber: number;
   consensusTimestamp: string;
   contents: string; // raw JSON string of the DID document
 }
 
-interface IHederaClient {
   prepareDIDCreation(publicKeyMultibase: string): Promise<{ stateJson: string; signingPayloadHex: string }>;
   submitDIDCreation(stateJson: string, signatureHex: string): Promise<{
     did: string;
@@ -272,22 +232,8 @@ interface IHederaClient {
     sequenceNumber: number;
     topicId: string;
   }>;
-  anchorDocument(payload: string): Promise<HederaTransactionResult>;
-  fetchMessage(topicId: string, sequenceNumber: number): Promise<HederaMessage>;
 }
 ```
-
-### `helix-api/src/hedera/HederaHIEROClient.ts`
-
-Production implementation wrapping `@hiero-did-sdk/registrar`. Constructor reads from `config`. Operator account set via `@hashgraph/sdk` `Client`.
-
-`prepareDIDCreation(publicKeyMultibase)`: asks the Hiero registrar for a DID creation request and returns serialized state plus the payload the agent key must sign.
-
-`submitDIDCreation(stateJson, signatureHex)`: submits the signed creation request to Hedera and waits for DID visibility. Returns the did:hedera DID and DID document.
-
-`anchorDocument(payload)` and `fetchMessage(topicId, sequenceNumber)`: currently interface placeholders for future DID update/live-resolution support. The current live client intentionally does not implement arbitrary document anchoring or Mirror Node DID document fetching.
-
-### `helix-api/src/hedera/mock/MockHederaClient.ts`
 
 In-memory implementation. Stores anchored messages in a `Map<number, StoredMessage>`. Auto-increments sequence counter. Exposes `anchoredPayloads: string[]` for test assertions. Has `reset()` method — call in `afterEach`.
 
@@ -328,24 +274,17 @@ interface IDIDService {
 
 ### `helix-api/src/services/did/did.service.ts`
 
-Constructor: `(didRepository: DidRepository, hederaClient: IHederaClient, auditLogger: IAuditLogger)`
-
 **`createDID(publicKeyHex, subjectType, domains, requestId)`:**
 
 1. Validate public key: must match `/^[0-9a-f]{64}$/i`. Throw `InvalidPublicKeyError` if not.
 2. Validate each domain: must parse as valid URL with `https:` protocol. Throw `InvalidServiceEndpointUrlError` if not.
 3. Derive `publicKeyMultibase` via `publicKeyToMultibase`.
 4. Check `didRepository.findDidByPublicKey` — if exists throw `DIDAlreadyExistsError`. Emit `DID_CREATION_FAILED` audit event first.
-5. For live did:hedera creation, accept a `creationProof` produced by SDK-side signing of the payload from `prepareDIDCreation`.
-6. Call `hederaClient.submitDIDCreation(creationProof.stateJson, creationProof.signatureHex)` — on failure emit `DID_CREATION_FAILED` then throw `HederaAnchorFailedError`.
-7. Store the DID and DID document returned by Hiero; append requested linked-domain service endpoints in the local persisted document.
 8. Persist to DB via `didRepository.create`.
 9. Emit `DID_CREATED` audit event with `publicKeyMultibase` — never with private key.
-10. Return `{ did, didDocument, hederaTransactionId }`.
 
 **`resolveDID(did, requestId)`:**
 
-1. Validate DID format against did:hedera pattern. Throw `InvalidDIDFormatError` if not.
 2. `didRepository.findDidById` — throw `DIDNotFoundError` if null.
 3. Throw `DIDDeactivatedError` if `record.deactivatedAt` is set.
 4. Return the persisted `didDocument`. Emit `DID_RESOLVED` with `source: 'cache'`. Return result.
@@ -359,7 +298,6 @@ Current implementation exposes `resolveDID(did, { live: true })`, but live Mirro
 1. Validate DID format and service endpoint URL.
 2. Fetch active record (not found → `DIDNotFoundError`, deactivated → `DIDDeactivatedError`).
 3. Parse current DID document. Call `addServiceEndpoint` from helix-core. Catch `'already exists'` error → throw `ServiceEndpointAlreadyExistsError`.
-4. Re-anchor updated document on Hedera. Current live client does not support this yet; treat service endpoint updates as not adapter-ready in live Hedera mode.
 5. Update DB: `didRepository.updateDidDocument`.
 6. Emit `DID_UPDATED` audit event.
 7. Return updated DID document.
@@ -371,7 +309,6 @@ Same pattern. Catch `'not found'` → throw `ServiceEndpointNotFoundError`. Re-a
 **`deactivateDID(did, reason, requestId)`:**
 
 1. Fetch active record.
-2. Anchor deactivation marker on Hedera when live update support exists. Current behavior is local deactivation with best-effort anchoring that may fail without blocking local state.
 3. `didRepository.deactivate(did)`.
 4. Emit `DID_DEACTIVATED` audit event.
 
@@ -411,8 +348,6 @@ serviceEndpoint: string, pattern ^https://, required
 ```
 reason: string, minLength 1, maxLength 500, required
 ```
-
-**DID path parameter pattern:** `^did:hedera:testnet:[a-zA-Z0-9._-]+$`
 
 **Response schemas:** All defined in OpenAPI components. `ErrorResponse` schema has `error.code`, `error.message`, `error.requestId` — all required.
 
@@ -481,8 +416,6 @@ Response body always:
 PrismaClient
   → DidRepository
   → AuditLogger (ApiAuditLogger)
-  → HederaHIEROClient
-  → DIDService(didRepository, hederaClient, auditLogger)
   → register didRoutes({ didService })
 ```
 
@@ -506,7 +439,6 @@ Constructor takes `(http: HttpAdapter, wallet: AgentWallet)`.
 
 Methods:
 
-- `createDID(options: { subjectType, domains? }): Promise<CreateDIDResult>` — direct DID creation helper for non-onboarding use. Current live onboarding uses `requestOnboardingChallenge`/`completeOnboarding` so the SDK can sign the Hiero DID creation payload locally. Private key is never transmitted.
 - `resolveDID(did: string, options?: { live?: boolean }): Promise<ResolveDIDResult>`
 - `addServiceEndpoint(did: string, endpoint): Promise<UpdateDIDResult>`
 - `removeServiceEndpoint(did: string, endpointId: string): Promise<UpdateDIDResult>`
@@ -544,11 +476,8 @@ Methods:
 
 ### Integration Tests — `helix-api/tests/integration/did.integration.test.ts`
 
-Setup: real PostgreSQL (from docker-compose.test.yml), MockHederaClient, ApiAuditLogger. `afterEach` truncates all tables. `afterAll` closes app and disconnects Prisma.
-
 Tests:
 
-- Live onboarding DID creation → DID matches did:hedera pattern and returns a Hiero transaction marker
 - `POST /v1/dids` with domains → 201, didDocument.service has correct entry
 - `POST /v1/dids` same public key twice → 409 `DID_ALREADY_EXISTS`
 - `POST /v1/dids` invalid public key (too short) → 400 `VALIDATION_ERROR`
@@ -558,7 +487,6 @@ Tests:
 - `GET /v1/dids/:did` unknown DID → 404 `DID_NOT_FOUND`
 - `GET /v1/dids/:did` malformed DID → 400
 - `GET /v1/dids/:did` after deactivation → 410 `DID_DEACTIVATED`
-- `POST /v1/dids/:did/services` → currently not adapter-ready in live Hedera mode until update anchoring is implemented
 - `POST /v1/dids/:did/services` duplicate ID → 409 `SERVICE_ENDPOINT_ALREADY_EXISTS`
 - `DELETE /v1/dids/:did/services/:endpointId` → 200, service removed
 - `DELETE /v1/dids/:did/services/:endpointId` nonexistent → 404 `SERVICE_ENDPOINT_NOT_FOUND`
@@ -578,16 +506,11 @@ Tests:
 
 ## Story 1 Acceptance Criteria
 
-- [ ] Live onboarding creates did:hedera DIDs through Hiero prepare/submit flow; SDK signs creation payload locally
-- [ ] `GET /v1/dids/:did` resolves from persisted DB state; `?live=true` must not be documented as live until Mirror Node/Hiero resolver support is implemented
-- [ ] Service endpoint updates and deactivation are locally represented; live Hedera update anchoring remains future work unless `anchorDocument` is replaced with a real Hiero update flow
 - [ ] `POST /v1/dids/:did/deactivate` deactivates DID locally — all subsequent operations return 410
 - [ ] All error codes defined in helix-core; all error responses match structured format
 - [ ] All B1 audit events from AL-1 are emitted — verified by integration tests via DB assertions
 - [ ] No private key in any log, error response, or audit entry — verified by security tests
-- [ ] MockHederaClient used in all unit and integration tests — no real Hedera calls in CI
 - [ ] OpenAPI spec complete for all B1 endpoints before implementation
 - [ ] Unit test coverage ≥ 95% for helix-core crypto and did modules
 - [ ] All security tests pass and none are skipped
-- [ ] `decisions.md` updated with @hiero-did-sdk packages and @hashgraph/sdk entries
 - [ ] `pnpm run build` compiles without errors

@@ -10,33 +10,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { 
-  AgentVCSchema,
-  AuditEvents,
-  DelegationDepthExceededError,
-  DelegationNotPermittedError,
-  DelegationParentVCNotFoundError,
-  HelixError, 
-  ErrorCode, 
-  createStatusList, 
-  setBit, 
+import {
+  HelixError,
+  ErrorCode,
+  createStatusList,
+  setBit,
   buildStatusListCredential,
   ALLOWED_PRIVILEGE_SCOPES,
   SCOPE_PATTERN,
   base58btcEncode,
   derivePublicKey,
   hashCanonicalPayload,
+  resolveDID as resolveDIDCore,
   signBytes,
-  validateScopeSubset,
   type HelixVC,
   type SignedVC,
-  type SignedVP,
   VPMultipleActiveVCError,
 } from '@helix-id/core';
 import * as crypto from 'node:crypto';
 import { VcRepository } from '../../repositories/vc.repository.js';
 import type { IDIDService } from '../did/did.service.js';
-import type { IVPService } from '../vp/IVPService.js';
 import type { ApiAuditLogger } from '../../audit/index.js';
 import type { ICache } from '../../cache/ICache.js';
 import { NoopCache } from '../../cache/NoopCache.js';
@@ -55,7 +48,7 @@ type StoredCredentialJson = {
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 }
 
 function asSignedVC(value: unknown): SignedVC {
@@ -105,32 +98,28 @@ export interface RenewVCOptions {
  * Interface for Verifiable Credential lifecycle operations.
  */
 export interface IVCService {
-  findActiveBySubjectDid(subjectDid: string, vcType?: string): Promise<Record<string, unknown> | null>;
+  findActiveBySubjectDid(
+    subjectDid: string,
+    vcType?: string,
+  ): Promise<Record<string, unknown> | null>;
   issueVC(params: IssueVCParams, requestId: string): Promise<IssueVCResult>;
   getVC(vcId: string, requestId: string): Promise<VCDetails>;
-  revokeVC(vcId: string, requestId: string): Promise<{ vcId: string; revoked: true; revokedAt: string }>;
-  renewVC(vcId: string, overrides: RenewVCOptions, requestId: string): Promise<IssueVCResult & { previousVcId: string }>;
+  revokeVC(
+    vcId: string,
+    requestId: string,
+  ): Promise<{ vcId: string; revoked: true; revokedAt: string }>;
+  renewVC(
+    vcId: string,
+    overrides: RenewVCOptions,
+    requestId: string,
+  ): Promise<IssueVCResult & { previousVcId: string }>;
   getVCStatus(vcId: string): Promise<'active' | 'revoked' | 'expired'>;
-  findRecordByVcId(vcId: string): Promise<{ vcId: string; vc: Record<string, unknown>; status: 'active' | 'revoked' | 'expired' } | null>;
-  delegateVC(params: DelegateVCParams, requestId: string): Promise<DelegateVCResult>;
+  findRecordByVcId(vcId: string): Promise<{
+    vcId: string;
+    vc: Record<string, unknown>;
+    status: 'active' | 'revoked' | 'expired';
+  } | null>;
   getStatusList(listId: string): Promise<ReturnType<typeof buildStatusListCredential>>;
-}
-
-export interface DelegateVCParams {
-  delegatorVP: SignedVP;
-  delegateeAgentDid: string;
-  requestedScopes: string[];
-  expiresInSeconds?: number | undefined;
-}
-
-export interface DelegateVCResult {
-  vcId: string;
-  delegateeAgentDid: string;
-  delegatedFrom: string;
-  delegationDepth: number;
-  scopes: string[];
-  expiresAt: string;
-  vc: SignedVC;
 }
 
 /**
@@ -138,7 +127,6 @@ export interface DelegateVCResult {
  */
 export class VCService implements IVCService {
   private readonly DEFAULT_STATUS_LIST_ID = 'helix-status-list-1';
-  private vpService: IVPService | undefined;
 
   constructor(
     private readonly vcRepo: VcRepository,
@@ -151,26 +139,38 @@ export class VCService implements IVCService {
     private readonly statusListCacheTtlSeconds = 60,
   ) {}
 
-  setVPService(vpService: IVPService): void {
-    this.vpService = vpService;
-  }
-
-  async findActiveBySubjectDid(subjectDid: string, vcType?: string): Promise<Record<string, unknown> | null> {
+  async findActiveBySubjectDid(
+    subjectDid: string,
+    vcType?: string,
+  ): Promise<Record<string, unknown> | null> {
     const records = await this.vcRepo.findActiveBySubjectDid(subjectDid, vcType);
     if (records.length > 1) {
       throw new VPMultipleActiveVCError();
     }
     const record = records.at(-1);
     if (!record) return null;
-    return (typeof record.vcJson === 'string' ? JSON.parse(record.vcJson) : record.vcJson) as Record<string, unknown>;
+    return (
+      typeof record.vcJson === 'string' ? JSON.parse(record.vcJson) : record.vcJson
+    ) as Record<string, unknown>;
   }
 
-  async findActiveByVcIdForSubject(vcId: string, subjectDid: string, vcType?: string): Promise<Record<string, unknown> | null> {
+  async findActiveByVcIdForSubject(
+    vcId: string,
+    subjectDid: string,
+    vcType?: string,
+  ): Promise<Record<string, unknown> | null> {
     const record = await this.vcRepo.findByVcId(vcId);
-    if (!record || record.subjectDid !== subjectDid || record.revokedAt || record.expiresAt.getTime() <= Date.now()) {
+    if (
+      !record ||
+      record.subjectDid !== subjectDid ||
+      record.revokedAt ||
+      record.expiresAt.getTime() <= Date.now()
+    ) {
       return null;
     }
-    const vc = (typeof record.vcJson === 'string' ? JSON.parse(record.vcJson) : record.vcJson) as Record<string, unknown>;
+    const vc = (
+      typeof record.vcJson === 'string' ? JSON.parse(record.vcJson) : record.vcJson
+    ) as Record<string, unknown>;
     if (vcType) {
       const types = Array.isArray(vc['type']) ? vc['type'] : [];
       if (!types.includes(vcType)) return null;
@@ -184,22 +184,42 @@ export class VCService implements IVCService {
       await this.didService.resolveDID(params.subjectDid, requestId);
     } catch (err: unknown) {
       if (err instanceof HelixError && err.code === ErrorCode.DID_NOT_FOUND) {
-        throw new HelixError(ErrorCode.VC_SUBJECT_DID_NOT_FOUND, 'Subject DID not found', 404);
+        try {
+          await resolveDIDCore(params.subjectDid);
+        } catch {
+          throw new HelixError(ErrorCode.VC_SUBJECT_DID_NOT_FOUND, 'Subject DID not found', 404);
+        }
+      } else {
+        throw err;
       }
-      throw err;
     }
 
     // 2. Validate scopes (simplification for this story — real app would check a registry)
     if (params.subjectType === 'agent' && (!params.privilegeScopes?.length || !params.agentName)) {
-      throw new HelixError(ErrorCode.VALIDATION_ERROR, 'Agent VCs require privilegeScopes and agentName', 400);
+      throw new HelixError(
+        ErrorCode.VALIDATION_ERROR,
+        'Agent VCs require privilegeScopes and agentName',
+        400,
+      );
     }
     if (params.subjectType === 'user' && (!params.userId || params.privilegeScopes?.length)) {
-      throw new HelixError(ErrorCode.VALIDATION_ERROR, 'User VCs require userId and must not include privilegeScopes', 400);
+      throw new HelixError(
+        ErrorCode.VALIDATION_ERROR,
+        'User VCs require userId and must not include privilegeScopes',
+        400,
+      );
     }
     for (const scope of params.privilegeScopes ?? []) {
-        if (!SCOPE_PATTERN.test(scope) || !(ALLOWED_PRIVILEGE_SCOPES as readonly string[]).includes(scope)) {
-          throw new HelixError(ErrorCode.VC_INVALID_PRIVILEGE_SCOPE, `Invalid scope format: ${scope}`, 400);
-        }
+      if (
+        !SCOPE_PATTERN.test(scope) ||
+        !(ALLOWED_PRIVILEGE_SCOPES as readonly string[]).includes(scope)
+      ) {
+        throw new HelixError(
+          ErrorCode.VC_INVALID_PRIVILEGE_SCOPE,
+          `Invalid scope format: ${scope}`,
+          400,
+        );
+      }
     }
 
     // 3. Claim status list index
@@ -210,7 +230,11 @@ export class VCService implements IVCService {
     }
 
     if (list.nextIndex >= 131072) {
-      throw new HelixError(ErrorCode.STATUS_LIST_INDEX_EXHAUSTED, 'Default status list is full', 503);
+      throw new HelixError(
+        ErrorCode.STATUS_LIST_INDEX_EXHAUSTED,
+        'Default status list is full',
+        503,
+      );
     }
 
     await this.assertIssuerSigningKeyMatches(requestId);
@@ -230,38 +254,45 @@ export class VCService implements IVCService {
       statusListIndex: claimedIndex.toString(),
       statusListCredential: `${this.apiBaseUrl}/v1/status-list/${this.DEFAULT_STATUS_LIST_ID}`,
     };
-    const credential: HelixVC = params.subjectType === 'agent' ? {
-      '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helix-id.io/contexts/v1'],
-      id: vcId,
-      type: ['VerifiableCredential', 'HelixAgentCredential'],
-      issuer: this.issuerDid,
-      validFrom: now.toISOString(),
-      validUntil: expiresAt.toISOString(),
-      credentialStatus,
-      credentialSubject: {
-        id: params.subjectDid,
-        type: 'HelixAgent',
-        privilegeScopes: params.privilegeScopes!,
-        agentName: params.agentName!,
-        ...(params.delegatedFrom ? { delegatedFrom: params.delegatedFrom } : {}),
-        ...(params.delegationDepth === undefined ? {} : { delegationDepth: params.delegationDepth }),
-        ...(params.maxDelegationDepth === undefined ? {} : { maxDelegationDepth: params.maxDelegationDepth }),
-        ...(params.parentVcId ? { parentVcId: params.parentVcId } : {}),
-      },
-    } : {
-      '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helix-id.io/contexts/v1'],
-      id: vcId,
-      type: ['VerifiableCredential', 'HelixUserCredential'],
-      issuer: this.issuerDid,
-      validFrom: now.toISOString(),
-      validUntil: expiresAt.toISOString(),
-      credentialStatus,
-      credentialSubject: {
-        id: params.subjectDid,
-        type: 'HelixUser',
-        userId: params.userId!,
-      },
-    };
+    const credential: HelixVC =
+      params.subjectType === 'agent'
+        ? {
+            '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helix-id.io/contexts/v1'],
+            id: vcId,
+            type: ['VerifiableCredential', 'HelixAgentCredential'],
+            issuer: this.issuerDid,
+            validFrom: now.toISOString(),
+            validUntil: expiresAt.toISOString(),
+            credentialStatus,
+            credentialSubject: {
+              id: params.subjectDid,
+              type: 'HelixAgent',
+              privilegeScopes: params.privilegeScopes!,
+              agentName: params.agentName!,
+              ...(params.delegatedFrom ? { delegatedFrom: params.delegatedFrom } : {}),
+              ...(params.delegationDepth === undefined
+                ? {}
+                : { delegationDepth: params.delegationDepth }),
+              ...(params.maxDelegationDepth === undefined
+                ? {}
+                : { maxDelegationDepth: params.maxDelegationDepth }),
+              ...(params.parentVcId ? { parentVcId: params.parentVcId } : {}),
+            },
+          }
+        : {
+            '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helix-id.io/contexts/v1'],
+            id: vcId,
+            type: ['VerifiableCredential', 'HelixUserCredential'],
+            issuer: this.issuerDid,
+            validFrom: now.toISOString(),
+            validUntil: expiresAt.toISOString(),
+            credentialStatus,
+            credentialSubject: {
+              id: params.subjectDid,
+              type: 'HelixUser',
+              userId: params.userId!,
+            },
+          };
 
     // 5. Sign VC (SHA-256 + Ed25519)
     const signedVc = await this.signCredential(credential);
@@ -332,7 +363,11 @@ export class VCService implements IVCService {
     return 'active';
   }
 
-  async findRecordByVcId(vcId: string): Promise<{ vcId: string; vc: Record<string, unknown>; status: 'active' | 'revoked' | 'expired' } | null> {
+  async findRecordByVcId(vcId: string): Promise<{
+    vcId: string;
+    vc: Record<string, unknown>;
+    status: 'active' | 'revoked' | 'expired';
+  } | null> {
     const record = await this.vcRepo.findByVcId(vcId);
     if (!record) return null;
     let status: 'active' | 'revoked' | 'expired' = 'active';
@@ -345,89 +380,10 @@ export class VCService implements IVCService {
     };
   }
 
-  async delegateVC(params: DelegateVCParams, requestId: string): Promise<DelegateVCResult> {
-    if (!this.vpService) {
-      throw new Error('vp_service_not_configured');
-    }
-
-    const verification = await this.vpService.verifyVP(params.delegatorVP, requestId);
-    const parentVcId = getEmbeddedVcId(params.delegatorVP);
-    const parentRecord = await this.vcRepo.findByVcId(parentVcId);
-    if (!parentRecord) {
-      throw new DelegationParentVCNotFoundError();
-    }
-    if (parentRecord.revokedAt) {
-      throw new HelixError(ErrorCode.DELEGATION_PARENT_VC_REVOKED, 'Parent VC has been revoked', 400);
-    }
-    if (parentRecord.expiresAt.getTime() <= Date.now()) {
-      throw new DelegationNotPermittedError('Parent VC has expired');
-    }
-
-    const parentVC = AgentVCSchema.parse(asRecord(parentRecord.vcJson));
-    if (parentVC.credentialSubject.id !== verification.agentDid) {
-      throw new DelegationNotPermittedError('Delegator VP does not match parent VC holder');
-    }
-
-    const parentDepth = parentVC.credentialSubject.delegationDepth ?? 0;
-    const maxDepth = parentVC.credentialSubject.maxDelegationDepth ?? 0;
-    if (maxDepth <= 0) {
-      throw new DelegationNotPermittedError();
-    }
-    if (parentDepth >= maxDepth) {
-      throw new DelegationDepthExceededError();
-    }
-
-    validateScopeSubset(parentVC.credentialSubject.privilegeScopes, params.requestedScopes);
-
-    try {
-      await this.didService.resolveDID(params.delegateeAgentDid, requestId);
-    } catch (err: unknown) {
-      if (err instanceof HelixError && err.code === ErrorCode.DID_NOT_FOUND) {
-        throw new HelixError(ErrorCode.VC_SUBJECT_DID_NOT_FOUND, 'Subject DID not found', 404);
-      }
-      throw err;
-    }
-
-    const depth = parentDepth + 1;
-    const result = await this.issueVC(
-      {
-        subjectDid: params.delegateeAgentDid,
-        subjectType: 'agent',
-        privilegeScopes: params.requestedScopes,
-        agentName: params.delegateeAgentDid,
-        expiresInSeconds: params.expiresInSeconds ?? 3600,
-        delegatedFrom: verification.agentDid,
-        delegationDepth: depth,
-        maxDelegationDepth: maxDepth,
-        parentVcId,
-      },
-      requestId,
-    );
-
-    await this.audit.log({
-      event: AuditEvents.VC_DELEGATED,
-      timestamp: new Date().toISOString(),
-      requestId,
-      parentVcId,
-      childVcId: result.vcId,
-      delegatingAgentDid: verification.agentDid,
-      delegateeAgentDid: params.delegateeAgentDid,
-      delegationDepth: depth,
-      scopes: params.requestedScopes,
-    });
-
-    return {
-      vcId: result.vcId,
-      delegateeAgentDid: params.delegateeAgentDid,
-      delegatedFrom: verification.agentDid,
-      delegationDepth: depth,
-      scopes: params.requestedScopes,
-      expiresAt: result.expiresAt,
-      vc: result.vc,
-    };
-  }
-
-  async revokeVC(vcId: string, requestId: string): Promise<{ vcId: string; revoked: true; revokedAt: string }> {
+  async revokeVC(
+    vcId: string,
+    requestId: string,
+  ): Promise<{ vcId: string; revoked: true; revokedAt: string }> {
     const record = await this.vcRepo.findByVcId(vcId);
     if (!record) {
       throw new HelixError(ErrorCode.VC_NOT_FOUND, 'Credential not found', 404);
@@ -441,7 +397,7 @@ export class VCService implements IVCService {
     if (!list) throw new Error('Status list missing during revocation');
 
     const newEncoded = setBit(list.encodedList, record.statusListIndex, 1);
-    
+
     const updatedRecord = await this.vcRepo.revokeVc(vcId, this.DEFAULT_STATUS_LIST_ID, newEncoded);
     await this.statusListCache.delete(this.DEFAULT_STATUS_LIST_ID);
 
@@ -460,7 +416,11 @@ export class VCService implements IVCService {
     };
   }
 
-  async renewVC(vcId: string, overrides: RenewVCOptions, requestId: string): Promise<IssueVCResult & { previousVcId: string }> {
+  async renewVC(
+    vcId: string,
+    overrides: RenewVCOptions,
+    requestId: string,
+  ): Promise<IssueVCResult & { previousVcId: string }> {
     const record = await this.vcRepo.findByVcId(vcId);
     if (!record) {
       throw new HelixError(ErrorCode.VC_NOT_FOUND, 'Credential not found', 404);
@@ -471,15 +431,19 @@ export class VCService implements IVCService {
 
     const vcJson = asRecord(record.vcJson) as StoredCredentialJson;
     const subject = getCredentialSubject(vcJson);
-    const newVcResult = await this.issueVC({
-      subjectDid: record.subjectDid,
-      subjectType: record.subjectType as 'agent' | 'user',
-      privilegeScopes: overrides.privilegeScopes || (record.privilegeScopes as unknown as string[]),
-      agentName: subject.agentName,
-      userId: subject.userId,
-      expiresInSeconds: overrides.expiresInSeconds,
-      // Carry over other metadata if needed
-    }, requestId);
+    const newVcResult = await this.issueVC(
+      {
+        subjectDid: record.subjectDid,
+        subjectType: record.subjectType as 'agent' | 'user',
+        privilegeScopes:
+          overrides.privilegeScopes || (record.privilegeScopes as unknown as string[]),
+        agentName: subject.agentName,
+        userId: subject.userId,
+        expiresInSeconds: overrides.expiresInSeconds,
+        // Carry over other metadata if needed
+      },
+      requestId,
+    );
 
     await this.vcRepo.markAsRenewed(vcId, newVcResult.vcId);
 
@@ -501,12 +465,7 @@ export class VCService implements IVCService {
   async getStatusList(listId: string): Promise<ReturnType<typeof buildStatusListCredential>> {
     const cached = await this.statusListCache.get(listId);
     if (cached) {
-      return buildStatusListCredential(
-        listId,
-        cached,
-        this.issuerDid,
-        this.apiBaseUrl
-      );
+      return buildStatusListCredential(listId, cached, this.issuerDid, this.apiBaseUrl);
     }
 
     const list = await this.vcRepo.findStatusListById(listId);
@@ -515,12 +474,7 @@ export class VCService implements IVCService {
     }
     await this.statusListCache.set(listId, list.encodedList, this.statusListCacheTtlSeconds);
 
-    return buildStatusListCredential(
-      listId,
-      list.encodedList,
-      this.issuerDid,
-      this.apiBaseUrl
-    );
+    return buildStatusListCredential(listId, list.encodedList, this.issuerDid, this.apiBaseUrl);
   }
 
   private async signCredential(credential: HelixVC): Promise<SignedVC> {
@@ -544,7 +498,11 @@ export class VCService implements IVCService {
     try {
       issuerDocument = await this.didService.resolveDID(this.issuerDid, requestId);
     } catch {
-      throw new HelixError(ErrorCode.VC_ISSUER_NOT_FOUND, 'Configured issuer DID could not be resolved', 500);
+      throw new HelixError(
+        ErrorCode.VC_ISSUER_NOT_FOUND,
+        'Configured issuer DID could not be resolved',
+        500,
+      );
     }
 
     const expectedPublicKey = derivePublicKey(this.signingKeyHex).toLowerCase();
@@ -558,12 +516,4 @@ export class VCService implements IVCService {
       );
     }
   }
-}
-
-function getEmbeddedVcId(signedVP: SignedVP): string {
-  const vc = signedVP.verifiableCredential[0];
-  if (!vc || typeof vc.id !== 'string') {
-    throw new HelixError(ErrorCode.VP_INVALID_STRUCTURE, 'Missing embedded VC id', 400);
-  }
-  return vc.id;
 }

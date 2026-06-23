@@ -3,38 +3,45 @@ version: '3.9'
 services:
   postgres:
     image: postgres:16-alpine
+    profiles: ['postgres']
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: helixid
     ports:
-      - "5432:5432"
+      - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d helixid"]
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d helixid']
       interval: 5s
       timeout: 5s
       retries: 5
+
+  redis:
+    image: redis:7-alpine
+    profiles: ['redis']
+    ports:
+      - '6379:6379'
 
   api:
     build:
       context: .
       dockerfile: helix-api/Dockerfile
     ports:
-      - "3000:3000"
+      - '3000:3000'
     environment:
       NODE_ENV: development
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/helixid
+      HELIX_STORAGE_ADAPTER: sqlite
+      HELIX_SQLITE_PATH: /tmp/helixid.sqlite
+      HELIX_CACHE_ADAPTER: memory
       DID_METHOD: web
       DID_DOMAIN: localhost:3000
       API_BASE_URL: http://localhost:3000
       HELIX_ADMIN_API_KEY: dev-admin-key-0001
       HELIX_SIGNING_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
       PORT: 3000
-    depends_on:
-      postgres:
-        condition: service_healthy
+    depends_on: []
 
 volumes:
   postgres_data:

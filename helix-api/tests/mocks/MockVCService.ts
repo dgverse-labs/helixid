@@ -1,5 +1,10 @@
-import { createStatusList, setBit, type SignedVP } from '@helix-id/core';
-import type { IVCService, IssueVCInput, IssueVCResult, VCStatus } from '../../src/services/vc/IVCService.js';
+import { createStatusList, setBit } from '@helix-id/core';
+import type {
+  IVCService,
+  IssueVCInput,
+  IssueVCResult,
+  VCStatus,
+} from '../../src/services/vc/IVCService.js';
 
 export class MockVCService implements IVCService {
   private status: VCStatus = 'active';
@@ -11,7 +16,7 @@ export class MockVCService implements IVCService {
       statusListCredential: 'http://localhost:3000/v1/status-list/helix-status-list-1',
       statusListIndex: '0',
     },
-    credentialSubject: { privilegeScopes: ['read'] }
+    credentialSubject: { privilegeScopes: ['read'] },
   };
 
   setStatus(status: VCStatus): void {
@@ -22,7 +27,10 @@ export class MockVCService implements IVCService {
     this.activeVC = vc;
   }
 
-  async findActiveBySubjectDid(_subjectDid: string, vcType?: string): Promise<Record<string, unknown> | null> {
+  async findActiveBySubjectDid(
+    _subjectDid: string,
+    vcType?: string,
+  ): Promise<Record<string, unknown> | null> {
     if (!this.activeVC) return null;
     if (vcType) {
       const types = (this.activeVC['type'] as string[]) || [];
@@ -31,7 +39,11 @@ export class MockVCService implements IVCService {
     return this.activeVC;
   }
 
-  async findActiveByVcIdForSubject(vcId: string, _subjectDid: string, vcType?: string): Promise<Record<string, unknown> | null> {
+  async findActiveByVcIdForSubject(
+    vcId: string,
+    _subjectDid: string,
+    vcType?: string,
+  ): Promise<Record<string, unknown> | null> {
     if (!this.activeVC || this.activeVC['id'] !== vcId) return null;
     if (vcType) {
       const types = (this.activeVC['type'] as string[]) || [];
@@ -49,7 +61,9 @@ export class MockVCService implements IVCService {
     return { credentialSubject: { encodedList: list } };
   }
 
-  async findRecordByVcId(vcId: string): Promise<{ vcId: string; vc: Record<string, unknown>; status: VCStatus } | null> {
+  async findRecordByVcId(
+    vcId: string,
+  ): Promise<{ vcId: string; vc: Record<string, unknown>; status: VCStatus } | null> {
     if (!this.activeVC || this.activeVC['id'] !== vcId) return null;
     return { vcId, vc: this.activeVC, status: this.status };
   }
@@ -58,7 +72,10 @@ export class MockVCService implements IVCService {
   async issueVC(input: IssueVCInput, _requestId: string): Promise<IssueVCResult> {
     const vc = {
       id: 'vc:mock:issued',
-      type: ['VerifiableCredential', input.subjectType === 'agent' ? 'HelixAgentCredential' : 'HelixUserCredential'],
+      type: [
+        'VerifiableCredential',
+        input.subjectType === 'agent' ? 'HelixAgentCredential' : 'HelixUserCredential',
+      ],
       credentialSubject: { id: input.subjectDid },
       validUntil: new Date(Date.now() + input.expiresInSeconds * 1000).toISOString(),
     };
@@ -67,34 +84,6 @@ export class MockVCService implements IVCService {
       vc,
       statusListIndex: 0,
       expiresAt: vc.validUntil,
-    };
-  }
-
-  async delegateVC(
-    _input: {
-      delegatorVP: SignedVP;
-      delegateeAgentDid: string;
-      requestedScopes: string[];
-      expiresInSeconds?: number;
-    },
-  ): Promise<{
-    vcId: string;
-    delegateeAgentDid: string;
-    delegatedFrom: string;
-    delegationDepth: number;
-    scopes: string[];
-    expiresAt: string;
-    vc: Record<string, unknown>;
-  }> {
-    const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
-    return {
-      vcId: 'vc:mock:delegated',
-      delegateeAgentDid: _input.delegateeAgentDid,
-      delegatedFrom: 'did:hedera:testnet:delegator',
-      delegationDepth: 1,
-      scopes: _input.requestedScopes,
-      expiresAt,
-      vc: { id: 'vc:mock:delegated', expirationDate: expiresAt },
     };
   }
 }

@@ -1,46 +1,20 @@
-import { resolve } from 'node:path';
 import { HelixClient } from '../helix-sdk-js/src/client/HelixClient.js';
 import { AgentWallet } from '../helix-sdk-js/src/wallet/AgentWallet.js';
 
-const API_BASE_URL = 'http://localhost:3000';
-const REPO_ROOT = new URL('../', import.meta.url).pathname;
-const DEFAULT_WALLET_FILE_PATH = new URL('./helix-manual-agent-wallet.json', import.meta.url).pathname;
-const WALLET_PASSPHRASE = 'manual-passphrase';
-const AGENT_DOMAINS = ['https://manual.agent2.example.com'];
+const API_BASE_URL = process.env.HELIX_API_URL ?? 'http://localhost:3000';
+const BOOTSTRAP_TOKEN =
+  process.env.HELIX_BOOTSTRAP_TOKEN ?? 'enroll:8b37ab734afdc283255143f7';
+const WALLET_PASSPHRASE = process.env.WALLET_PASSPHRASE ?? 'manual-passphrase';
+const WALLET_FILE_PATH = process.argv[2] ?? './wallet.enc';
 
 async function main() {
-  const token = process.argv[2];
-  const walletFilePath = process.argv[3]
-    ? resolve(REPO_ROOT, process.argv[3])
-    : DEFAULT_WALLET_FILE_PATH;
-  if (!token) throw new Error('Usage: pnpm --filter @helix-id/api exec tsx ../tmp/manual-onboard.ts <enrollment-token> [wallet-file-path]');
-
+  const wallet = await AgentWallet.create(WALLET_FILE_PATH, WALLET_PASSPHRASE);
   const client = new HelixClient(API_BASE_URL);
+  const vc = await client.enroll(BOOTSTRAP_TOKEN, wallet);
 
-  const challenge = await client.requestOnboardingChallenge(token, AGENT_DOMAINS);
-
-  console.log('challenge', challenge);
-
-  const onboarding = await client.completeOnboarding(
-    challenge.challengeId,
-    challenge.nonce,
-    WALLET_PASSPHRASE,
-    walletFilePath
-  );
-
-  console.log('onboarding', onboarding);
-
-  const wallet = new AgentWallet();
-  const saved = await wallet.load(WALLET_PASSPHRASE, walletFilePath);
-
-  console.log('saved wallet', {
-    did: saved.did,
-    publicKeyHex: saved.publicKeyHex,
-    credentialCount: saved.credentials.length,
-    vcIds: saved.credentials.map((credential) => credential.vcId),
-    walletFilePath,
-    hasPrivateKey: !!saved.privateKeyHex
-  });
+  console.log('wallet.did:', wallet.did);
+  console.log('vc.id:', vc.id);
+  console.log('wallet.file:', WALLET_FILE_PATH);
 }
 
 main().catch((error) => {

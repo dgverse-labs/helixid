@@ -190,8 +190,6 @@ Cover: install, middleware usage (wrap a chain), tool wrapper usage (wrap indivi
 
 CrewAI is intentionally out of active Story 7 scope. It is a Python framework adapter and should be built only after `helix-sdk-py` exists.
 
-Rules for the future CrewAI story:
-
 - Package name: `helix-crewai` published as a Python package, imported as `helix_crewai`.
 - Location: `packages/crewai/`.
 - It must use `helix-sdk-py` for wallet loading, VP template retrieval, and local signing.

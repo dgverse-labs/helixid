@@ -17,6 +17,12 @@ export interface OnboardVerifyResult {
   vcId: string;
 }
 
+export interface EnrollResult {
+  agentDid: string;
+  vc: Record<string, unknown>;
+  vcId: string;
+}
+
 export interface UserChallengeVerifyResult {
   did: string;
   verified: true;
@@ -34,27 +40,44 @@ export interface ServiceEntry {
 
 export interface IAgentService {
   generateEnrollmentToken(
-    input: { agentName: string; requestedScopes: string[]; requestedDomains?: string[]; maxDelegationDepth?: number },
-    requestId: string
+    input: {
+      agentName: string;
+      requestedScopes: string[];
+      requestedDomains?: string[];
+      maxDelegationDepth?: number;
+    },
+    requestId: string,
   ): Promise<EnrollmentTokenResult>;
   processOnboardStep1(
     input: { enrollmentToken: string; publicKeyHex: string; domains?: string[] },
-    requestId: string
+    requestId: string,
   ): Promise<ChallengeResult>;
   processOnboardVerify(
     input: { challengeId: string; signature: string; didCreateSignature?: string },
-    requestId: string
+    requestId: string,
   ): Promise<OnboardVerifyResult>;
-  issueUserChallenge(input: { did: string; purpose: 'user_verification' }, requestId: string): Promise<ChallengeResult>;
+  enroll(
+    input: {
+      bootstrapToken: string;
+      agentDid: string;
+      timestamp: number;
+      proofSignature: string;
+    },
+    requestId: string,
+  ): Promise<EnrollResult>;
+  issueUserChallenge(
+    input: { did: string; purpose: 'user_verification' },
+    requestId: string,
+  ): Promise<ChallengeResult>;
   verifyUserChallenge(
     challengeId: string,
     input: { signature: string },
-    requestId: string
+    requestId: string,
   ): Promise<UserChallengeVerifyResult>;
   listServices(): Promise<{ services: ServiceEntry[] }>;
   getService(serviceName: string): Promise<ServiceEntry>;
   createService(
     input: Omit<ServiceEntry, 'metadata'> & { metadata: Record<string, unknown> },
-    requestId: string
+    requestId: string,
   ): Promise<ServiceEntry>;
 }

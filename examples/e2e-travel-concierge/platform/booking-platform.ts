@@ -3,7 +3,7 @@ import 'dotenv/config';
 import Fastify from 'fastify';
 import type { SignedVP } from '@helix-id/core';
 
-const helixApiUrl = process.env.HELIX_API_URL ?? process.env.API_BASE_URL ?? 'http://localhost:3000';
+const helixApiUrl = process.env.API_BASE_URL ?? 'http://localhost:3000';
 const targetService = process.env.HELIX_TARGET_SERVICE ?? 'amazon';
 const port = Number(process.env.BOOKING_PLATFORM_PORT ?? 3001);
 

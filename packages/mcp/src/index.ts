@@ -1,15 +1,3 @@
-export {
-  attachHelixVP,
-  encodeBase64UrlJson,
-  helixidMCPMiddleware,
-  type MCPError,
-  type MCPMiddleware,
-  type MCPMiddlewareOptions,
-  type MCPMiddlewareResult,
-  type MCPNext,
-  type MCPRequestLike,
-  type MCPToolCall,
-  type VerifiedHelixContext,
-  type VPAttachOptions,
-  type WalletLoader,
-} from './middleware.js';
+export { helixidMCPMiddleware } from './middleware.js';
+export { attachHelixVP } from './attach.js';
+export type { MCPMiddlewareOptions, AttachHelixVPOptions, MCPToolCall } from './types.js';

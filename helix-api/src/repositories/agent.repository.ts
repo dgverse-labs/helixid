@@ -1,4 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
+import type { SqliteStore } from '../storage/sqlite.js';
+import { sqliteLiteral } from '../storage/sqlite.js';
 
 type PrismaRaw = PrismaClient & {
   $queryRawUnsafe<T = unknown>(query: string, ...values: unknown[]): Promise<T>;
@@ -45,6 +47,99 @@ export interface ServiceRegistryRecord {
   updatedAt: Date;
 }
 
+type SqliteEnrollmentTokenRow = {
+  id: string;
+  token_hash: string;
+  agent_name: string;
+  requested_scopes: string;
+  requested_domains: string;
+  max_delegation_depth: number;
+  expires_at: string;
+  used_at: string | null;
+  created_at: string;
+};
+
+type SqliteChallengeRow = {
+  id: string;
+  challenge_id: string;
+  nonce: string;
+  did: string;
+  purpose: 'agent_onboarding' | 'user_verification';
+  pending_public_key_hex: string | null;
+  pending_domains: string | null;
+  pending_did_create_state_json: string | null;
+  pending_did_create_payload_hex: string | null;
+  expires_at: string;
+  verified_at: string | null;
+  created_at: string;
+  enrollment_token_id: string | null;
+};
+
+type SqliteServiceRow = {
+  id: string;
+  service_name: string;
+  display_name: string;
+  verified_domain: string;
+  public_key_multibase: string;
+  api_endpoint: string;
+  metadata: string;
+  active: number;
+  created_at: string;
+  updated_at: string;
+};
+
+function fromEnrollmentTokenRow(
+  row: SqliteEnrollmentTokenRow | undefined,
+): EnrollmentTokenRecord | null {
+  if (!row) return null;
+  return {
+    id: row.id,
+    tokenHash: row.token_hash,
+    agentName: row.agent_name,
+    requestedScopes: row.requested_scopes,
+    requestedDomains: row.requested_domains,
+    maxDelegationDepth: row.max_delegation_depth,
+    expiresAt: new Date(row.expires_at),
+    usedAt: row.used_at ? new Date(row.used_at) : null,
+    createdAt: new Date(row.created_at),
+  };
+}
+
+function fromChallengeRow(row: SqliteChallengeRow | undefined): ChallengeRecord | null {
+  if (!row) return null;
+  return {
+    id: row.id,
+    challengeId: row.challenge_id,
+    nonce: row.nonce,
+    did: row.did,
+    purpose: row.purpose,
+    pendingPublicKeyHex: row.pending_public_key_hex,
+    pendingDomains: row.pending_domains,
+    pendingDidCreateStateJson: row.pending_did_create_state_json,
+    pendingDidCreatePayloadHex: row.pending_did_create_payload_hex,
+    expiresAt: new Date(row.expires_at),
+    verifiedAt: row.verified_at ? new Date(row.verified_at) : null,
+    createdAt: new Date(row.created_at),
+    enrollmentTokenId: row.enrollment_token_id,
+  };
+}
+
+function fromServiceRow(row: SqliteServiceRow | undefined): ServiceRegistryRecord | null {
+  if (!row) return null;
+  return {
+    id: row.id,
+    serviceName: row.service_name,
+    displayName: row.display_name,
+    verifiedDomain: row.verified_domain,
+    publicKeyMultibase: row.public_key_multibase,
+    apiEndpoint: row.api_endpoint,
+    metadata: row.metadata,
+    active: row.active === 1,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+  };
+}
+
 function makeId(prefix: string): string {
   return `${prefix}:${Math.random().toString(16).slice(2, 14)}`;
 }
@@ -82,8 +177,10 @@ function requireEnrollmentTokenRow(row: EnrollmentTokenRecord | undefined): Enro
 }
 
 function hasRealRaw(prisma: PrismaClient): boolean {
-  return typeof (prisma as Partial<PrismaRaw>).$queryRawUnsafe === 'function'
-    && typeof (prisma as { $connect?: unknown }).$connect === 'function';
+  return (
+    typeof (prisma as Partial<PrismaRaw>).$queryRawUnsafe === 'function' &&
+    typeof (prisma as { $connect?: unknown }).$connect === 'function'
+  );
 }
 
 export class AgentRepository {
@@ -91,21 +188,26 @@ export class AgentRepository {
   private readonly challenges = new Map<string, ChallengeRecord>();
   private readonly services = new Map<string, ServiceRegistryRecord>();
 
-  constructor(private readonly prisma?: PrismaClient) {}
+  constructor(
+    private readonly prisma?: PrismaClient,
+    private readonly sqlite?: SqliteStore,
+  ) {}
 
   async createEnrollmentToken(
-    data: Omit<EnrollmentTokenRecord, 'id' | 'usedAt' | 'createdAt' | 'maxDelegationDepth'> & { maxDelegationDepth?: number }
+    data: Omit<EnrollmentTokenRecord, 'id' | 'usedAt' | 'createdAt' | 'maxDelegationDepth'> & {
+      maxDelegationDepth?: number;
+    },
   ): Promise<EnrollmentTokenRecord> {
     if (this.prisma) {
-      const record = await this.prisma.enrollmentToken.create({
+      const record = (await this.prisma.enrollmentToken.create({
         data: {
           tokenHash: data.tokenHash,
           agentName: data.agentName,
           requestedScopes: data.requestedScopes,
           requestedDomains: data.requestedDomains,
           expiresAt: data.expiresAt,
-        }
-      }) as EnrollmentTokenRecord;
+        },
+      })) as EnrollmentTokenRecord;
       if ((data.maxDelegationDepth ?? 0) > 0 && hasRealRaw(this.prisma)) {
         const rows = await (this.prisma as PrismaRaw).$queryRawUnsafe<EnrollmentTokenRecord[]>(
           `UPDATE "enrollment_tokens" SET "maxDelegationDepth" = $1 WHERE "id" = $2 RETURNING *`,
@@ -116,7 +218,39 @@ export class AgentRepository {
       }
       return data.maxDelegationDepth === undefined
         ? record
-        : { ...record, maxDelegationDepth: data.maxDelegationDepth ?? record.maxDelegationDepth ?? 0 };
+        : {
+            ...record,
+            maxDelegationDepth: data.maxDelegationDepth ?? record.maxDelegationDepth ?? 0,
+          };
+    }
+
+    if (this.sqlite) {
+      const id = makeId('et');
+      const now = new Date();
+      const maxDepth = data.maxDelegationDepth ?? 0;
+      this.sqlite.execute(`
+        INSERT INTO enrollment_tokens (
+          id, token_hash, agent_name, requested_scopes, requested_domains,
+          max_delegation_depth, expires_at, used_at, created_at
+        ) VALUES (
+          ${sqliteLiteral(id)},
+          ${sqliteLiteral(data.tokenHash)},
+          ${sqliteLiteral(data.agentName)},
+          ${sqliteLiteral(data.requestedScopes)},
+          ${sqliteLiteral(data.requestedDomains)},
+          ${sqliteLiteral(maxDepth)},
+          ${sqliteLiteral(data.expiresAt)},
+          NULL,
+          ${sqliteLiteral(now)}
+        )
+      `);
+      return {
+        id,
+        ...data,
+        maxDelegationDepth: maxDepth,
+        usedAt: null,
+        createdAt: now,
+      };
     }
 
     const record: EnrollmentTokenRecord = {
@@ -124,7 +258,7 @@ export class AgentRepository {
       ...data,
       maxDelegationDepth: data.maxDelegationDepth ?? 0,
       usedAt: null,
-      createdAt: new Date()
+      createdAt: new Date(),
     };
     this.enrollmentTokens.set(record.tokenHash, record);
     return record;
@@ -139,7 +273,15 @@ export class AgentRepository {
       return rows[0] ? rows[0] : null;
     }
     if (this.prisma) {
-      return this.prisma.enrollmentToken.findUnique({ where: { tokenHash } }) as Promise<EnrollmentTokenRecord | null>;
+      return this.prisma.enrollmentToken.findUnique({
+        where: { tokenHash },
+      }) as Promise<EnrollmentTokenRecord | null>;
+    }
+    if (this.sqlite) {
+      const rows = this.sqlite.query<SqliteEnrollmentTokenRow>(`
+        SELECT * FROM enrollment_tokens WHERE token_hash = ${sqliteLiteral(tokenHash)} LIMIT 1
+      `);
+      return fromEnrollmentTokenRow(rows[0]);
     }
 
     return this.enrollmentTokens.get(tokenHash) ?? null;
@@ -154,7 +296,15 @@ export class AgentRepository {
       return rows[0] ? rows[0] : null;
     }
     if (this.prisma) {
-      return this.prisma.enrollmentToken.findUnique({ where: { id } }) as Promise<EnrollmentTokenRecord | null>;
+      return this.prisma.enrollmentToken.findUnique({
+        where: { id },
+      }) as Promise<EnrollmentTokenRecord | null>;
+    }
+    if (this.sqlite) {
+      const rows = this.sqlite.query<SqliteEnrollmentTokenRow>(`
+        SELECT * FROM enrollment_tokens WHERE id = ${sqliteLiteral(id)} LIMIT 1
+      `);
+      return fromEnrollmentTokenRow(rows[0]);
     }
 
     for (const token of this.enrollmentTokens.values()) {
@@ -169,9 +319,21 @@ export class AgentRepository {
     if (this.prisma) {
       const result = await this.prisma.enrollmentToken.updateMany({
         where: { tokenHash, usedAt: null },
-        data: { usedAt: new Date() }
+        data: { usedAt: new Date() },
       });
       return result.count === 1;
+    }
+
+    if (this.sqlite) {
+      const now = new Date();
+      this.sqlite.execute(`
+        UPDATE enrollment_tokens
+        SET used_at = ${sqliteLiteral(now)}
+        WHERE token_hash = ${sqliteLiteral(tokenHash)}
+          AND used_at IS NULL
+      `);
+      const token = await this.findEnrollmentTokenByHash(tokenHash);
+      return Boolean(token?.usedAt && token.usedAt.getTime() === now.getTime());
     }
 
     const token = this.enrollmentTokens.get(tokenHash);
@@ -184,7 +346,7 @@ export class AgentRepository {
   }
 
   async createChallenge(
-    data: Omit<ChallengeRecord, 'id' | 'verifiedAt' | 'createdAt'>
+    data: Omit<ChallengeRecord, 'id' | 'verifiedAt' | 'createdAt'>,
   ): Promise<ChallengeRecord> {
     if (this.prisma) {
       const rows = await (this.prisma as PrismaRaw).$queryRawUnsafe<ChallengeRecord[]>(
@@ -217,11 +379,43 @@ export class AgentRepository {
       return toChallengeRecord(requireChallengeRow(rows[0]));
     }
 
+    if (this.sqlite) {
+      const id = makeId('chdb');
+      const now = new Date();
+      this.sqlite.execute(`
+        INSERT INTO challenges (
+          id, challenge_id, nonce, did, purpose, pending_public_key_hex,
+          pending_domains, pending_did_create_state_json, pending_did_create_payload_hex,
+          expires_at, verified_at, created_at, enrollment_token_id
+        ) VALUES (
+          ${sqliteLiteral(id)},
+          ${sqliteLiteral(data.challengeId)},
+          ${sqliteLiteral(data.nonce)},
+          ${sqliteLiteral(data.did)},
+          ${sqliteLiteral(data.purpose)},
+          ${sqliteLiteral(data.pendingPublicKeyHex)},
+          ${sqliteLiteral(data.pendingDomains)},
+          ${sqliteLiteral(data.pendingDidCreateStateJson ?? null)},
+          ${sqliteLiteral(data.pendingDidCreatePayloadHex ?? null)},
+          ${sqliteLiteral(data.expiresAt)},
+          NULL,
+          ${sqliteLiteral(now)},
+          ${sqliteLiteral(data.enrollmentTokenId)}
+        )
+      `);
+      return {
+        id,
+        ...data,
+        verifiedAt: null,
+        createdAt: now,
+      };
+    }
+
     const record: ChallengeRecord = {
       id: makeId('chdb'),
       ...data,
       verifiedAt: null,
-      createdAt: new Date()
+      createdAt: new Date(),
     };
     this.challenges.set(record.challengeId, record);
     return record;
@@ -234,6 +428,13 @@ export class AgentRepository {
         challengeId,
       );
       return rows[0] ? toChallengeRecord(rows[0]) : null;
+    }
+
+    if (this.sqlite) {
+      const rows = this.sqlite.query<SqliteChallengeRow>(`
+        SELECT * FROM challenges WHERE challenge_id = ${sqliteLiteral(challengeId)} LIMIT 1
+      `);
+      return fromChallengeRow(rows[0]);
     }
 
     return this.challenges.get(challengeId) ?? null;
@@ -249,6 +450,18 @@ export class AgentRepository {
       return toChallengeRecord(requireChallengeRow(rows[0]));
     }
 
+    if (this.sqlite) {
+      const now = new Date();
+      this.sqlite.execute(`
+        UPDATE challenges
+        SET verified_at = ${sqliteLiteral(now)}
+        WHERE challenge_id = ${sqliteLiteral(challengeId)}
+      `);
+      const challenge = await this.findChallengeById(challengeId);
+      if (!challenge) throw new Error('Challenge not found');
+      return challenge;
+    }
+
     const challenge = this.challenges.get(challengeId);
     if (!challenge) {
       throw new Error('Challenge not found');
@@ -259,12 +472,41 @@ export class AgentRepository {
   }
 
   async createService(
-    data: Omit<ServiceRegistryRecord, 'id' | 'active' | 'createdAt' | 'updatedAt'>
+    data: Omit<ServiceRegistryRecord, 'id' | 'active' | 'createdAt' | 'updatedAt'>,
   ): Promise<ServiceRegistryRecord> {
     if (this.prisma) {
       return this.prisma.serviceRegistry.create({
-        data
+        data,
       });
+    }
+
+    if (this.sqlite) {
+      const id = makeId('svc');
+      const now = new Date();
+      this.sqlite.execute(`
+        INSERT INTO service_registry (
+          id, service_name, display_name, verified_domain,
+          public_key_multibase, api_endpoint, metadata, active, created_at, updated_at
+        ) VALUES (
+          ${sqliteLiteral(id)},
+          ${sqliteLiteral(data.serviceName)},
+          ${sqliteLiteral(data.displayName)},
+          ${sqliteLiteral(data.verifiedDomain)},
+          ${sqliteLiteral(data.publicKeyMultibase)},
+          ${sqliteLiteral(data.apiEndpoint)},
+          ${sqliteLiteral(data.metadata)},
+          1,
+          ${sqliteLiteral(now)},
+          ${sqliteLiteral(now)}
+        )
+      `);
+      return {
+        id,
+        ...data,
+        active: true,
+        createdAt: now,
+        updatedAt: now,
+      };
     }
 
     const now = new Date();
@@ -273,7 +515,7 @@ export class AgentRepository {
       ...data,
       active: true,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     };
     this.services.set(record.serviceName, record);
     return record;
@@ -282,6 +524,16 @@ export class AgentRepository {
   async getServiceByName(serviceName: string): Promise<ServiceRegistryRecord | null> {
     if (this.prisma) {
       return this.prisma.serviceRegistry.findFirst({ where: { serviceName, active: true } });
+    }
+
+    if (this.sqlite) {
+      const rows = this.sqlite.query<SqliteServiceRow>(`
+        SELECT * FROM service_registry
+        WHERE service_name = ${sqliteLiteral(serviceName)}
+          AND active = 1
+        LIMIT 1
+      `);
+      return fromServiceRow(rows[0]);
     }
 
     const service = this.services.get(serviceName);
@@ -296,12 +548,30 @@ export class AgentRepository {
       return this.prisma.serviceRegistry.findUnique({ where: { serviceName } });
     }
 
+    if (this.sqlite) {
+      const rows = this.sqlite.query<SqliteServiceRow>(`
+        SELECT * FROM service_registry
+        WHERE service_name = ${sqliteLiteral(serviceName)}
+        LIMIT 1
+      `);
+      return fromServiceRow(rows[0]);
+    }
+
     return this.services.get(serviceName) ?? null;
   }
 
   async listActiveServices(): Promise<ServiceRegistryRecord[]> {
     if (this.prisma) {
       return this.prisma.serviceRegistry.findMany({ where: { active: true } });
+    }
+
+    if (this.sqlite) {
+      const rows = this.sqlite.query<SqliteServiceRow>(`
+        SELECT * FROM service_registry WHERE active = 1
+      `);
+      return rows
+        .map((row) => fromServiceRow(row))
+        .filter((v): v is ServiceRegistryRecord => Boolean(v));
     }
 
     return [...this.services.values()].filter((service) => service.active);

@@ -147,7 +147,6 @@ Add to OpenAPI spec before implementation.
 ```json
 {
   "delegatorVP": { /* Agent A's signed VP — proves A has authority */ },
-  "delegateeAgentDid": "did:hedera:testnet:...",
   "requestedScopes": ["read:orders"],
   "expiresInSeconds": 3600
 }
@@ -164,8 +163,6 @@ Validation:
 ```json
 {
   "vcId": "vc:helix:...",
-  "delegateeAgentDid": "did:hedera:testnet:...",
-  "delegatedFrom": "did:hedera:testnet:...",
   "delegationDepth": 1,
   "scopes": ["read:orders"],
   "expiresAt": "...",
@@ -222,7 +219,6 @@ Check if embedded leaf VC has `credentialSubject.delegationDepth > 0`. If yes, p
 9b. **Reconstruct chain from DB** — follow `credentialSubject.parentVcId` from the leaf VC through stored parent records until the root is reached. If any parent returns null, log `CHAIN_REJECTED` with `internalReason: 'parent_vc_not_found'`, return `VPVerificationFailedError`.
 
 9c. **Verify each VC in chain** — for each VC (including leaf):
-- Check `validUntil` is in future — if not, log `vc_expired`, return `VPVerificationFailedError`
 - Check revocation status via `vcService.getVCStatus(vc.id)` — if revoked, log `vc_revoked`, return `VPVerificationFailedError`
 - Verify VC signature against `HELIX_SIGNING_KEY` public key using `verifySignature` (all VCs signed by Helix ID) — if invalid, log `chain_signature_invalid`, return `VPVerificationFailedError`
 
@@ -297,8 +293,6 @@ Add error mappings in `HttpAdapter.ts` for all delegation error codes.
 - `extractChainFromVC` — leaf with 2-deep ancestry returns 3-element array root-first
 
 ### Integration Tests — `helix-api/tests/integration/delegation.integration.test.ts`
-
-Setup: real PostgreSQL, real DID service, real VC service, real VP service. `afterEach` truncates tables.
 
 Tests:
 

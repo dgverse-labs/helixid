@@ -83,13 +83,11 @@ If a vulnerability is already publicly known — disclosed elsewhere, under acti
 Vulnerabilities in any code within this repository, with particular priority for:
 
 - **Credential verification** — VC signature validation, proof formats, JWS/Ed25519 handling, JSON-LD canonicalization edge cases
-- **DID resolution** — `did:key`, `did:hedera`, and any added DID methods; resolution caching; DID document integrity
 - **Delegation chain validation** — chain walking, depth enforcement, scope subset checking, delegation attack vectors
 - **Revocation** — StatusList2021 bitstring handling, cache staleness leading to use-after-revocation, mirror node falsification attacks
 - **Key handling** — key generation, storage recommendations, serialization, constant-time violations, side-channel leakage
 - **OPA policy integration** — evaluation sandbox escape, input sanitization, policy bypass
-- **Hedera anchoring verification** — HCS message validation, proof binding, mirror node trust assumptions
-- **Framework middleware** — credential extraction, injection vectors, bypass of policy enforcement in LangChain / CrewAI / MCP integrations
+- **Framework middleware** — credential extraction, injection vectors, bypass of policy enforcement in LangChain / MCP integrations
 - **Supply-chain concerns** — tampered npm artifacts, typosquat risk on `@helixid/*` packages, release signing integrity
 
 **Cryptographic and protocol-level flaws are explicitly in scope even without a working exploit.** Timing-channel violations, constant-time lapses, incorrect proof format handling, or deviations from W3C VC 2.0 / DID 1.0 / StatusList specifications are valid reports. We do not require proof-of-concept exploits for crypto-layer issues.
@@ -148,12 +146,11 @@ What we do offer:
 If you are running HelixID in production, these are the highest-leverage things to get right. Not a substitute for full guidance in [`docs/security-model.md`](docs/security-model.md), but a useful starting point:
 
 - **Key custody:** Never store issuer or agent private keys in plaintext in source control, environment files committed to Git, or logs. Use a KMS, HSM, or at minimum encrypted-at-rest secret storage with IAM-scoped access.
-- **DID method selection:** Use `did:hedera` (or another ledger-anchored method) for production issuance. `did:key` has no revocation path — fine for dev, brittle in production.
-- **Revocation caches:** Configure reasonable TTLs. Over-aggressive caching leads to use-after-revocation. We recommend L1 ≤ 5 min, L2 ≤ 15 min, with HCS subscription for proactive invalidation on critical revocations.
-- **OPA policies:** Apply the same code review and testing rigor to `.rego` policies as to application code. Policy bugs are security bugs.
+- **Revocation caches:** Configure reasonable TTLs. Over-aggressive caching leads to use-after-revocation.
+- **Policy checks:** Treat authorization rules as security-critical code; review and test them with the same rigor as application logic.
 - **Delegation depth:** Set `maxDelegationDepth` explicitly on every credential. The default is conservative; do not disable the check.
 - **Clock skew:** Ensure reasonable clock synchronization. Credential expiration checks depend on it.
-- **Audit ingestion:** Treat HCS audit messages as append-only evidence. Do not rely on your application database as the sole audit trail.
+- **Audit ingestion:** Treat audit logs as append-only evidence. Do not rely on a single datastore as the sole audit trail.
 - **Subscribe to advisories:** Watch this repository with "Releases and security advisories" enabled, or subscribe via RSS to the [Security Advisories feed](https://github.com/nicedigverse/helixid/security/advisories).
 
 ---

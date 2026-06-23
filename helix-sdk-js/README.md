@@ -2,6 +2,8 @@
 
 TypeScript/JavaScript SDK for Helix ID — `HelixClient`, local signing, agent wallet management.
 
+> The SDK is designed for the current default API flow: local wallet handling and the standard API endpoints.
+
 ## Key Design Principles
 
 - **SA-1**: The agent's private key is generated locally and stored in `AgentWallet`. It is never transmitted to helix-api.

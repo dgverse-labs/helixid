@@ -1,35 +1,24 @@
-import { PrivateKey, TopicMessageSubmitTransaction } from '@hashgraph/sdk';
+import { PrivateKey } from '@hashgraph/sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildDIDDocument, generateKeyPair } from '@helix-id/core';
+import { generateKeyPair } from '@helix-id/core';
 import { publishStatusListToHCS } from '../src/status-list-publisher.js';
 
-const executeMock = vi.fn();
-const getReceiptMock = vi.fn();
-const closeMock = vi.fn();
+const { submitMessageMock, closeMock } = vi.hoisted(() => ({
+  submitMessageMock: vi.fn(),
+  closeMock: vi.fn(),
+}));
 
-const setOperatorMock = vi.fn();
+vi.mock('@hiero-did-sdk/hcs', () => ({
+  HcsMessageService: class MockHcsMessageService {
+    submitMessage = submitMessageMock;
+  },
+}));
 
-function MockTopicMessageSubmitTransaction(this: {
-  execute: typeof executeMock;
-  setTopicId: ReturnType<typeof vi.fn>;
-  setMessage: ReturnType<typeof vi.fn>;
-}) {
-  this.setTopicId = vi.fn().mockReturnThis();
-  this.setMessage = vi.fn().mockReturnThis();
-  this.execute = executeMock;
-}
-
-vi.mock('@hashgraph/sdk', async () => {
-  const actual = await vi.importActual<typeof import('@hashgraph/sdk')>('@hashgraph/sdk');
-  const mockClient = () => ({ close: closeMock, setOperator: setOperatorMock });
+vi.mock('../src/hiero-client.js', async () => {
+  const actual = await vi.importActual<typeof import('../src/hiero-client.js')>('../src/hiero-client.js');
   return {
     ...actual,
-    Client: {
-      forTestnet: vi.fn(mockClient),
-      forMainnet: vi.fn(mockClient),
-      forPreviewnet: vi.fn(mockClient),
-    },
-    TopicMessageSubmitTransaction: vi.fn(MockTopicMessageSubmitTransaction),
+    buildHederaClient: vi.fn(() => ({ close: closeMock })),
   };
 });
 
@@ -38,39 +27,36 @@ afterEach(() => {
 });
 
 describe('publishStatusListToHCS', () => {
-  it('submits the signed StatusList VC to the configured topic', async () => {
-    const key = generateKeyPair();
-    const didDocument = buildDIDDocument('did:hedera:testnet:0.0.123', key.publicKey);
+  it('submits the signed StatusList VC via HcsMessageService', async () => {
     const statusListVC = {
-      id: 'vc:status-list:1',
+      id: 'https://example.com/status/1',
       type: ['VerifiableCredential', 'BitstringStatusListCredential'],
-      issuer: didDocument.id,
+      issuer: 'did:web:example.com',
       proof: { type: 'Ed25519Signature2020' },
     };
-    getReceiptMock.mockResolvedValue({ status: { toString: () => 'SUCCESS' } });
-    executeMock.mockResolvedValue({
-      getReceipt: getReceiptMock,
-      transactionId: { toString: () => '0.0.1@1700000000.000000003' },
-    });
+    submitMessageMock.mockResolvedValueOnce({ transactionId: '0.0.1@1700000000.000000003' });
 
     const result = await publishStatusListToHCS(statusListVC as never, {
-      didDocument,
+      privateKeyHex: generateKeyPair().privateKey,
       operatorId: '0.0.123',
       operatorKey: PrivateKey.generateED25519().toString(),
       network: 'testnet',
       topicId: '0.0.456',
     });
 
-    expect(TopicMessageSubmitTransaction).toHaveBeenCalled();
+    expect(submitMessageMock).toHaveBeenCalledWith(expect.objectContaining({
+      topicId: '0.0.456',
+      message: JSON.stringify(statusListVC),
+    }));
     expect(result).toEqual({ transactionId: '0.0.1@1700000000.000000003' });
     expect(closeMock).toHaveBeenCalled();
   });
 
   it('throws HEDERA_ANCHOR_FAILED when publish fails', async () => {
-    executeMock.mockRejectedValueOnce(new Error('topic unavailable'));
+    submitMessageMock.mockRejectedValueOnce(new Error('topic unavailable'));
 
-    await expect(publishStatusListToHCS({ id: 'vc:status-list:1' } as never, {
-      didDocument: buildDIDDocument('did:hedera:testnet:0.0.123', generateKeyPair().publicKey),
+    await expect(publishStatusListToHCS({ id: 'https://example.com/status/1' } as never, {
+      privateKeyHex: generateKeyPair().privateKey,
       operatorId: '0.0.123',
       operatorKey: PrivateKey.generateED25519().toString(),
       network: 'testnet',

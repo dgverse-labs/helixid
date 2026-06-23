@@ -7,15 +7,12 @@ repository.
 ## What this document is
 
 A complete operational guide for running Helix ID yourself. Written for an operator
-who is comfortable with Node, Postgres, and environment configuration but has never
-set up a Hedera-connected service before. A reader who follows this document should
 arrive at a running Helix ID instance they fully understand and control.
 
 ## Tone and style
 
 - Task-oriented. Every section moves the reader forward.
 - Be explicit about why each configuration decision exists, not just what to set.
-- Do not assume Hedera knowledge. Explain every Hedera concept as it appears.
 - Use code blocks for every command, environment variable, and file path.
 - Where a decision has security implications, say so inline — do not defer to
   a separate security section.
@@ -27,24 +24,13 @@ arrive at a running Helix ID instance they fully understand and control.
 #### 1.1 Node Version
 The exact Node version required. How to verify. Why this version.
 
-#### 1.2 Postgres
-The minimum Postgres version. What Helix ID uses it for at a high level.
 No schema detail here — that belongs in section 4.
-
-#### 1.3 Hedera Account and Credentials
-What a Hedera account is, why it is needed, how to create one on testnet.
-Link to the Hedera portal. Explain operator account ID and private key
-without assuming the reader has used Hedera before.
 
 #### 1.4 Environment Overview
 A one-paragraph summary of what environment configuration controls.
 Tell the reader they will fill in a .env file and explain what
 happens if a required value is missing.
 
-### 2. Hedera Setup
-
-#### 2.1 Creating a Hedera Account
-Step by step. Testnet account creation via the Hedera portal. What the reader
 receives: an account ID (format: 0.0.XXXXX) and a private key.
 
 #### 2.2 Getting Testnet Credentials
@@ -52,8 +38,6 @@ Where to find the account ID and private key after creation. How to fund a
 testnet account with test HBAR. Why test HBAR is needed (HCS message fees).
 
 #### 2.3 Creating an HCS Topic
-What an HCS topic is: an ordered, append-only log on Hedera that Helix ID writes
-DID operations to. How to create one using the Hedera CLI or SDK. What the topic
 ID looks like (format: 0.0.XXXXX). Why Helix ID needs its own dedicated topic.
 
 #### 2.4 Testnet vs Mainnet Decision
@@ -69,19 +53,12 @@ finality guarantees. What does not change: the code, the API, the behavior.
 ##### 3.1.1 Database
 DATABASE_URL: format, example, what Prisma does with it.
 
-##### 3.1.2 Hedera Operator
-HEDERA_OPERATOR_ID: the account ID that pays for HCS transactions.
-HEDERA_OPERATOR_KEY: the private key for that account.
-HEDERA_NETWORK: testnet or mainnet.
-
 ##### 3.1.3 HCS Topic
-HEDERA_TOPIC_ID: the topic Helix ID writes DID operations to.
 What happens if this topic already has messages from a previous deployment.
 
 ##### 3.1.4 Helix VC Signing Key
 HELIX_SIGNING_KEY: the Ed25519 private key Helix ID uses to sign every VC it issues.
 HELIX_ISSUER_DID: the DID Helix ID presents as the VC issuer.
-Why these are separate from the Hedera operator credentials.
 Security note: this key signs every VC in the system. A compromised
 HELIX_SIGNING_KEY means an attacker can forge credentials for any agent.
 Treat it as the most sensitive credential in the entire deployment.
@@ -108,9 +85,7 @@ created in memory at API startup.
 
 #### 3.3 Secrets Management Recommendations
 Do not commit .env to version control. Use a secrets manager in production.
-Which variables are safe to log (HEDERA_NETWORK, HELIX_ISSUER_DID) and which
 are never logged (HELIX_SIGNING_KEY, HELIX_ADMIN_KEY,
-HEDERA_OPERATOR_KEY). Rotation procedure overview for each sensitive key.
 
 ### 4. Database Setup
 
@@ -137,7 +112,6 @@ appropriate for production.
 
 #### 5.3 Health Check Endpoint
 The URL. What it returns. How to use it to verify the instance is running
-and connected to both Postgres and Hedera.
 
 ### 6. First Boot Checklist
 A numbered checklist the reader can follow to verify a fresh installation
@@ -145,10 +119,7 @@ is working correctly before enrolling any agents. Each item is a concrete
 action with an expected outcome.
 
 ### 7. Docker Compose Setup
-Note that this is planned but not yet available in the current release.
 Describe what it will provide when available: single command to bring up
-Helix ID, Postgres, and all dependencies. Link to the GitHub issue or
-roadmap if one exists. Do not fabricate a docker-compose.yml that does
 not exist in the repo.
 
 ### 8. Verifying the Installation
@@ -172,13 +143,11 @@ a migration causes problems.
 
 ### 10. Troubleshooting
 
-#### 10.1 Hedera Connection Failures
 Symptoms. Likely causes: wrong network, wrong operator key, insufficient HBAR.
 How to diagnose each.
 
 #### 10.2 DID Anchoring Timeout
 Why it happens: HCS message propagation delay. How long to wait.
-How to check if the message was received on Hedera.
 
 #### 10.3 Database Migration Errors
 Common causes. How to inspect the Prisma migration state.

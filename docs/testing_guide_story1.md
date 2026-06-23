@@ -7,8 +7,6 @@ This document provides comprehensive instructions for setting up, running, and t
 Before starting, ensure you have the following installed:
 - **Node.js**: v20.0.0 or higher
 - **pnpm**: v9.x or higher
-- **PostgreSQL**: v14 or higher (Running locally or via Docker)
-- **Hedera Testnet Account**: (Optional, if testing against real HCS. Otherwise, `HEDERA_MOCK=true` can be used).
 
 ## 2. Environment Setup
 
@@ -19,25 +17,15 @@ pnpm install
 ```
 
 ### 2.2. Configuration
-Use the repository-root `.env` as the source of truth. Do not create a separate `helix-api/.env` with duplicate Helix/Hedera keys unless it is an exact copy of the root file; mismatched signing keys can make issued VCs unverifiable.
 
 ```env
 # .env
 NODE_ENV=development
 PORT=3000
-DATABASE_URL="postgresql://postgres:password@localhost:5432/helixid?schema=public"
 API_BASE_URL=http://localhost:3000
-
-# Hedera (Set HEDERA_MOCK=true to skip real Hedera calls)
-HEDERA_MOCK=true
-HEDERA_NETWORK=testnet
-HEDERA_OPERATOR_ID=0.0.xxxx
-HEDERA_OPERATOR_KEY=302...
-HEDERA_TOPIC_ID=0.0.yyyy
 
 # Security
 HELIX_SIGNING_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-HELIX_ISSUER_DID=did:hedera:testnet:...
 ```
 
 ### 2.3. Database Initialization
@@ -62,7 +50,6 @@ Interactive API documentation can be found at `http://localhost:3000/docs`.
 ## 4. End-to-End Testing Workflow
 
 ### 4.1. Create a Helix DID
-This endpoint derives a deterministic DID from a provided public key and anchors the initial DID Document to Hedera.
 
 - **URL**: `POST /v1/dids`
 - **Headers**: `Content-Type: application/json`
@@ -76,7 +63,6 @@ This endpoint derives a deterministic DID from a provided public key and anchors
 - **Validation**:
   - Status Code: `201 Created`
   - Response must contain `id` matching `did:helix:[0-9a-f]{32}`.
-  - Response must contain `hederaTransactionId`.
 
 ### 4.2. Resolve a DID (Cache)
 Resolves the DID using the local database cache for high performance.
@@ -88,7 +74,6 @@ Resolves the DID using the local database cache for high performance.
   - Contains `authentication` and `assertionMethod` arrays.
 
 ### 4.3. Resolve a DID (Live)
-Resolves the DID by fetching the latest message from the Hedera HCS topic, bypassing the local cache.
 
 - **URL**: `GET /v1/dids/:did?live=true`
 - **Validation**:
@@ -96,7 +81,6 @@ Resolves the DID by fetching the latest message from the Hedera HCS topic, bypas
   - Response reflects the state currently on-chain.
 
 ### 4.4. Add a Service Endpoint
-Updates the DID Document with a new service (e.g., a LinkedDomain) and re-anchors to Hedera.
 
 - **URL**: `POST /v1/dids/:did/services`
 - **Payload**:

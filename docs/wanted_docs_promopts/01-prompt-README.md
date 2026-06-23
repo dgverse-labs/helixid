@@ -32,7 +32,6 @@ Do not oversell. Be precise.
 
 ### 3. How It Works
 Four to five sentences maximum. The core mechanic: operator enrolls agent, agent
-generates keypair locally, Helix ID anchors DID on Hedera and issues a VC, agent
 signs VPs per request, verifier checks them. No diagrams needed here — CONCEPTS.md
 handles depth.
 

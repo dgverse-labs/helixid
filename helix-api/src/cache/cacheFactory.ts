@@ -21,9 +21,8 @@ export function createTwoLayerCache<T>(params: CacheFactoryParams): ICache<T> {
   if (!params.enabled) return new NoopCache<T>();
 
   const l1 = new InProcessCache<T>();
-  const l2 = params.l2Enabled && params.redis
-    ? new RedisCache<T>(params.redis, params.prefix)
-    : null;
+  const l2 =
+    params.l2Enabled && params.redis ? new RedisCache<T>(params.redis, params.prefix) : null;
   return new TwoLayerCache<T>(l1, l2, params.l1TtlSeconds, params.l2TtlSeconds);
 }
 

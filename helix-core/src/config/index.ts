@@ -23,7 +23,9 @@ export const ConfigSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   API_BASE_URL: z.string().url(),
-  DATABASE_URL: z.string().min(1),
+  HELIX_STORAGE_ADAPTER: z.enum(['sqlite', 'postgres']).default('sqlite'),
+  DATABASE_URL: z.string().min(1).optional(),
+  HELIX_SQLITE_PATH: z.string().min(1).default('./data/helixid.sqlite'),
 
   // DID method — DID_METHOD takes precedence over HELIX_DID_METHOD (constitution HR-6)
   DID_METHOD: z.enum(['web', 'hedera', 'key']).optional(),
@@ -50,6 +52,7 @@ export const ConfigSchema = z.object({
   JWT_SESSION_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(600),
 
   // Cache
+  HELIX_CACHE_ADAPTER: z.enum(['memory', 'redis']).default('memory'),
   CACHE_ENABLED: BooleanEnvSchema.default(true),
   CACHE_L2_ENABLED: BooleanEnvSchema.default(true),
   REDIS_URL: z.string().url().optional(),
@@ -77,17 +80,13 @@ export function resolveDidMethod(input: Record<string, unknown>): DidMethod {
   if (method === 'web' || method === 'hedera' || method === 'key') {
     return method;
   }
-  throw new Error(
-    `Invalid DID method '${String(method)}'. Allowed values: web, hedera, key.`,
-  );
+  throw new Error(`Invalid DID method '${String(method)}'. Allowed values: web, hedera, key.`);
 }
 
 export function loadConfig(input: Record<string, unknown>): Config {
   const result = ConfigSchema.safeParse(input);
   if (!result.success) {
-    const issues = result.error.issues
-      .map((i) => `  ${i.path.join('.')}: ${i.message}`)
-      .join('\n');
+    const issues = result.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`).join('\n');
     throw new Error(`Environment configuration is invalid:\n${issues}`);
   }
 
@@ -112,15 +111,33 @@ export function loadConfig(input: Record<string, unknown>): Config {
 
   if (didMethod === 'hedera') {
     const issues: string[] = [];
-    if (!config.HEDERA_OPERATOR_ID) issues.push('  HEDERA_OPERATOR_ID: required when DID_METHOD=hedera');
-    if (!config.HEDERA_OPERATOR_KEY) issues.push('  HEDERA_OPERATOR_KEY: required when DID_METHOD=hedera');
-    if (!config.HELIX_ISSUER_DID) issues.push('  HELIX_ISSUER_DID: required when DID_METHOD=hedera');
-    if (config.HELIX_ISSUER_DID && !/^did:hedera:(testnet|previewnet|mainnet):.+$/.test(config.HELIX_ISSUER_DID)) {
+    if (!config.HEDERA_OPERATOR_ID)
+      issues.push('  HEDERA_OPERATOR_ID: required when DID_METHOD=hedera');
+    if (!config.HEDERA_OPERATOR_KEY)
+      issues.push('  HEDERA_OPERATOR_KEY: required when DID_METHOD=hedera');
+    if (!config.HELIX_ISSUER_DID)
+      issues.push('  HELIX_ISSUER_DID: required when DID_METHOD=hedera');
+    if (
+      config.HELIX_ISSUER_DID &&
+      !/^did:hedera:(testnet|previewnet|mainnet):.+$/.test(config.HELIX_ISSUER_DID)
+    ) {
       issues.push('  HELIX_ISSUER_DID: must be a did:hedera issuer DID when DID_METHOD=hedera');
     }
     if (issues.length > 0) {
       throw new Error(`Environment configuration is invalid:\n${issues.join('\n')}`);
     }
+  }
+
+  if (config.HELIX_STORAGE_ADAPTER === 'postgres' && !config.DATABASE_URL) {
+    throw new Error(
+      'Environment configuration is invalid:\n  DATABASE_URL: required when HELIX_STORAGE_ADAPTER=postgres',
+    );
+  }
+
+  if (config.HELIX_CACHE_ADAPTER === 'redis' && !config.REDIS_URL) {
+    throw new Error(
+      'Environment configuration is invalid:\n  REDIS_URL: required when HELIX_CACHE_ADAPTER=redis',
+    );
   }
 
   // SA-9: Reject mainnet unless explicitly in production

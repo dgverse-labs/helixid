@@ -14,8 +14,6 @@ Call the `/v1/vp/template` endpoint with your identifiers and the **explicit typ
 **Request Body**:
 ```json
 {
-  "agentDid": "did:hedera:testnet:<your-agent-did>",
-  "userDid": "did:hedera:testnet:<the-user-did>",
   "targetService": "amazon",
   "vcType": "HelixAgentCredential"
 }

@@ -10,7 +10,6 @@ Initialize the Helix ID monorepo. After this story is complete, every package ex
 - `pnpm run build` compiles all packages without errors (Turborepo ensures helix-core builds before dependents)
 - `pnpm run lint` passes across all packages
 - `pnpm run test` runs and exits cleanly (zero tests = zero failures)
-- `docker-compose up` starts PostgreSQL and the API container without errors
 - `.env.example` is complete and accurate
 - `decisions.md` has its first entries (project initialization, Turborepo, Fastify, crypto library choices)
 - `turbo.json` is present at root and task graph is correct
@@ -57,7 +56,6 @@ No application code lives here. Scripts only.
     "test": {
       "dependsOn": ["^build"],
       "outputs": ["coverage/**"],
-      "env": ["DATABASE_URL", "NODE_ENV", "HEDERA_NETWORK"]
     },
     "lint": {
       "dependsOn": [],
@@ -114,26 +112,14 @@ prisma/generated/
 ### `/.env.example`
 
 ```bash
-# ─── Hedera ───────────────────────────────────────────────────────────────────
 # Network to connect to. Allowed values: testnet, previewnet
 # mainnet is only permitted when NODE_ENV=production
-HEDERA_NETWORK=testnet
 
-# Hedera operator account ID (format: 0.0.XXXXXX)
-HEDERA_OPERATOR_ID=0.0.123456
-
-# Hedera operator private key (ED25519 or ECDSA — hex or DER encoded)
 # This key pays for all HCS transactions. Never share or commit this value.
-HEDERA_OPERATOR_KEY=302e...
 
-# Hedera HCS topic ID used to anchor DID documents (format: 0.0.XXXXXX)
 # Create this topic manually on testnet before first run.
-# With Hiero DID SDK this may be managed automatically — see Story 1.
-HEDERA_TOPIC_ID=0.0.654321
 
 # ─── Database ─────────────────────────────────────────────────────────────────
-# PostgreSQL connection string
-DATABASE_URL=postgresql://helixid:helixid@localhost:5432/helixid
 
 # ─── Helix ID Signing ─────────────────────────────────────────────────────────
 # Private key used by Helix ID to sign VCs (hex-encoded Ed25519 private key)
@@ -165,9 +151,7 @@ AUDIT_LOG_PATH=./logs/audit.log
 NODE_ENV=development
 
 # ─── E2E / Testing only ───────────────────────────────────────────────────────
-# Set to true to allow E2E tests to write to Hedera testnet
 # Never true in standard CI pipelines
-HEDERA_E2E_TESTNET=false
 ```
 
 ---
@@ -327,10 +311,7 @@ helix-api/src/
 │       └── index.ts
 ├── repositories/
 │   └── index.ts
-├── hedera/
-│   ├── IHederaClient.ts  # interface only — see Story 1
 │   └── mock/
-│       └── MockHederaClient.ts
 ├── middleware/
 │   ├── errorHandler.ts
 │   └── requestLogger.ts
@@ -370,7 +351,6 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 ```
@@ -432,16 +412,10 @@ e2e/
 version: '3.9'
 
 services:
-  postgres:
-    image: postgres:16-alpine
     environment:
-      POSTGRES_USER: helixid
-      POSTGRES_PASSWORD: helixid
-      POSTGRES_DB: helixid
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U helixid"]
       interval: 5s
@@ -456,17 +430,13 @@ services:
       - "3000:3000"
     environment:
       NODE_ENV: development
-      DATABASE_URL: postgresql://helixid:helixid@postgres:5432/helixid
-      HEDERA_NETWORK: testnet
       PORT: 3000
     depends_on:
-      postgres:
         condition: service_healthy
     env_file:
       - .env
 
 volumes:
-  postgres_data:
 ```
 
 ### `/docker-compose.test.yml`
@@ -475,16 +445,10 @@ volumes:
 version: '3.9'
 
 services:
-  postgres_test:
-    image: postgres:16-alpine
     environment:
-      POSTGRES_USER: helixid_test
-      POSTGRES_PASSWORD: helixid_test
-      POSTGRES_DB: helixid_test
     ports:
       - "5433:5432"
     tmpfs:
-      - /var/lib/postgresql/data
 ```
 
 ### `helix-api/Dockerfile`
@@ -566,12 +530,7 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
-      postgres:
-        image: postgres:16-alpine
         env:
-          POSTGRES_USER: helixid_test
-          POSTGRES_PASSWORD: helixid_test
-          POSTGRES_DB: helixid_test
         ports:
           - 5433:5432
         options: >-
@@ -612,12 +571,7 @@ jobs:
       - name: Test
         run: pnpm run test
         env:
-          DATABASE_URL: postgresql://helixid_test:helixid_test@localhost:5433/helixid_test
           NODE_ENV: test
-          HEDERA_NETWORK: testnet
-          HEDERA_OPERATOR_ID: ${{ secrets.HEDERA_OPERATOR_ID }}
-          HEDERA_OPERATOR_KEY: ${{ secrets.HEDERA_OPERATOR_KEY }}
-          HEDERA_TOPIC_ID: ${{ secrets.HEDERA_TOPIC_ID }}
           HELIX_SIGNING_KEY: ${{ secrets.HELIX_SIGNING_KEY }}
           API_BASE_URL: http://localhost:3000
           ENROLLMENT_TOKEN_TTL_SECONDS: 900
@@ -637,10 +591,8 @@ jobs:
 - [ ] `pnpm run build` from root compiles all packages — zero TypeScript errors — Turborepo task graph ensures helix-core builds first
 - [ ] `pnpm run lint` from root — zero errors
 - [ ] `pnpm run test` from root — exits 0 (empty test suites are fine)
-- [ ] `docker-compose up` — postgres and api containers start, `/health` returns `{"status":"ok"}`
 - [ ] `.env.example` has every variable listed with a description
 - [ ] `turbo.json` is present with correct task graph
-- [ ] `decisions.md` has initial entries for monorepo + Turborepo, Fastify, crypto library choices, Hiero DID SDK
 - [ ] `CONSTITUTION.md` is present at root
 - [ ] No application logic exists anywhere — only structure, config, and placeholder exports
 - [ ] ESLint `no-restricted-syntax` rule blocks direct `process.env` access

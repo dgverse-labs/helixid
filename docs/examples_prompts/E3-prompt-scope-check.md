@@ -92,8 +92,6 @@ Scenario | Agent Scopes         | Required          | Target Match | Result
    verified payload matches its own identity.
 
 4. **At the bottom**: where to go next — if scope strings are not granular enough
-   for your policy needs, Helix ID's roadmap includes an OPA/Rego policy engine
-   (not yet implemented). For now, the `requiresScope` pattern covers the majority
    of use cases.
 
 ## Constraints

@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "did": "did:web:example.com",
+  "publicKeyHex": "48d7e22954a3187e9dc50b305f2ab35dd291dd99aa7ae7eada947880897247b6",
+  "encryptedPrivateKey": "9341aa8e9012b021c4790abc2def1913c4c4a4f5cae6a3a983009d8c1f27e11b9eb806d726f99bcf5ebde4016f8be59b0ec563ba80f8562574b6eb3d1a83ef51",
+  "authTag": "979850612238b7976eadf15e97bee5d7",
+  "iv": "75aa037e47b112a82292c869",
+  "salt": "ab17c56bae1f0a47bbe1a457ed315f0a",
+  "credentials": [
+    {
+      "vcId": "vc:helix:self:927c331a-19bb-40c3-9b73-977d794c9644",
+      "vcJson": "{\"@context\":[\"https://www.w3.org/ns/credentials/v2\",\"https://helix-id.io/contexts/v1\"],\"id\":\"vc:helix:self:927c331a-19bb-40c3-9b73-977d794c9644\",\"type\":[\"VerifiableCredential\",\"HelixAgentCredential\"],\"issuer\":\"did:web:example.com\",\"validFrom\":\"2026-06-22T22:27:25.818Z\",\"validUntil\":\"2026-06-23T22:27:25.818Z\",\"credentialSubject\":{\"id\":\"did:web:example.com\",\"type\":\"HelixAgent\",\"privilegeScopes\":[\"read:orders\"],\"agentName\":\"did:web:example.com\",\"delegationDepth\":0,\"maxDelegationDepth\":0},\"evidence\":[{\"type\":\"SelfSignedDevCredential\",\"warning\":\"Not for production use\"}],\"proof\":{\"type\":\"Ed25519Signature2020\",\"created\":\"2026-06-22T22:27:25.822Z\",\"verificationMethod\":\"did:web:example.com#key-1\",\"proofPurpose\":\"assertionMethod\",\"proofValue\":\"4e72fkCxQiSz7Mvja8qpG4tSmTnbokrVexgdDWMTBpAMNpYVDpHUYkzfuEwHy4QWfynh1c1rzPnAGK57QzFanksB\"}}",
+      "type": [
+        "VerifiableCredential",
+        "HelixAgentCredential"
+      ],
+      "addedAt": "2026-06-22T22:27:25.822Z",
+      "updatedAt": "2026-06-22T22:27:25.822Z",
+      "issuer": "did:web:example.com",
+      "subjectDid": "did:web:example.com"
+    }
+  ],
+  "createdAt": "2026-06-22T22:25:20.487Z",
+  "updatedAt": "2026-06-22T22:27:25.822Z"
+}

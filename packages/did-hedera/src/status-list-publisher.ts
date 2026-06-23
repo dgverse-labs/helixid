@@ -1,11 +1,21 @@
-import {
-  AccountId,
-  Client,
-  PrivateKey,
-  TopicMessageSubmitTransaction,
-} from '@hashgraph/sdk';
+import type { Client } from '@hashgraph/sdk';
 import { HederaAnchorFailedError } from '@helix-id/core';
+import { buildHederaClient } from './hiero-client.js';
 import type { HederaAnchorOptions } from './types.js';
+
+type HcsMessageServiceClass = new (client: Client) => {
+  submitMessage(props: {
+    topicId: string;
+    message: string;
+    waitForChangesVisibility?: boolean;
+    waitForChangesVisibilityTimeoutMs?: number;
+  }): Promise<{ transactionId: string }>;
+};
+
+async function loadHcsMessageService(): Promise<HcsMessageServiceClass> {
+  const module = await import('@hiero-did-sdk/hcs');
+  return module.HcsMessageService as HcsMessageServiceClass;
+}
 
 /**
  * Publishes a signed StatusList VC to HCS for on-chain audit trail.
@@ -19,27 +29,18 @@ export async function publishStatusListToHCS(
     `[did-hedera] Publishing StatusList VC to HCS topic ${options.topicId} on ${options.network}.`,
   );
 
-  let client: Client;
-  if (options.network === 'mainnet') {
-    client = Client.forMainnet();
-  } else if (options.network === 'previewnet') {
-    client = Client.forPreviewnet();
-  } else {
-    client = Client.forTestnet();
-  }
-
-  client.setOperator(
-    AccountId.fromString(options.operatorId),
-    PrivateKey.fromString(options.operatorKey),
-  );
+  const client = buildHederaClient(options);
+  const HcsMessageService = await loadHcsMessageService();
 
   try {
-    const submitTx = await new TopicMessageSubmitTransaction()
-      .setTopicId(options.topicId)
-      .setMessage(JSON.stringify(statusListVC))
-      .execute(client);
-    await submitTx.getReceipt(client);
-    return { transactionId: submitTx.transactionId.toString() };
+    const messageService = new HcsMessageService(client);
+    const result = await messageService.submitMessage({
+      topicId: options.topicId,
+      message: JSON.stringify(statusListVC),
+      waitForChangesVisibility: true,
+      waitForChangesVisibilityTimeoutMs: 60_000,
+    });
+    return { transactionId: result.transactionId };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'StatusList HCS publish failed';
     throw new HederaAnchorFailedError(message, {

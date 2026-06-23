@@ -4,8 +4,6 @@ This document provides instructions for testing the Boundary 2 modules (Verifiab
 
 ## 1. Setup
 
-Ensure Story 1 modules are already configured. Boundary 2 uses the same PostgreSQL database and API server.
-
 ### 1.1. Database Migration
 Update the database schema to include VC tables:
 ```bash

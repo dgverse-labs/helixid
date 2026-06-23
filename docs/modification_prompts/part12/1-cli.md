@@ -3,9 +3,7 @@ Implement these commands:
 helix did create --method web --domain example.com --wallet issuer.enc
 
 Generates Ed25519 keypair locally via SDK. Derives did:web:example.com. Constructs a valid W3C DID document with JsonWebKey2020 verification method. Saves encrypted issuer wallet to issuer.enc. Prints the did.json content and instructs operator to serve it at https://example.com/.well-known/did.json.
-helix did create --method hedera --network testnet --wallet issuer.enc
 
-Same as above but derives did:hedera:testnet:*. Reads HEDERA_OPERATOR_ID and HEDERA_OPERATOR_KEY from env. Anchors DID to Hedera via existing SDK Hedera integration. Prints the anchored DID.
 helix did create --method key --wallet agent.enc
 
 Generates Ed25519 keypair. Derives did:key. Saves to wallet. Prints DID. For agent use, not operator.

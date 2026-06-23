@@ -36,7 +36,6 @@ Helix ID. It must follow the correct 13-step enrollment sequence exactly.
    `POST /v1/enroll`. Log that only the public key is being submitted.
 
 5. Log that Helix ID has burned the enrollment token and is anchoring the DID
-   on Hedera HCS.
 
 6. Receive the challenge nonce from Helix ID.
 
@@ -92,7 +91,6 @@ It verifies VPs before serving any route.
 
 ### Log format
 Every decision must be logged with:
-`[timestamp] [Platform] [scope_attempted] VP verified ✓/✗  did:hedera:...  GRANTED/DENIED  reason`
 
 ### Comments required
 - At the top: the platform is a verifier, not an SDK user — it calls the Helix ID
@@ -189,7 +187,6 @@ Dev dependencies: TypeScript types
 ```
 HELIX_API_URL=http://localhost:3000
 HELIX_ADMIN_API_KEY=your-admin-key-here
-HEDERA_NETWORK=testnet
 WALLET_PASSPHRASE=change-this-passphrase
 ```
 
@@ -229,7 +226,6 @@ Structure:
   Never expose internal failure reasons externally.
 - No build step. Everything runs with `tsx` directly.
 - Comments in code explain WHY not WHAT.
-- Do not use `did:key:` format — it is not yet implemented. Use `did:hedera:testnet:...`
 
 ## How to test
 

@@ -33,10 +33,7 @@ Compare `expiresAt` against current time. If expired, log NOT TRUSTED and exit.
 Note in a comment: VPs have a short expiry (minutes). The fixture may be expired
 if significant time has passed since it was generated.
 
-**Step 3 — Resolve the DID document from Hedera**
-Call `sdk.resolveDID(did)` for the agent's `did:hedera:testnet:...` DID.
 This is the only step that calls Helix ID as a convenience resolver — note in
-a comment that it ultimately reads from Hedera HCS, not from Helix ID's database.
 Log the resolved public key from the DID document.
 
 **Step 4 — Verify the VP signature**
@@ -84,12 +81,9 @@ reminder. If any step failed: log NOT TRUSTED with the specific failing step.
    the verifier is responsible for.
 
 2. **Before Step 3**: what a DID document contains and why the public key lives
-   there rather than in the VC itself. `sdk.resolveDID()` resolves `did:hedera:`
-   format by reading from Hedera HCS via the Helix ID API as a convenience layer.
 
 3. **Before Step 4**: the trust chain being validated — the agent signed the VP
    (Ed25519, @noble/curves), Helix ID signed the VC (Ed25519, HELIX_SIGNING_KEY),
-   Hedera anchored the DID. Three independent trust anchors.
 
 4. **Before Step 5**: why the issuer public key comes from env, not fetched
    at runtime. If you fetch it from Helix ID at verification time you have
@@ -121,7 +115,6 @@ reminder. If any step failed: log NOT TRUSTED with the specific failing step.
 - The crypto library for all signature verification is `@noble/curves` (Ed25519).
   Do not use any other crypto library.
 - `sdk.resolveDID(did)` is the correct method for DID resolution for
-  `did:hedera:` format.
 - The issuer public key must come from `HELIX_ISSUER_PUBLIC_KEY` env variable.
   Never fetch it from Helix ID at runtime.
 - The scope field is `credentialSubject.privilegeScopes`.

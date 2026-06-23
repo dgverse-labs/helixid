@@ -8,7 +8,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export const exampleRoot = __dirname;
 export const walletPath = join(exampleRoot, 'agent', 'wallet.enc');
-export const helixApiUrl = process.env.HELIX_API_URL ?? process.env.API_BASE_URL ?? 'http://localhost:3000';
+export const helixApiUrl = process.env.API_BASE_URL ?? 'http://localhost:3000';
 export const walletPassphrase = process.env.WALLET_PASSPHRASE ?? 'change-this-passphrase';
 export const targetService = process.env.HELIX_TARGET_SERVICE ?? 'amazon';
 export const userDid = process.env.HELIX_USER_DID ?? 'did:hedera:testnet:user-framework-middleware-demo';

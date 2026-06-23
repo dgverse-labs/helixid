@@ -1,4 +1,4 @@
-import type { DIDDocument, SignedVC } from '@helix-id/core';
+import type { SignedVC } from '@helix-id/core';
 
 export interface HederaTransactionResult {
   transactionId: string;
@@ -34,7 +34,8 @@ export interface IHederaClient {
 }
 
 export interface HederaAnchorOptions {
-  didDocument: DIDDocument;
+  /** Ed25519 private key hex — used for Hiero registrar createDID when anchoring */
+  privateKeyHex: string;
   operatorId: string;
   operatorKey: string;
   network: 'testnet' | 'previewnet' | 'mainnet';

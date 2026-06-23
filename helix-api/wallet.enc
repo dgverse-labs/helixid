@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "did": "did:key:z6MkjGDm51C7ng6qCNKwSqcaMiXERh6VDDAAHXLbazVn3sAz",
+  "publicKeyHex": "4776765574e152be5ae213cd00bc0d7fa0bb515cfe39bcf44d7fc7907d30a7ab",
+  "encryptedPrivateKey": "4b4cb746d7b4dde9d9944af024b68b939972a0e38a662aadc964387d93b23753e8960a28787616a1f06c689689f1cf2bb9d17088c3f61843a1bc5676a809465e",
+  "authTag": "c87ef2493a591036a266e12e6e3f1a89",
+  "iv": "a9f184a26300835ac1050487",
+  "salt": "5cca6cad500940619911a11560ed0209",
+  "credentials": [
+    {
+      "vcId": "vc:helix:d99e9c8b1ab449fb914fd889",
+      "vcJson": "{\"@context\":[\"https://www.w3.org/ns/credentials/v2\",\"https://helix-id.io/contexts/v1\"],\"id\":\"vc:helix:d99e9c8b1ab449fb914fd889\",\"type\":[\"VerifiableCredential\",\"HelixAgentCredential\"],\"issuer\":\"did:web:localhost:3000\",\"validFrom\":\"2026-06-22T16:41:47.979Z\",\"validUntil\":\"2026-06-23T17:41:47.979Z\",\"credentialStatus\":{\"id\":\"http://localhost:3000/v1/status-list/helix-status-list-1#1\",\"type\":\"BitstringStatusListEntry\",\"statusPurpose\":\"revocation\",\"statusListIndex\":\"1\",\"statusListCredential\":\"http://localhost:3000/v1/status-list/helix-status-list-1\"},\"credentialSubject\":{\"id\":\"did:key:z6MkjGDm51C7ng6qCNKwSqcaMiXERh6VDDAAHXLbazVn3sAz\",\"type\":\"HelixAgent\",\"privilegeScopes\":[\"read:orders\",\"write:orders\"],\"agentName\":\"Manual Test Agent\",\"delegationDepth\":0,\"maxDelegationDepth\":0},\"proof\":{\"type\":\"Ed25519Signature2020\",\"created\":\"2026-06-22T16:41:47.983Z\",\"verificationMethod\":\"did:web:localhost:3000#key-1\",\"proofPurpose\":\"assertionMethod\",\"proofValue\":\"5uPDpgYb3PMsGuR5SapXsGZ1pjKtjfs4jvJcpyM8N91RiNbVAVKQQgj5nNd66cdLmmqKqi6wjXsx7e2pY3ZFHENG\"}}",
+      "type": [
+        "VerifiableCredential",
+        "HelixAgentCredential"
+      ],
+      "addedAt": "2026-06-22T16:41:48.014Z",
+      "updatedAt": "2026-06-22T16:41:48.014Z",
+      "issuer": "did:web:localhost:3000",
+      "subjectDid": "did:key:z6MkjGDm51C7ng6qCNKwSqcaMiXERh6VDDAAHXLbazVn3sAz"
+    }
+  ],
+  "createdAt": "2026-06-22T16:41:47.927Z",
+  "updatedAt": "2026-06-22T16:41:48.014Z"
+}

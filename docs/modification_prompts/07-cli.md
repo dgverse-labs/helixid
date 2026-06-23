@@ -1,7 +1,6 @@
 # Prompt 07 — `@helix-id/cli` New Package
 
 ## Dependency prerequisite
-**Prompts 01 (helix-core), 02 (did-hedera), and 03 (sdk-js) must be complete.** CLI wraps SDK and core — no new crypto.
 
 ## Context
 Create a new CLI package at `packages/cli/`. The binary is named `helix`. This is for Platform Operator setup-time operations only — not for agent runtime. All commands are one-off or occasional operations. Passphrase always comes from `HELIX_WALLET_PASSPHRASE` env var — never prompt interactively, never accept as a CLI flag (security risk).
@@ -27,7 +26,6 @@ Create a new CLI package at `packages/cli/`. The binary is named `helix`. This i
     "chalk": "^5.0.0"
   },
   "optionalDependencies": {
-    "@helix-id/did-hedera": "workspace:*"
   }
 }
 ```
@@ -42,7 +40,6 @@ Add to pnpm workspace.
 
 ```bash
 helix did create --method web --domain example.com --wallet issuer.enc
-helix did create --method hedera --network testnet --wallet issuer.enc
 helix did create --method key --wallet agent.enc
 ```
 
@@ -64,10 +61,6 @@ helix did create --method key --wallet agent.enc
   }
   ```
 
-**`--method hedera`:**
-- Check `@helix-id/did-hedera` importable — if not: print `Error: Hedera DID method requires: npm install @helix-id/did-hedera` and exit code 1
-- Read `HEDERA_OPERATOR_ID`, `HEDERA_OPERATOR_KEY`, use `--network` flag
-- Anchor DID via `anchorDidHedera()`
 - Save wallet, print DID and transaction ID
 
 **`--method key`:**
@@ -246,7 +239,6 @@ All commands:
 | Test | What to verify |
 |---|---|
 | `helix did create --method web` | Creates wallet, prints did:web DID and did.json |
-| `helix did create --method hedera` missing package | Exits 1 with clear install instruction |
 | `helix did create --method key` | Creates wallet with did:key |
 | `helix issuer init` | Loads wallet, prints DID and key info |
 | `helix status-list create` | Creates valid signed StatusList VC file |

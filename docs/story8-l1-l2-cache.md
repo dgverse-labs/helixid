@@ -2,10 +2,6 @@
 
 ## Overview
 
-Add a two-layer read cache to selected DID resolution and status list fetch paths. L1 is an in-process Map with TTL — enabled by default. L2 is Redis — optional, shared across horizontal instances, and activated only when `CACHE_L2_ENABLED=true` and `REDIS_URL` is set. PostgreSQL remains Helix ID's durable API-side DID/VC state index, and Hedera remains the external DID anchoring/resolution source. This story adds cache layers in front of repeated read paths; it does not replace DB persistence or verification semantics.
-
-No new API endpoints. No schema changes. This is a performance and reliability story that makes the delegation chain verify path (Story 6) cheaper at scale and reduces repeated PostgreSQL/Hedera read frequency in production.
-
 Security rule: cache is never the authority for deactivation, and revocation cache entries must be invalidated on writes. Helix ID's own verification path must not accept a stale cached DID after deactivation or a stale public status-list value after VC revocation.
 
 ---
@@ -16,10 +12,7 @@ Add to `.env.example` and config:
 
 ```
 CACHE_ENABLED=true               # Optional. If false, all app cache reads/writes are bypassed
-CACHE_L2_ENABLED=true            # Optional. If false, force L1-only even when REDIS_URL is set
-REDIS_URL=                      # Optional. If absent, L2 cache is disabled — L1 only
 DID_CACHE_L1_TTL_SECONDS=300    # In-process DID cache TTL — default 5 minutes
-DID_CACHE_L2_TTL_SECONDS=900    # Redis DID cache TTL — default 15 minutes
 STATUS_LIST_CACHE_L1_TTL_SECONDS=60   # Status lists change on revocation — shorter TTL
 STATUS_LIST_CACHE_L2_TTL_SECONDS=300
 ```
@@ -27,7 +20,6 @@ STATUS_LIST_CACHE_L2_TTL_SECONDS=300
 Config module additions:
 - `CACHE_ENABLED: boolean` — default true
 - `CACHE_L2_ENABLED: boolean` — default true
-- `REDIS_URL: string | undefined`
 - `DID_CACHE_L1_TTL_SECONDS: number` — default 300
 - `DID_CACHE_L2_TTL_SECONDS: number` — default 900
 - `STATUS_LIST_CACHE_L1_TTL_SECONDS: number` — default 60
@@ -42,10 +34,7 @@ L2 TTLs are intentionally higher than L1 TTLs. L1 is per-process and can become 
 In `helix-api`:
 
 ```bash
-pnpm install ioredis
 ```
-
-Add `ioredis` to `decisions.md`. Alternative considered: `redis` (official client) — `ioredis` chosen for better TypeScript support and cluster-ready interface.
 
 No new helix-core dependencies.
 
@@ -89,24 +78,17 @@ class InProcessCache<T> implements ICache<T> {
 }
 ```
 
-### `helix-api/src/cache/RedisCache.ts`
-
 ```typescript
-class RedisCache<T> implements ICache<T> {
-  constructor(private redis: Redis, private prefix: string) {}
 
   async get(key: string): Promise<T | null> {
-    const raw = await this.redis.get(this.prefix + key);
     if (!raw) return null;
     return JSON.parse(raw) as T;
   }
 
   async set(key: string, value: T, ttlSeconds: number): Promise<void> {
-    await this.redis.set(this.prefix + key, JSON.stringify(value), 'EX', ttlSeconds);
   }
 
   async delete(key: string): Promise<void> {
-    await this.redis.del(this.prefix + key);
   }
 }
 ```
@@ -117,7 +99,6 @@ class RedisCache<T> implements ICache<T> {
 class TwoLayerCache<T> implements ICache<T> {
   constructor(
     private l1: ICache<T>,
-    private l2: ICache<T> | null,     // null when Redis not configured
     private l1TtlSeconds: number,
     private l2TtlSeconds: number,
   ) {}
@@ -136,7 +117,6 @@ class TwoLayerCache<T> implements ICache<T> {
       }
     }
 
-    return null;  // caller falls through to Hedera
   }
 
   async set(key: string, value: T, ttlSeconds: number): Promise<void> {
@@ -156,7 +136,6 @@ class TwoLayerCache<T> implements ICache<T> {
 `ttlSeconds` is the caller's maximum freshness budget. `TwoLayerCache` respects it and caps each layer by that layer's configured maximum TTL. If `CACHE_ENABLED=false`, the server should inject a `NoopCache` implementation whose `get` always returns null and whose `set/delete` are no-ops.
 
 Cache key conventions:
-- DID documents: `did:v1:<did>` e.g. `did:v1:did:hedera:testnet:z6Mk...`
 - Status lists: `sl:v1:<listId>` e.g. `sl:v1:helix-status-list-1`
 
 The `v1:` version prefix allows cache invalidation of all entries if the schema changes — bump to `v2:` in the key prefix.
@@ -177,11 +156,8 @@ Add constructor parameter: `cache: ICache<DIDDocument>`. Runtime wiring should p
    b. If cached, check durable DB deactivation state before returning it. If DB says deactivated, delete cache entry and throw `DID_DEACTIVATED`.
    c. If still active, return cached document with `source: 'cache'`.
 2. Existing path: DB lookup → if found and not deactivated, cache it and return with `source: 'db'`.
-3. If `live=true` or not in DB: Hedera mirror node fetch.
-4. After successful DB hit: `await cache.set(did, didDocument, config.DID_CACHE_L1_TTL_SECONDS)`. Live Hedera resolution should not write stale data into the normal read cache unless the fetched document is also reconciled into the durable record.
 5. Return result.
 
-Rationale: DID documents are already stored in PostgreSQL. L1/L2 cache reduces repeated DB reads, especially in VP/delegation verification, but DB remains the immediate authority for deactivation state.
 ```
 
 **`deactivateDID(did, reason, requestId)` — add cache invalidation:**
@@ -190,17 +166,13 @@ After DB update, call `cache.delete(did)`. The resolve path also checks DB deact
 
 **`addServiceEndpoint` and `removeServiceEndpoint` — add cache invalidation:**
 
-After DB update and Hedera anchoring, call `cache.delete(did)` so subsequent resolves fetch the updated document. Multi-instance deployments may still hold stale L1 documents until TTL, so use conservative DID L1 TTL unless Redis pub/sub invalidation is added in a later story.
-
 ### `helix-api/src/server.ts` — wire cache
 
 ```typescript
-const redis = config.CACHE_L2_ENABLED && config.REDIS_URL ? new Redis(config.REDIS_URL) : null;
 
 const didCache = config.CACHE_ENABLED
   ? new TwoLayerCache(
       new InProcessCache<DIDDocument>(),
-      redis ? new RedisCache<DIDDocument>(redis, 'did:v1:') : null,
       config.DID_CACHE_L1_TTL_SECONDS,
       config.DID_CACHE_L2_TTL_SECONDS,
     )
@@ -209,14 +181,12 @@ const didCache = config.CACHE_ENABLED
 const statusListCache = config.CACHE_ENABLED
   ? new TwoLayerCache(
       new InProcessCache<string>(),
-      redis ? new RedisCache<string>(redis, 'sl:v1:') : null,
       config.STATUS_LIST_CACHE_L1_TTL_SECONDS,
       config.STATUS_LIST_CACHE_L2_TTL_SECONDS,
     )
   : new NoopCache<string>();
 
 // Inject caches into services
-const didService = new DIDService(didRepository, hederaClient, auditLogger, didCache);
 const vcService = new VCService(vcRepository, didService, auditLogger, statusListCache);
 ```
 
@@ -248,23 +218,13 @@ After the atomic Prisma transaction (DB revocation + status list update), call `
 
 ## 8.6 — VP Verify Path Cache Benefit
 
-The delegation chain verify path (Story 6, step 9e) calls `didService.resolveDID` once per chain link. With L1 cache active, repeated DID lookups become in-process Map lookups after the first DB/Hedera read. For a 3-deep chain, warm state should usually be cache hits plus durable deactivation checks. This makes chain verification latency acceptable without requiring L2 Redis.
-
 No code changes should be needed in Story 6's verify path beyond using the existing `IDIDService` interface. The service must preserve the rule that cached DID documents cannot bypass deactivation.
 
 ---
 
 ## 8.7 — Docker Compose Changes
 
-No Redis container is required for the default Story 8 implementation or default test suite.
-
-Keep `docker-compose.yml` and `docker-compose.test.yml` unchanged in this pass unless local development explicitly needs Redis. Real Redis infrastructure coverage is deferred to a later opt-in test command. When that follow-up is added, it should add a Redis service and set `REDIS_URL=redis://redis:6379` only for the API container in that Redis-enabled compose profile.
-
-Story 8 tests should prove L2 behavior with an in-memory/fake L2 cache and mocked Redis client calls. A real Redis-backed integration test can be added later under a separate opt-in command when we want infrastructure coverage.
-
 ### `.env.example` — update comment
-
-Add note: "`CACHE_ENABLED` defaults to true. `REDIS_URL` is optional. If `REDIS_URL` is not set, or `CACHE_L2_ENABLED=false`, only in-process L1 cache is used. Redis is recommended for multi-instance deployments."
 
 ---
 
@@ -280,37 +240,21 @@ Add note: "`CACHE_ENABLED` defaults to true. `REDIS_URL` is optional. If `REDIS_
 - `TwoLayerCache.get` — L1 miss, L2 hit: value returned and L1 populated
 - `TwoLayerCache.get` — both miss: null returned
 - `TwoLayerCache.set` — sets in both L1 and L2
-- `TwoLayerCache.set` — when L2 is null (no Redis): only L1 set, no error
 - `TwoLayerCache.set` — caller TTL lower than layer TTL: lower caller TTL is used
 - `TwoLayerCache.set` — layer TTL lower than caller TTL: layer TTL cap is used
 - `TwoLayerCache.delete` — deletes from both layers
 - `NoopCache.get` always returns null
 - `NoopCache.set/delete` do nothing and do not throw
-- `RedisCache.get` returns null for missing key
-- `RedisCache.set` with TTL → raw Redis call uses `EX` parameter
 - cache factory with `CACHE_ENABLED=false` returns `NoopCache`
-- cache factory with `CACHE_L2_ENABLED=false` and `REDIS_URL` set returns L1-only cache
-- cache factory with `CACHE_L2_ENABLED=true` and no `REDIS_URL` returns L1-only cache
-- cache factory with `CACHE_L2_ENABLED=true` and `REDIS_URL` set wires Redis-backed L2
-
-All unit tests use in-memory mocks for Redis — no real Redis connection.
 
 ### Integration Tests — `helix-api/tests/integration/cache.integration.test.ts`
 
-Setup: real PostgreSQL + app-level cache. Do not require real Redis in this story pass. For L2 behavior, inject a fake/shared in-memory L2 cache through the cache factory or service test harness. `afterEach` clears DB tables and in-memory cache instances.
-
 Tests:
 
-- `DIDService.resolveDID` first call → DB/Hedera path, result `source: 'db'` or `source: 'hedera'`. Second non-live call → L1 cache hit, result `source: 'cache'`, while still checking durable DB deactivation state.
-- L2 behavior without real Redis: populate fake L2, clear L1, resolve DID → L2 hit repopulates L1.
-- `CACHE_ENABLED=false`: repeated DID resolve does not return `source: 'cache'` and continues through normal DB/Hedera path.
-- `CACHE_L2_ENABLED=false` with `REDIS_URL` set: cache factory does not create Redis L2 and L1-only mode works.
-- `CACHE_L2_ENABLED=true` with `REDIS_URL` unset: L1-only mode works without connection attempts.
 - DID deactivation invalidates cache and DB active-state check wins: resolve DID (populate cache), deactivate, resolve again → 410 `DID_DEACTIVATED` (not served from cache)
 - Status list `GET /v1/status-list/:listId` first call → DB. Second call within TTL → L1 cache.
 - Revoke VC → status list cache invalidated → next `GET /v1/status-list/:listId` returns updated bitstring with revoked bit set
 - VP verification after revocation rejects using the VC's embedded `BitstringStatusListEntry`; status-list cache invalidation ensures the updated bitstring is used after revocation
-- No Redis configured (`REDIS_URL` unset): L1-only mode works correctly end to end
 - L2 TTL higher than L1: fake L2 retains value after L1 expiry and repopulates L1; caller TTL cap is still respected
 
 ### Security Tests — `helix-api/tests/security/cache.security.test.ts`
@@ -318,7 +262,6 @@ Tests:
 - **Deactivated DID not accepted from cache:** Deactivate DID while it is in L1 cache. Immediately call `resolveDID` → must return `DID_DEACTIVATED`, not the cached document. This confirms DB active-state check/invalidation wins over TTL.
 - **Revoked VC not accepted from stale cache:** Revoke VC. Call `POST /v1/vp/verify` with a VP built from that VC → must reject. This confirms Helix ID's own verify path uses the updated Bitstring Status List state after cache invalidation.
 - **Public status list invalidated on revoke:** Revoke VC. Call `GET /v1/status-list/:listId` → bit at revoked index must be 1. Confirms public status-list cache invalidation works before TTL expiry.
-- **Cache keys do not leak private data:** Assert no key in the in-memory/fake L2 cache contains `privateKey`, `encryptedPrivateKey`, or any 64-char hex string matching a known private key from test fixtures. When real Redis tests are added later, apply the same assertion to Redis keys.
 
 ---
 
@@ -326,16 +269,11 @@ Tests:
 
 - [ ] L1 in-process cache active by default — zero configuration required
 - [ ] `CACHE_ENABLED=false` cleanly bypasses cache without changing API behavior
-- [ ] L2 Redis cache activates only when `CACHE_L2_ENABLED=true` and `REDIS_URL` is set — gracefully absent when not
-- [ ] Real Redis is not required by the default test suite; L2 behavior is covered with fake L2/mocked Redis client tests
-- [ ] DID resolution cache hit skips DB and Hedera calls — verified by integration test via repository mock
 - [ ] Status list cache hit skips DB call — verified by integration test
 - [ ] L2 TTLs are higher than L1 TTLs and `TwoLayerCache` respects caller TTL caps
 - [ ] Cached DID documents cannot bypass deactivation — security test confirms DB state/invalidation wins over TTL
 - [ ] VC revocation cannot be bypassed by stale status-list cache in `verifyVP`
 - [ ] Public status-list cache invalidated immediately on VC revocation — security test confirms updated bit served within same request cycle
-- [ ] `docker-compose.yml` and `docker-compose.test.yml` do not require Redis for the default suite
 - [ ] `TwoLayerCache` is independently unit tested — all cache path combinations covered
-- [ ] `ioredis` added to `decisions.md`
 - [ ] No private keys or VC payloads stored in cache — verified by security test
 - [ ] Cache config via env vars with documented defaults in `.env.example`

@@ -4,15 +4,12 @@
 
 B4 is the orchestration boundary. It does not own any primitives — it calls B1, B2, and B3 to implement the human-facing flows: agent onboarding, user DID verification, and the service registry. B4 is the only boundary that the SDK's human-facing methods call directly.
 
-Current implementation note: agent onboarding is the primary live did:hedera creation path. Step 1 prepares a Hiero DID creation payload and returns it to the SDK; step 2 verifies the challenge signature and submits the SDK-signed DID creation proof to Hedera.
-
 ---
 
 ## What to Mock So This Story Can Start
 
 B4 depends on B1, B2, and B3. All are mocked via injectable interfaces:
 
-- **Mock IDIDService:** `createDID` returns `{ did: 'did:hedera:testnet:testid', hederaTransactionId: 'mock-tx-1' }`. `resolveDID` returns a fixed DID document with a known test keypair. Configurable to throw `DIDNotFoundError` for negative tests.
 - **Mock IVCService:** `issueVC` returns a hardcoded signed VC. `getVCStatus` returns `'active'`.
 - **Mock IVPService:** `generateVPTemplate` returns a hardcoded unsigned VP.
 
@@ -124,7 +121,6 @@ ENROLLMENT_TOKEN_REJECTED   — fields: tokenIdHash, reason, timestamp
 CHALLENGE_ISSUED            — fields: challengeId, did, purpose, expiresAt
 CHALLENGE_VERIFIED          — fields: challengeId, did, purpose, success: true
 CHALLENGE_REJECTED          — fields: challengeId, reason, timestamp
-AGENT_ONBOARDED             — fields: agentDid, agentName, hederaTransactionId
 USER_DID_VERIFIED           — fields: userDid, timestamp
 ```
 
@@ -246,9 +242,7 @@ Agent signs the nonce from step 1 and submits the signature.
 
 ```json
 {
-  "agentDid": "did:hedera:testnet:...",
   "vc": { },
-  "hederaTransactionId": "...",
   "vcId": "vc:helix:..."
 }
 ```
@@ -267,8 +261,6 @@ Agent signs the nonce from step 1 and submits the signature.
 10. Call `IDIDService.createDID(pendingPublicKeyHex, 'agent', parsedDomains, requestId, { stateJson: pendingDidCreateStateJson, signatureHex: didCreateSignature })` — if throws `DIDAlreadyExistsError` → throw `AgentAlreadyOnboardedError`
 11. Call `IVCService.issueVC({ subjectDid: agentDid, subjectType: 'agent', privilegeScopes: requestedScopes, agentName, delegationDepth: 0, maxDelegationDepth, expiresInSeconds: ENROLLMENT_TOKEN_TTL_SECONDS * 100 }, requestId)` — use a sensible default VC expiry
 12. Mark challenge `verifiedAt = now()`
-13. Emit `AGENT_ONBOARDED` with `agentDid`, `agentName`, `hederaTransactionId`
-14. Return `agentDid` + signed VC + `hederaTransactionId` + `vcId`
 
 **Error cases:** 404 `CHALLENGE_NOT_FOUND`, 410 `CHALLENGE_EXPIRED`, 409 `CHALLENGE_ALREADY_VERIFIED`, 400 `CHALLENGE_SIGNATURE_INVALID`, 409 `AGENT_ALREADY_ONBOARDED`
 
@@ -282,7 +274,6 @@ Used to verify a user's ownership of a DID. Called by the agent on behalf of the
 
 ```json
 {
-  "did": "did:hedera:testnet:...",
   "purpose": "user_verification"
 }
 ```
@@ -324,7 +315,6 @@ Used to verify a user's ownership of a DID. Called by the agent on behalf of the
 
 ```json
 {
-  "did": "did:hedera:testnet:...",
   "verified": true,
   "vc": { }
 }
@@ -453,7 +443,6 @@ Encrypted local JSON file. Encryption uses Node.js `crypto` module (AES-256-GCM 
 ```json
 {
   "version": 1,
-  "did": "did:hedera:testnet:...",
   "publicKeyHex": "...",
   "encryptedPrivateKey": "<hex>",
   "iv": "<12-byte hex>",
@@ -473,8 +462,6 @@ Private key encryption: PBKDF2 (100,000 iterations, SHA-256, 32-byte output key,
 - `load(passphrase: string, filePath: string): Promise<WalletData>` — reads file, derives key, decrypts. Throws `Error('Invalid passphrase or corrupted wallet')` if GCM authentication tag fails.
 - `getPrivateKey(passphrase: string, filePath: string): Promise<string>` — convenience: load + return `privateKeyHex`
 - `updateVC(newVcId: string, newVcJson: string, filePath: string, passphrase: string): Promise<void>` — load, update VC fields, re-save
-
-Wallet DID rule: the SDK wallet must not derive or guess a live did:hedera DID from a public key. A DID is only known after the API/Hiero onboarding flow returns it, or when the caller explicitly passes a live DID into `AgentWallet`.
 
 ---
 
@@ -528,8 +515,6 @@ Add error mappings in `HttpAdapter.ts` for all B4 error codes.
 - After `completeOnboarding`, `pendingKeyPair` is cleared from client instance memory
 
 ### Integration Tests — `helix-api/tests/integration/agent.integration.test.ts`
-
-Setup: real PostgreSQL, MockDIDService, MockVCService. `afterEach` truncates all tables.
 
 Tests:
 
@@ -589,8 +574,6 @@ PrismaClient
   → VPRepository
   → AgentRepository
   → AuditLogger (ApiAuditLogger)
-  → HederaHIEROClient
-  → DIDService(didRepository, hederaClient, auditLogger)
   → VCService(vcRepository, didService, auditLogger)
   → VPService(vpRepository, didService, vcService, agentRepository, auditLogger)
   → AgentService(agentRepository, didService, vcService, auditLogger)

@@ -147,7 +147,6 @@ every check. Link to the self-verify.ts example in examples/.
 
 #### 4.2 What You Are Now Responsible For
 Enumerate explicitly — missing any one of these is a security gap:
-- DID resolution from Hedera
 - VP signature verification (Ed25519 via @noble/curves)
 - VC signature verification against the Helix ID issuer public key
 - Expiry checking
@@ -156,9 +155,6 @@ Enumerate explicitly — missing any one of these is a security gap:
 
 #### 4.3 Step by Step
 
-##### 4.3.1 Resolve DID Document from Hedera
-How to resolve the agent's DID from Hedera using `sdk.resolveDID(did)` for
-`did:hedera:` format. What the DID document returns and which field contains
 the public key.
 
 ##### 4.3.2 Verify VP Signature

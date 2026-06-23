@@ -1,0 +1,33 @@
+{
+  "name": "@helix-id/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HelixID CLI for Platform Operator setup",
+  "type": "module",
+  "bin": {
+    "helix": "./dist/bin/helix.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests",
+    "test:non-live": "vitest run --passWithNoTests",
+    "test:unit": "vitest run tests --passWithNoTests",
+    "lint": "eslint src tests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@helix-id/core": "workspace:*",
+    "@helix-id/sdk-js": "workspace:*",
+    "chalk": "^5.4.1",
+    "commander": "^11.1.0"
+  },
+  "optionalDependencies": {
+    "@helix-id/did-hedera": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.8"
+  }
+}

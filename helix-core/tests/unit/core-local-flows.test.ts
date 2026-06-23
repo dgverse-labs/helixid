@@ -35,7 +35,9 @@ async function issuerSignedVC(
   issuer: { did: string; privateKeyHex: string },
   subjectDid: string,
   scopes = ['read:orders'],
-  overrides: Partial<SignedVC> & { credentialSubject?: Partial<SignedVC['credentialSubject']> } = {},
+  overrides: Partial<SignedVC> & {
+    credentialSubject?: Partial<SignedVC['credentialSubject']>;
+  } = {},
 ): Promise<SignedVC> {
   const now = new Date();
   const { credentialSubject: subjectOverrides, ...vcOverrides } = overrides;
@@ -110,23 +112,72 @@ describe('DID resolver', () => {
   it('maps bare did:web hosts to /.well-known/did.json', async () => {
     const key = generateKeyPair();
     const did = 'did:web:example.com';
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockJsonResponse(buildDIDDocument(did, key.publicKey)));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockJsonResponse(buildDIDDocument(did, key.publicKey)),
+    );
 
     await resolveDID(did);
 
-    expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe('https://example.com/.well-known/did.json');
+    expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe(
+      'https://example.com/.well-known/did.json',
+    );
+  });
+
+  it('resolves localhost did:web over http for encoded and legacy unencoded port forms', async () => {
+    const key = generateKeyPair();
+
+    const encodedDid = 'did:web:localhost%3A3000';
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockJsonResponse(buildDIDDocument(encodedDid, key.publicKey)),
+    );
+    await resolveDID(encodedDid);
+    expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe(
+      'http://localhost:3000/.well-known/did.json',
+    );
+
+    const legacyDid = 'did:web:localhost:3000';
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(buildDIDDocument(legacyDid, key.publicKey)),
+    );
+    await resolveDID(legacyDid);
+    expect(vi.mocked(globalThis.fetch).mock.calls[1]?.[0]).toBe(
+      'http://localhost:3000/.well-known/did.json',
+    );
+  });
+
+  it('resolves loopback did:web with unencoded port and path over http', async () => {
+    const key = generateKeyPair();
+    const did = 'did:web:127.0.0.1:3000:agents:booking';
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockJsonResponse(buildDIDDocument(did, key.publicKey)),
+    );
+
+    await resolveDID(did);
+
+    expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe(
+      'http://127.0.0.1:3000/agents/booking/did.json',
+    );
   });
 
   it('rejects malformed did:key fingerprints and invalid did:web documents', async () => {
-    await expect(resolveDID('did:key:not-multibase')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
-    await expect(resolveDID(`did:key:${base58btcEncode(new Uint8Array([1, 2, 3]))}`))
-      .rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(resolveDID('did:key:not-multibase')).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
+    await expect(
+      resolveDID(`did:key:${base58btcEncode(new Uint8Array([1, 2, 3]))}`),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockJsonResponse({}, false, 404));
-    await expect(resolveDID('did:web:notfound.example')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(resolveDID('did:web:notfound.example')).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
 
-    vi.mocked(globalThis.fetch).mockResolvedValueOnce(mockJsonResponse({ id: 'did:web:other.example' }));
-    await expect(resolveDID('did:web:bad.example')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse({ id: 'did:web:other.example' }),
+    );
+    await expect(resolveDID('did:web:bad.example')).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
     await expect(resolveDID('did:web:')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
   });
 });
@@ -137,7 +188,10 @@ describe('VP builder and verifier', () => {
     const issuer = generateKeyPair();
     const holderDid = didKey(holder.publicKey);
     const issuerDid = didKey(issuer.publicKey);
-    const vc = await issuerSignedVC({ did: issuerDid, privateKeyHex: issuer.privateKey }, holderDid);
+    const vc = await issuerSignedVC(
+      { did: issuerDid, privateKeyHex: issuer.privateKey },
+      holderDid,
+    );
 
     const vp = await new VPBuilder({
       vc,
@@ -148,11 +202,13 @@ describe('VP builder and verifier', () => {
     const { proof, ...payload } = vp;
 
     expect(vp.id).toMatch(/^vp:helix:[0-9a-f-]{36}$/);
-    await expect(verifySignature(
-      hashCanonicalPayload(payload),
-      Buffer.from(base58btcDecode(proof.proofValue)).toString('hex'),
-      holder.publicKey,
-    )).resolves.toBe(true);
+    await expect(
+      verifySignature(
+        hashCanonicalPayload(payload),
+        Buffer.from(base58btcDecode(proof.proofValue)).toString('hex'),
+        holder.publicKey,
+      ),
+    ).resolves.toBe(true);
   });
 
   it('verifies a valid VP and returns scopes and vpId', async () => {
@@ -160,13 +216,22 @@ describe('VP builder and verifier', () => {
     const issuer = generateKeyPair();
     const holderDid = didKey(holder.publicKey);
     const issuerDid = didKey(issuer.publicKey);
-    const vc = await issuerSignedVC({ did: issuerDid, privateKeyHex: issuer.privateKey }, holderDid);
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockJsonResponse({
-      credentialSubject: { encodedList: createStatusList(8) },
-    }));
+    const vc = await issuerSignedVC(
+      { did: issuerDid, privateKeyHex: issuer.privateKey },
+      holderDid,
+    );
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockJsonResponse({
+        credentialSubject: { encodedList: createStatusList(8) },
+      }),
+    );
 
-    const vp = await new VPBuilder({ vc, holderDid, targetService: 'orders', userDid: 'did:web:user.example' })
-      .sign(holder.privateKey, `${holderDid}#key-1`);
+    const vp = await new VPBuilder({
+      vc,
+      holderDid,
+      targetService: 'orders',
+      userDid: 'did:web:user.example',
+    }).sign(holder.privateKey, `${holderDid}#key-1`);
 
     await expect(verifyVP(vp, { expectedTargetService: 'orders' })).resolves.toMatchObject({
       valid: true,
@@ -181,14 +246,25 @@ describe('VP builder and verifier', () => {
     const issuer = generateKeyPair();
     const holderDid = didKey(holder.publicKey);
     const issuerDid = didKey(issuer.publicKey);
-    const vc = await issuerSignedVC({ did: issuerDid, privateKeyHex: issuer.privateKey }, holderDid, ['read:orders'], {
-      validUntil: new Date(Date.now() - 1000).toISOString(),
-    });
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockJsonResponse({
-      credentialSubject: { encodedList: createStatusList(8) },
-    }));
-    const vp = await new VPBuilder({ vc, holderDid, targetService: 'orders', userDid: 'did:web:user.example' })
-      .sign(holder.privateKey, `${holderDid}#key-1`);
+    const vc = await issuerSignedVC(
+      { did: issuerDid, privateKeyHex: issuer.privateKey },
+      holderDid,
+      ['read:orders'],
+      {
+        validUntil: new Date(Date.now() - 1000).toISOString(),
+      },
+    );
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockJsonResponse({
+        credentialSubject: { encodedList: createStatusList(8) },
+      }),
+    );
+    const vp = await new VPBuilder({
+      vc,
+      holderDid,
+      targetService: 'orders',
+      userDid: 'did:web:user.example',
+    }).sign(holder.privateKey, `${holderDid}#key-1`);
 
     await expect(verifyVP(vp)).rejects.toMatchObject({ code: 'VC_EXPIRED' });
   });
@@ -198,13 +274,22 @@ describe('VP builder and verifier', () => {
     const issuer = generateKeyPair();
     const holderDid = didKey(holder.publicKey);
     const issuerDid = didKey(issuer.publicKey);
-    const vc = await issuerSignedVC({ did: issuerDid, privateKeyHex: issuer.privateKey }, holderDid);
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockJsonResponse({
-      credentialSubject: { encodedList: setBit(createStatusList(8), 0, 1) },
-    }));
+    const vc = await issuerSignedVC(
+      { did: issuerDid, privateKeyHex: issuer.privateKey },
+      holderDid,
+    );
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockJsonResponse({
+        credentialSubject: { encodedList: setBit(createStatusList(8), 0, 1) },
+      }),
+    );
     expect(getBit(setBit(createStatusList(8), 0, 1), 0)).toBe(1);
-    const vp = await new VPBuilder({ vc, holderDid, targetService: 'orders', userDid: 'did:web:user.example' })
-      .sign(holder.privateKey, `${holderDid}#key-1`);
+    const vp = await new VPBuilder({
+      vc,
+      holderDid,
+      targetService: 'orders',
+      userDid: 'did:web:user.example',
+    }).sign(holder.privateKey, `${holderDid}#key-1`);
 
     await expect(verifyVP(vp)).rejects.toMatchObject({ code: 'VC_REVOKED' });
   });
@@ -212,9 +297,16 @@ describe('VP builder and verifier', () => {
   it('rejects self-signed VCs by default and accepts them with a warning when enabled', async () => {
     const holder = generateKeyPair();
     const holderDid = didKey(holder.publicKey);
-    const vc = await selfIssueVC({ scopes: ['read:orders'] }, { did: holderDid, privateKeyHex: holder.privateKey });
-    const vp = await new VPBuilder({ vc, holderDid, targetService: 'orders', userDid: 'did:web:user.example' })
-      .sign(holder.privateKey, `${holderDid}#key-1`);
+    const vc = await selfIssueVC(
+      { scopes: ['read:orders'] },
+      { did: holderDid, privateKeyHex: holder.privateKey },
+    );
+    const vp = await new VPBuilder({
+      vc,
+      holderDid,
+      targetService: 'orders',
+      userDid: 'did:web:user.example',
+    }).sign(holder.privateKey, `${holderDid}#key-1`);
 
     await expect(verifyVP(vp)).rejects.toMatchObject({ code: 'SELF_SIGNED_VC_NOT_ALLOWED' });
     await expect(verifyVP(vp, { allowSelfSigned: true })).resolves.toMatchObject({
@@ -228,34 +320,46 @@ describe('VP builder and verifier', () => {
     const issuer = generateKeyPair();
     const holderDid = didKey(holder.publicKey);
     const issuerDid = didKey(issuer.publicKey);
-    const vc = await issuerSignedVC({ did: issuerDid, privateKeyHex: issuer.privateKey }, holderDid, ['read:orders'], {
-      credentialStatus: undefined,
-    });
-    const vp = await new VPBuilder({ vc, holderDid, targetService: 'orders', userDid: 'did:web:user.example' })
-      .sign(holder.privateKey, `${holderDid}#key-1`);
+    const vc = await issuerSignedVC(
+      { did: issuerDid, privateKeyHex: issuer.privateKey },
+      holderDid,
+      ['read:orders'],
+      {
+        credentialStatus: undefined,
+      },
+    );
+    const vp = await new VPBuilder({
+      vc,
+      holderDid,
+      targetService: 'orders',
+      userDid: 'did:web:user.example',
+    }).sign(holder.privateKey, `${holderDid}#key-1`);
 
-    await expect(verifyVP({ ...vp, expirationDate: new Date(Date.now() - 1000).toISOString() }))
-      .rejects.toMatchObject({ code: 'VP_EXPIRED' });
-    await expect(verifyVP(vp, { expectedTargetService: 'payments' }))
-      .rejects.toMatchObject({ code: 'VP_INVALID_STRUCTURE' });
-    await expect(verifyVP({ ...vp, proof: { ...vp.proof, proofValue: base58btcEncode(new Uint8Array(64)) } }))
-      .rejects.toMatchObject({ code: 'VP_SIGNATURE_INVALID' });
+    await expect(
+      verifyVP({ ...vp, expirationDate: new Date(Date.now() - 1000).toISOString() }),
+    ).rejects.toMatchObject({ code: 'VP_EXPIRED' });
+    await expect(verifyVP(vp, { expectedTargetService: 'payments' })).rejects.toMatchObject({
+      code: 'VP_INVALID_STRUCTURE',
+    });
+    await expect(
+      verifyVP({ ...vp, proof: { ...vp.proof, proofValue: base58btcEncode(new Uint8Array(64)) } }),
+    ).rejects.toMatchObject({ code: 'VP_SIGNATURE_INVALID' });
     const unsignedVcVp = await new VPBuilder({
       vc: { id: 'vc:unsigned' } as SignedVC,
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
     }).sign(holder.privateKey, `${holderDid}#key-1`);
-    await expect(verifyVP(unsignedVcVp))
-      .rejects.toMatchObject({ code: 'VP_INVALID_STRUCTURE' });
+    await expect(verifyVP(unsignedVcVp)).rejects.toMatchObject({ code: 'VP_INVALID_STRUCTURE' });
     const targetMismatchVp = await new VPBuilder({
       vc: { ...vc, targetService: 'payments' } as SignedVC,
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
     }).sign(holder.privateKey, `${holderDid}#key-1`);
-    await expect(verifyVP(targetMismatchVp))
-      .rejects.toMatchObject({ code: 'VP_INVALID_STRUCTURE' });
+    await expect(verifyVP(targetMismatchVp)).rejects.toMatchObject({
+      code: 'VP_INVALID_STRUCTURE',
+    });
   });
 
   it('rejects invalid VC signatures and not-yet-valid credentials', async () => {
@@ -263,17 +367,35 @@ describe('VP builder and verifier', () => {
     const issuer = generateKeyPair();
     const holderDid = didKey(holder.publicKey);
     const issuerDid = didKey(issuer.publicKey);
-    const vc = await issuerSignedVC({ did: issuerDid, privateKeyHex: issuer.privateKey }, holderDid, ['read:orders'], {
-      credentialStatus: undefined,
-    });
-    const futureVC = await issuerSignedVC({ did: issuerDid, privateKeyHex: issuer.privateKey }, holderDid, ['read:orders'], {
-      credentialStatus: undefined,
-      validFrom: new Date(Date.now() + 60_000).toISOString(),
-    });
-    const vp = await new VPBuilder({ vc, holderDid, targetService: 'orders', userDid: 'did:web:user.example' })
-      .sign(holder.privateKey, `${holderDid}#key-1`);
-    const futureVp = await new VPBuilder({ vc: futureVC, holderDid, targetService: 'orders', userDid: 'did:web:user.example' })
-      .sign(holder.privateKey, `${holderDid}#key-1`);
+    const vc = await issuerSignedVC(
+      { did: issuerDid, privateKeyHex: issuer.privateKey },
+      holderDid,
+      ['read:orders'],
+      {
+        credentialStatus: undefined,
+      },
+    );
+    const futureVC = await issuerSignedVC(
+      { did: issuerDid, privateKeyHex: issuer.privateKey },
+      holderDid,
+      ['read:orders'],
+      {
+        credentialStatus: undefined,
+        validFrom: new Date(Date.now() + 60_000).toISOString(),
+      },
+    );
+    const vp = await new VPBuilder({
+      vc,
+      holderDid,
+      targetService: 'orders',
+      userDid: 'did:web:user.example',
+    }).sign(holder.privateKey, `${holderDid}#key-1`);
+    const futureVp = await new VPBuilder({
+      vc: futureVC,
+      holderDid,
+      targetService: 'orders',
+      userDid: 'did:web:user.example',
+    }).sign(holder.privateKey, `${holderDid}#key-1`);
 
     const badVcSignatureVp = await new VPBuilder({
       vc: { ...vc, proof: { ...vc.proof, proofValue: base58btcEncode(new Uint8Array(64)) } },
@@ -281,8 +403,9 @@ describe('VP builder and verifier', () => {
       targetService: 'orders',
       userDid: 'did:web:user.example',
     }).sign(holder.privateKey, `${holderDid}#key-1`);
-    await expect(verifyVP(badVcSignatureVp))
-      .rejects.toMatchObject({ code: 'VC_SIGNATURE_INVALID' });
+    await expect(verifyVP(badVcSignatureVp)).rejects.toMatchObject({
+      code: 'VC_SIGNATURE_INVALID',
+    });
     await expect(verifyVP(futureVp)).rejects.toMatchObject({ code: 'VC_NOT_YET_VALID' });
   });
 
@@ -291,12 +414,21 @@ describe('VP builder and verifier', () => {
     const issuer = generateKeyPair();
     const holderDid = didKey(holder.publicKey);
     const issuerDid = didKey(issuer.publicKey);
-    const vc = await issuerSignedVC({ did: issuerDid, privateKeyHex: issuer.privateKey }, holderDid, ['read:orders'], {
-      credentialStatus: undefined,
-    });
+    const vc = await issuerSignedVC(
+      { did: issuerDid, privateKeyHex: issuer.privateKey },
+      holderDid,
+      ['read:orders'],
+      {
+        credentialStatus: undefined,
+      },
+    );
     const prefixedVC = { ...vc, proof: { ...vc.proof, proofValue: `z${vc.proof.proofValue}` } };
-    const vp = await new VPBuilder({ vc: prefixedVC, holderDid, targetService: 'orders', userDid: 'did:web:user.example' })
-      .sign(holder.privateKey, `${holderDid}#key-1`);
+    const vp = await new VPBuilder({
+      vc: prefixedVC,
+      holderDid,
+      targetService: 'orders',
+      userDid: 'did:web:user.example',
+    }).sign(holder.privateKey, `${holderDid}#key-1`);
 
     await expect(verifyVP(vp)).resolves.toMatchObject({ valid: true });
   });
@@ -306,27 +438,45 @@ describe('VP builder and verifier', () => {
     const issuer = generateKeyPair();
     const holderDid = didKey(holder.publicKey);
     const issuerDid = didKey(issuer.publicKey);
-    const vc = await issuerSignedVC({ did: issuerDid, privateKeyHex: issuer.privateKey }, holderDid);
-    const vp = await new VPBuilder({ vc, holderDid, targetService: 'orders', userDid: 'did:web:user.example' })
-      .sign(holder.privateKey, `${holderDid}#key-1`);
+    const vc = await issuerSignedVC(
+      { did: issuerDid, privateKeyHex: issuer.privateKey },
+      holderDid,
+    );
+    const vp = await new VPBuilder({
+      vc,
+      holderDid,
+      targetService: 'orders',
+      userDid: 'did:web:user.example',
+    }).sign(holder.privateKey, `${holderDid}#key-1`);
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockJsonResponse({}, false, 503));
     await expect(verifyVP(vp)).rejects.toMatchObject({ code: 'VC_REVOKED' });
 
-    vi.mocked(globalThis.fetch).mockResolvedValueOnce(mockJsonResponse({
-      credentialSubject: { encodedList: createStatusList(8) },
-    }));
-    const badIndexVC = await issuerSignedVC({ did: issuerDid, privateKeyHex: issuer.privateKey }, holderDid, ['read:orders'], {
-      credentialStatus: {
-        id: 'https://issuer.example/status/1#not-a-number',
-        type: 'BitstringStatusListEntry',
-        statusPurpose: 'revocation',
-        statusListIndex: 'not-a-number',
-        statusListCredential: 'https://issuer.example/status/1',
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse({
+        credentialSubject: { encodedList: createStatusList(8) },
+      }),
+    );
+    const badIndexVC = await issuerSignedVC(
+      { did: issuerDid, privateKeyHex: issuer.privateKey },
+      holderDid,
+      ['read:orders'],
+      {
+        credentialStatus: {
+          id: 'https://issuer.example/status/1#not-a-number',
+          type: 'BitstringStatusListEntry',
+          statusPurpose: 'revocation',
+          statusListIndex: 'not-a-number',
+          statusListCredential: 'https://issuer.example/status/1',
+        },
       },
-    });
-    const badIndexVP = await new VPBuilder({ vc: badIndexVC, holderDid, targetService: 'orders', userDid: 'did:web:user.example' })
-      .sign(holder.privateKey, `${holderDid}#key-1`);
+    );
+    const badIndexVP = await new VPBuilder({
+      vc: badIndexVC,
+      holderDid,
+      targetService: 'orders',
+      userDid: 'did:web:user.example',
+    }).sign(holder.privateKey, `${holderDid}#key-1`);
     await expect(verifyVP(badIndexVP)).rejects.toMatchObject({ code: 'VC_REVOKED' });
   });
 
@@ -347,10 +497,16 @@ describe('VP builder and verifier', () => {
       { to: delegateDid, scopes: ['read:orders'], expiresIn: 60, fromVC: root },
       { did: holderDid, privateKeyHex: holder.privateKey },
     );
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockJsonResponse(buildDIDDocument(issuerDid, issuer.publicKey)));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockJsonResponse(buildDIDDocument(issuerDid, issuer.publicKey)),
+    );
 
-    const vp = await new VPBuilder({ vc: child, holderDid: delegateDid, targetService: 'orders', userDid: 'did:web:user.example' })
-      .sign(delegate.privateKey, `${delegateDid}#key-1`);
+    const vp = await new VPBuilder({
+      vc: child,
+      holderDid: delegateDid,
+      targetService: 'orders',
+      userDid: 'did:web:user.example',
+    }).sign(delegate.privateKey, `${delegateDid}#key-1`);
 
     await expect(verifyVP(vp)).resolves.toMatchObject({
       valid: true,
@@ -375,10 +531,18 @@ describe('VP builder and verifier', () => {
       { to: delegateDid, scopes: ['read:orders'], expiresIn: 60, fromVC: selfRoot },
       { did: holderDid, privateKeyHex: holder.privateKey },
     );
-    const vp = await new VPBuilder({ vc: child, holderDid: delegateDid, targetService: 'orders', userDid: 'did:web:user.example' })
-      .sign(delegate.privateKey, `${delegateDid}#key-1`);
+    const vp = await new VPBuilder({
+      vc: child,
+      holderDid: delegateDid,
+      targetService: 'orders',
+      userDid: 'did:web:user.example',
+    }).sign(delegate.privateKey, `${delegateDid}#key-1`);
 
-    const { proof: _proof, delegationChain: _chain, ...missingChainPayload } = child as SignedVC & { delegationChain?: SignedVC[] };
+    const {
+      proof: _proof,
+      delegationChain: _chain,
+      ...missingChainPayload
+    } = child as SignedVC & { delegationChain?: SignedVC[] };
     const missingChainChild = {
       ...missingChainPayload,
       proof: await createEd25519Proof(missingChainPayload, holder.privateKey, `${holderDid}#key-1`),
@@ -390,10 +554,12 @@ describe('VP builder and verifier', () => {
       userDid: 'did:web:user.example',
     }).sign(delegate.privateKey, `${delegateDid}#key-1`);
 
-    await expect(verifyVP(missingChainVp, { allowSelfSigned: true }))
-      .rejects.toMatchObject({ code: 'DELEGATION_CHAIN_INVALID' });
-    await expect(verifyVP(vp, { allowSelfSigned: true }))
-      .rejects.toMatchObject({ code: 'DELEGATION_CHAIN_INVALID' });
+    await expect(verifyVP(missingChainVp, { allowSelfSigned: true })).rejects.toMatchObject({
+      code: 'DELEGATION_CHAIN_INVALID',
+    });
+    await expect(verifyVP(vp, { allowSelfSigned: true })).rejects.toMatchObject({
+      code: 'DELEGATION_CHAIN_INVALID',
+    });
   });
 
   it('rejects delegated chain link mismatches after signature validation', async () => {
@@ -411,14 +577,18 @@ describe('VP builder and verifier', () => {
       ['read:orders', 'write:orders'],
       { credentialStatus: undefined },
     );
-    const child = await buildDelegationVC(
+    const child = (await buildDelegationVC(
       { to: delegateDid, scopes: ['read:orders'], expiresIn: 60, fromVC: root },
       { did: holderDid, privateKeyHex: holder.privateKey },
-    ) as SignedVC & { delegationChain?: SignedVC[] };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockJsonResponse(buildDIDDocument(issuerDid, issuer.publicKey)));
+    )) as SignedVC & { delegationChain?: SignedVC[] };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockJsonResponse(buildDIDDocument(issuerDid, issuer.publicKey)),
+    );
 
     const expectBrokenChild = async (
-      mutate: (payload: SignedVC & { delegationChain?: SignedVC[] }) => SignedVC & { delegationChain?: SignedVC[] },
+      mutate: (
+        payload: SignedVC & { delegationChain?: SignedVC[] },
+      ) => SignedVC & { delegationChain?: SignedVC[] },
       signer = holder,
       signerDid = holderDid,
     ) => {
@@ -427,8 +597,12 @@ describe('VP builder and verifier', () => {
         ...basePayload,
         proof: await createEd25519Proof(basePayload, signer.privateKey, `${signerDid}#key-1`),
       } as SignedVC;
-      const vp = await new VPBuilder({ vc: brokenChild, holderDid: delegateDid, targetService: 'orders', userDid: 'did:web:user.example' })
-        .sign(delegate.privateKey, `${delegateDid}#key-1`);
+      const vp = await new VPBuilder({
+        vc: brokenChild,
+        holderDid: delegateDid,
+        targetService: 'orders',
+        userDid: 'did:web:user.example',
+      }).sign(delegate.privateKey, `${delegateDid}#key-1`);
       await expect(verifyVP(vp)).rejects.toMatchObject({ code: 'DELEGATION_CHAIN_INVALID' });
     };
 
@@ -451,7 +625,10 @@ describe('VP builder and verifier', () => {
     }));
     await expectBrokenChild((payload) => ({
       ...payload,
-      credentialSubject: { ...payload.credentialSubject, privilegeScopes: ['read:orders', 'admin:all'] },
+      credentialSubject: {
+        ...payload.credentialSubject,
+        privilegeScopes: ['read:orders', 'admin:all'],
+      },
     }));
   });
 });
@@ -469,15 +646,24 @@ describe('delegation and self-issued VC helpers', () => {
       { credentialStatus: undefined, credentialSubject: { maxDelegationDepth: 0 } },
     );
 
-    await expect(buildDelegationVC(
-      { to: didKey(generateKeyPair().publicKey), scopes: ['write:orders'], expiresIn: 60, fromVC: parent },
-      { did: holderDid, privateKeyHex: holder.privateKey },
-    )).rejects.toMatchObject({ code: 'SCOPE_ESCALATION_DENIED' });
+    await expect(
+      buildDelegationVC(
+        {
+          to: didKey(generateKeyPair().publicKey),
+          scopes: ['write:orders'],
+          expiresIn: 60,
+          fromVC: parent,
+        },
+        { did: holderDid, privateKeyHex: holder.privateKey },
+      ),
+    ).rejects.toMatchObject({ code: 'SCOPE_ESCALATION_DENIED' });
 
-    await expect(buildDelegationVC(
-      { to: didKey(generateKeyPair().publicKey), scopes: [], expiresIn: 60, fromVC: parent },
-      { did: holderDid, privateKeyHex: holder.privateKey },
-    )).rejects.toMatchObject({ code: 'MAX_DELEGATION_DEPTH_EXCEEDED' });
+    await expect(
+      buildDelegationVC(
+        { to: didKey(generateKeyPair().publicKey), scopes: [], expiresIn: 60, fromVC: parent },
+        { did: holderDid, privateKeyHex: holder.privateKey },
+      ),
+    ).rejects.toMatchObject({ code: 'MAX_DELEGATION_DEPTH_EXCEEDED' });
   });
 
   it('rejects non-agent parents and equal-scope delegations', async () => {
@@ -498,14 +684,23 @@ describe('delegation and self-issued VC helpers', () => {
       { did: holderDid, privateKeyHex: holder.privateKey },
     );
 
-    await expect(buildDelegationVC(
-      { to: didKey(generateKeyPair().publicKey), scopes: [], expiresIn: 60, fromVC: userVC },
-      { did: holderDid, privateKeyHex: holder.privateKey },
-    )).rejects.toMatchObject({ code: 'SCOPE_ESCALATION_DENIED' });
-    await expect(buildDelegationVC(
-      { to: didKey(generateKeyPair().publicKey), scopes: ['read:orders'], expiresIn: 60, fromVC: parent },
-      { did: holderDid, privateKeyHex: holder.privateKey },
-    )).rejects.toMatchObject({ code: 'SCOPE_ESCALATION_DENIED' });
+    await expect(
+      buildDelegationVC(
+        { to: didKey(generateKeyPair().publicKey), scopes: [], expiresIn: 60, fromVC: userVC },
+        { did: holderDid, privateKeyHex: holder.privateKey },
+      ),
+    ).rejects.toMatchObject({ code: 'SCOPE_ESCALATION_DENIED' });
+    await expect(
+      buildDelegationVC(
+        {
+          to: didKey(generateKeyPair().publicKey),
+          scopes: ['read:orders'],
+          expiresIn: 60,
+          fromVC: parent,
+        },
+        { did: holderDid, privateKeyHex: holder.privateKey },
+      ),
+    ).rejects.toMatchObject({ code: 'SCOPE_ESCALATION_DENIED' });
   });
 
   it('builds valid delegation VC structure', async () => {
@@ -539,21 +734,38 @@ describe('delegation and self-issued VC helpers', () => {
   it('selfIssueVC creates a self-signed dev credential without credentialStatus', async () => {
     const holder = generateKeyPair();
     const holderDid = didKey(holder.publicKey);
-    const vc = await selfIssueVC({ scopes: ['read:orders'] }, { did: holderDid, privateKeyHex: holder.privateKey });
+    const vc = await selfIssueVC(
+      { scopes: ['read:orders'] },
+      { did: holderDid, privateKeyHex: holder.privateKey },
+    );
 
     expect(vc.issuer).toBe(vc.credentialSubject.id);
     expect(vc).not.toHaveProperty('credentialStatus');
-    expect((vc as unknown as { evidence: { type: string }[] }).evidence[0]?.type).toBe('SelfSignedDevCredential');
+    expect((vc as unknown as { evidence: { type: string }[] }).evidence[0]?.type).toBe(
+      'SelfSignedDevCredential',
+    );
   });
 
   it('selfIssueVC supports duration units and rejects malformed durations', async () => {
     const holder = generateKeyPair();
     const holderDid = didKey(holder.publicKey);
-    const seconds = await selfIssueVC({ scopes: [], expiresIn: '1s' }, { did: holderDid, privateKeyHex: holder.privateKey });
-    const days = await selfIssueVC({ scopes: [], expiresIn: '1d' }, { did: holderDid, privateKeyHex: holder.privateKey });
+    const seconds = await selfIssueVC(
+      { scopes: [], expiresIn: '1s' },
+      { did: holderDid, privateKeyHex: holder.privateKey },
+    );
+    const days = await selfIssueVC(
+      { scopes: [], expiresIn: '1d' },
+      { did: holderDid, privateKeyHex: holder.privateKey },
+    );
 
-    expect(new Date(days.validUntil).getTime()).toBeGreaterThan(new Date(seconds.validUntil).getTime());
-    await expect(selfIssueVC({ scopes: [], expiresIn: 'forever' }, { did: holderDid, privateKeyHex: holder.privateKey }))
-      .rejects.toThrow('expiresIn must use s, m, h, or d suffix');
+    expect(new Date(days.validUntil).getTime()).toBeGreaterThan(
+      new Date(seconds.validUntil).getTime(),
+    );
+    await expect(
+      selfIssueVC(
+        { scopes: [], expiresIn: 'forever' },
+        { did: holderDid, privateKeyHex: holder.privateKey },
+      ),
+    ).rejects.toThrow('expiresIn must use s, m, h, or d suffix');
   });
 });

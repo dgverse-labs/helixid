@@ -1,8 +1,8 @@
-import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
-import { generateKeyPair, getBit, signBytes } from '../helix-core/src/index.js';
+import { generateKeyPair, publicKeyToMultibase, signData } from '../helix-core/src/index.js';
 
 // Expiry is planned and known in advance. Revocation is immediate and event
 // driven: consent changes, key compromise, incorrect scopes, or anomalous agent
@@ -11,9 +11,19 @@ import { generateKeyPair, getBit, signBytes } from '../helix-core/src/index.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: join(__dirname, '..', '.env') });
 
-const fixturePath = join(__dirname, 'e2e-travel-concierge', 'fixtures', 'vp.json');
-const helixApiUrl = process.env.HELIX_API_URL ?? process.env.API_BASE_URL ?? 'http://localhost:3000';
+const DEFAULT_SCOPES = ['read:catalog', 'write:orders', 'read:inventory'];
+const helixApiUrl = process.env.API_BASE_URL ?? 'http://localhost:3000';
 const adminKey = process.env.HELIX_ADMIN_API_KEY;
+
+function readStatusListBit(encodedList: string, index: number): 0 | 1 {
+  const compressed = Buffer.from(encodedList.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+  const buffer = gunzipSync(compressed);
+  const byteIndex = Math.floor(index / 8);
+  const bitIndex = index % 8;
+  const byte = buffer[byteIndex];
+  if (byte === undefined) throw new Error('Status list index out of bounds');
+  return ((byte >> (7 - bitIndex)) & 1) === 1 ? 1 : 0;
+}
 
 type SignedVC = {
   id: string;
@@ -30,21 +40,14 @@ type SignedVC = {
   };
 };
 
-type SignedVP = {
-  holder: string;
-  verifiableCredential: [SignedVC, ...SignedVC[]];
-};
-
-async function loadFixtureVC(): Promise<{ signedVP: SignedVP; vc: SignedVC }> {
-  const fixture = JSON.parse(await readFile(fixturePath, 'utf8')) as { signedVP: SignedVP };
-  return { signedVP: fixture.signedVP, vc: fixture.signedVP.verifiableCredential[0] };
-}
-
 async function checkStatus(vc: SignedVC): Promise<{ bit: 0 | 1; status: 'ACTIVE' | 'REVOKED' }> {
   const response = await fetch(vc.credentialStatus.statusListCredential);
   if (!response.ok) throw new Error(`StatusList fetch failed with HTTP ${response.status}`);
-  const statusList = await response.json() as { credentialSubject: { encodedList: string } };
-  const bit = getBit(statusList.credentialSubject.encodedList, Number(vc.credentialStatus.statusListIndex));
+  const statusList = (await response.json()) as { credentialSubject: { encodedList: string } };
+  const bit = readStatusListBit(
+    statusList.credentialSubject.encodedList,
+    Number(vc.credentialStatus.statusListIndex),
+  );
   return { bit, status: bit === 0 ? 'ACTIVE' : 'REVOKED' };
 }
 
@@ -70,53 +73,53 @@ async function createEnrollmentToken(scopes: string[]): Promise<string> {
       maxDelegationDepth: 0,
     }),
   });
-  if (!response.ok) throw new Error(`Enrollment token failed with HTTP ${response.status}: ${await response.text()}`);
-  const body = await response.json() as { token: string };
+  if (!response.ok)
+    throw new Error(
+      `Enrollment token failed with HTTP ${response.status}: ${await response.text()}`,
+    );
+  const body = (await response.json()) as { token: string };
   return body.token;
 }
 
+function bootstrapProofPayload(input: {
+  bootstrapToken: string;
+  agentDid: string;
+  timestamp: number;
+}): string {
+  return JSON.stringify({
+    bootstrapToken: input.bootstrapToken,
+    agentDid: input.agentDid,
+    timestamp: input.timestamp,
+  });
+}
+
 async function enrollNewCredential(scopes: string[]): Promise<{ vc: SignedVC; did: string }> {
-  await mkdir(join(__dirname, 'e2e-travel-concierge', 'agent'), { recursive: true });
-  const token = await createEnrollmentToken(scopes);
+  const bootstrapToken = await createEnrollmentToken(scopes);
   const keyPair = generateKeyPair();
+  const agentDid = `did:key:${publicKeyToMultibase(keyPair.publicKey)}`;
+  const timestamp = Date.now();
+  const proofSignature = signData(
+    bootstrapProofPayload({ bootstrapToken, agentDid, timestamp }),
+    keyPair.privateKey,
+  );
 
-  const challengeResponse = await fetch(`${helixApiUrl}/v1/onboard`, {
+  const response = await fetch(`${helixApiUrl}/v1/enroll`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      enrollmentToken: token,
-      publicKeyHex: keyPair.publicKey,
-      domains: ['https://travel-concierge.example.com'],
-    }),
+    body: JSON.stringify({ bootstrapToken, agentDid, timestamp, proofSignature }),
   });
-  if (!challengeResponse.ok) throw new Error(`Onboard challenge failed with HTTP ${challengeResponse.status}: ${await challengeResponse.text()}`);
-  const challenge = await challengeResponse.json() as {
-    challengeId: string;
-    nonce: string;
-    didCreateSigningPayloadHex?: string;
-  };
+  if (!response.ok) {
+    throw new Error(`Enroll failed with HTTP ${response.status}: ${await response.text()}`);
+  }
 
-  const signature = await signBytes(Buffer.from(challenge.nonce, 'hex'), keyPair.privateKey);
-  const didCreateSignature = challenge.didCreateSigningPayloadHex
-    ? await signBytes(Buffer.from(challenge.didCreateSigningPayloadHex, 'hex'), keyPair.privateKey)
-    : undefined;
-
-  const verifyResponse = await fetch(`${helixApiUrl}/v1/onboard/verify`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      challengeId: challenge.challengeId,
-      signature,
-      ...(didCreateSignature ? { didCreateSignature } : {}),
-    }),
-  });
-  if (!verifyResponse.ok) throw new Error(`Onboard verify failed with HTTP ${verifyResponse.status}: ${await verifyResponse.text()}`);
-  const result = await verifyResponse.json() as { agentDid: string; vc: SignedVC };
-  return { did: result.agentDid, vc: result.vc };
+  const result = (await response.json()) as { vc: SignedVC };
+  return { did: agentDid, vc: result.vc };
 }
 
 async function main(): Promise<void> {
-  const { signedVP, vc } = await loadFixtureVC();
+  console.log('[Agent Owner] Creating fresh enrollment token and onboarding a test credential.');
+  const initial = await enrollNewCredential(DEFAULT_SCOPES);
+  const vc = initial.vc;
 
   console.log('[Verifier] Scenario 1 - Active credential');
   // BitstringStatusList is a compressed bitstring. The VC carries a URL and index;
@@ -145,30 +148,34 @@ async function main(): Promise<void> {
   // Session JWT verifiers may not see revocation until a pre-existing JWT expires
   // (up to the configured 10-minute TTL in the default setup).
 
-  console.log('\n[Verifier] Scenario 3 - Revocation detection mid-session');
-  // Per-request checking is the security property: a VP model checks revocation
-  // on every presentation. Session JWTs trade this for speed and may lag until
-  // the JWT expires.
-  for (const presentation of [1, 2, 3]) {
-    console.log(`[Verifier] Session - Presentation ${presentation}: checking... GRANTED`);
+  console.log('\n[Verifier] Scenario 3 - Repeated VP verification after revocation');
+  // This script is VP-only (no JWT session bridge): each presentation checks
+  // revocation status, so a revoked credential is denied immediately every time.
+  for (const presentation of [1, 2, 3, 4]) {
+    const check = await checkStatus(vc);
+    const decision = check.bit === 1 ? 'DENIED' : 'GRANTED';
+    console.log(`[Verifier] VP Presentation ${presentation}: checking... ${decision}`);
+    console.log(`           Internal reason: StatusList bit = ${check.bit} (${check.status})`);
+    if (check.bit === 1) {
+      console.log("           External response to agent: { error: 'VP_VERIFICATION_FAILED' }");
+    }
   }
-  const fourth = await checkStatus(vc);
-  console.log(`[Verifier] Session - Presentation 4: checking... ${fourth.bit === 1 ? 'DENIED' : 'GRANTED'}`);
-  console.log(`           Internal reason: credential revoked (StatusList bit = ${fourth.bit})`);
-  console.log("           External response to agent: { error: 'VP_VERIFICATION_FAILED' }");
-  console.log('           Session terminated.');
 
   console.log('\n[Verifier] Scenario 4 - Renewal after revocation');
   // The DID is not the credential. Revoking a credential does not erase the
-  // agent's Hedera identity. Current onboarding issues a new credential to a new
+  // agent identity. Current onboarding issues a new credential to a new
   // DID; the old VC remains revoked and the new VC receives a fresh list index.
   console.log('[Agent Owner] Creating replacement enrollment token.');
   const renewed = await enrollNewCredential(vc.credentialSubject.privilegeScopes);
   const oldStatus = await checkStatus(vc);
   const newStatus = await checkStatus(renewed.vc);
-  console.log(`[Verifier] Old VC (${vc.id}): StatusList index ${vc.credentialStatus.statusListIndex} bit = ${oldStatus.bit} ${oldStatus.status}`);
-  console.log(`[Verifier] New VC (${renewed.vc.id}): StatusList index ${renewed.vc.credentialStatus.statusListIndex} bit = ${newStatus.bit} ${newStatus.status}`);
-  console.log(`[Verifier] Original agent DID: ${signedVP.holder}`);
+  console.log(
+    `[Verifier] Old VC (${vc.id}): StatusList index ${vc.credentialStatus.statusListIndex} bit = ${oldStatus.bit} ${oldStatus.status}`,
+  );
+  console.log(
+    `[Verifier] New VC (${renewed.vc.id}): StatusList index ${renewed.vc.credentialStatus.statusListIndex} bit = ${newStatus.bit} ${newStatus.status}`,
+  );
+  console.log(`[Verifier] Original agent DID: ${initial.did}`);
   console.log(`[Verifier] Replacement agent DID: ${renewed.did}`);
   console.log('[Verifier] The old VC remains permanently revoked; the replacement VC is active.');
   console.log('[Verifier] BitstringStatusList: https://www.w3.org/TR/vc-bitstring-status-list/');

@@ -8,7 +8,6 @@ import {
   publicKeyToMultibase,
   selfIssueVC,
   signData,
-  WalletAlreadyExistsError,
   type SelfIssueOptions,
   type ServiceEndpoint,
   type SignedVC,
@@ -62,7 +61,7 @@ export class AgentWallet {
   private readonly client: HelixClient | undefined;
   private privateKeyHex: string | undefined;
   private publicKeyHex: string | undefined;
-  private did: string | undefined;
+  private didValue: string | undefined;
   private walletPath: string | undefined;
   private passphrase: string | undefined;
   private walletCredentials: WalletCredential[];
@@ -84,11 +83,15 @@ export class AgentWallet {
       this.privateKeyHex = keyPair.privateKey;
       this.publicKeyHex = keyPair.publicKey;
     }
-    this.did = options.did;
+    this.didValue = options.did;
   }
 
   get credentials(): SignedVC[] {
     return this.walletCredentials.map((credential) => JSON.parse(credential.vcJson) as SignedVC);
+  }
+
+  get did(): string {
+    return this.getDID();
   }
 
   getPublicKey(): string {
@@ -102,8 +105,11 @@ export class AgentWallet {
   }
 
   getDID(): string {
-    if (!this.did) throw new Error('Wallet has no DID. Pass a live DID into AgentWallet or load an onboarded wallet file.');
-    return this.did;
+    if (!this.didValue)
+      throw new Error(
+        'Wallet has no DID. Pass a live DID into AgentWallet or load an onboarded wallet file.',
+      );
+    return this.didValue;
   }
 
   async createDID(subjectType: 'agent' | 'user'): Promise<{ did: string }> {
@@ -155,13 +161,19 @@ export class AgentWallet {
   }
 
   private async saveCurrent(): Promise<void> {
-    if (!this.did || !this.publicKeyHex || !this.privateKeyHex || !this.passphrase || !this.walletPath) {
+    if (
+      !this.didValue ||
+      !this.publicKeyHex ||
+      !this.privateKeyHex ||
+      !this.passphrase ||
+      !this.walletPath
+    ) {
       throw new Error('Wallet is not loaded from a file');
     }
     const now = new Date().toISOString();
     await this.save(
       {
-        did: this.did,
+        did: this.didValue,
         publicKeyHex: this.publicKeyHex,
         privateKeyHex: this.privateKeyHex,
         credentials: this.walletCredentials,
@@ -204,7 +216,12 @@ export class AgentWallet {
   }
 
   async addCredential(vc: SignedVC): Promise<void>;
-  async addCredential(vcId: string, vcJson: string, filePath: string, passphrase: string): Promise<void>;
+  async addCredential(
+    vcId: string,
+    vcJson: string,
+    filePath: string,
+    passphrase: string,
+  ): Promise<void>;
   async addCredential(
     vcOrId: SignedVC | string,
     vcJson?: string,
@@ -212,11 +229,13 @@ export class AgentWallet {
     passphrase?: string,
   ): Promise<void> {
     if (typeof vcOrId !== 'string') {
-      if (!this.did) {
-        throw new Error('Wallet has no DID. Pass a live DID into AgentWallet or load an onboarded wallet file.');
+      if (!this.didValue) {
+        throw new Error(
+          'Wallet has no DID. Pass a live DID into AgentWallet or load an onboarded wallet file.',
+        );
       }
       const vc = vcOrId;
-      if (vc.credentialSubject.id !== this.did) {
+      if (vc.credentialSubject.id !== this.didValue) {
         throw new CredentialNotForThisAgentError();
       }
       if (this.walletCredentials.some((item) => item.vcId === vc.id)) {
@@ -232,10 +251,7 @@ export class AgentWallet {
     const vcId = vcOrId;
     const existing = await this.load(passphrase, filePath);
     const credential = AgentWallet.credentialFromVC(vcId, vcJson);
-    const credentials = [
-      ...existing.credentials.filter((item) => item.vcId !== vcId),
-      credential,
-    ];
+    const credentials = [...existing.credentials.filter((item) => item.vcId !== vcId), credential];
     await this.save(
       { ...existing, credentials, updatedAt: new Date().toISOString() },
       passphrase,
@@ -244,15 +260,23 @@ export class AgentWallet {
   }
 
   async selfIssueVC(options: SelfIssueOptions): Promise<SignedVC> {
-    if (!this.did || !this.privateKeyHex) {
+    if (!this.didValue || !this.privateKeyHex) {
       throw new Error('Wallet has no DID or private key');
     }
-    const vc = await selfIssueVC(options, { did: this.did, privateKeyHex: this.privateKeyHex });
+    const vc = await selfIssueVC(options, {
+      did: this.didValue,
+      privateKeyHex: this.privateKeyHex,
+    });
     await this.addCredential(vc);
     return vc;
   }
 
-  async updateCredential(vcId: string, vcJson: string, filePath: string, passphrase: string): Promise<void> {
+  async updateCredential(
+    vcId: string,
+    vcJson: string,
+    filePath: string,
+    passphrase: string,
+  ): Promise<void> {
     await this.addCredential(vcId, vcJson, filePath, passphrase);
   }
 
@@ -273,8 +297,14 @@ export class AgentWallet {
     return (await this.load(passphrase, filePath)).credentials;
   }
 
-  async getCredential(vcId: string, passphrase: string, filePath: string): Promise<WalletCredential | null> {
-    return (await this.load(passphrase, filePath)).credentials.find((item) => item.vcId === vcId) ?? null;
+  async getCredential(
+    vcId: string,
+    passphrase: string,
+    filePath: string,
+  ): Promise<WalletCredential | null> {
+    return (
+      (await this.load(passphrase, filePath)).credentials.find((item) => item.vcId === vcId) ?? null
+    );
   }
 
   async getLatestCredential(
@@ -290,15 +320,18 @@ export class AgentWallet {
 
   static credentialFromVC(vcId: string, vc: string | Record<string, unknown>): WalletCredential {
     const vcJson = typeof vc === 'string' ? vc : JSON.stringify(vc);
-    const parsed = typeof vc === 'string' ? JSON.parse(vc) as Record<string, unknown> : vc;
-    const subject = typeof parsed['credentialSubject'] === 'object' && parsed['credentialSubject'] !== null
-      ? parsed['credentialSubject'] as Record<string, unknown>
-      : {};
+    const parsed = typeof vc === 'string' ? (JSON.parse(vc) as Record<string, unknown>) : vc;
+    const subject =
+      typeof parsed['credentialSubject'] === 'object' && parsed['credentialSubject'] !== null
+        ? (parsed['credentialSubject'] as Record<string, unknown>)
+        : {};
     const now = new Date().toISOString();
     const credential: WalletCredential = {
       vcId,
       vcJson,
-      type: Array.isArray(parsed['type']) ? parsed['type'].filter((item): item is string => typeof item === 'string') : [],
+      type: Array.isArray(parsed['type'])
+        ? parsed['type'].filter((item): item is string => typeof item === 'string')
+        : [],
       addedAt: now,
       updatedAt: now,
     };
@@ -310,11 +343,9 @@ export class AgentWallet {
   static async create(walletPath: string, passphrase: string): Promise<AgentWallet> {
     try {
       await access(walletPath);
-      throw new WalletAlreadyExistsError();
-    } catch (error) {
-      if (error instanceof WalletAlreadyExistsError) {
-        throw error;
-      }
+      return AgentWallet.load(walletPath, passphrase);
+    } catch {
+      // file does not exist yet — create a new wallet
     }
 
     const keyPair = generateKeyPair();
@@ -336,7 +367,11 @@ export class AgentWallet {
     return AgentWallet.fromWalletData(data, walletPath, passphrase);
   }
 
-  private static fromWalletData(data: WalletData, walletPath: string, passphrase: string): AgentWallet {
+  private static fromWalletData(
+    data: WalletData,
+    walletPath: string,
+    passphrase: string,
+  ): AgentWallet {
     return new AgentWallet({
       did: data.did,
       privateKeyHex: data.privateKeyHex,

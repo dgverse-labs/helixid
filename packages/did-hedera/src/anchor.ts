@@ -1,66 +1,57 @@
-import {
-  AccountId,
-  Client,
-  PrivateKey,
-  TopicCreateTransaction,
-  TopicMessageSubmitTransaction,
-} from '@hashgraph/sdk';
+import type { Client } from '@hashgraph/sdk';
 import { HederaAnchorFailedError } from '@helix-id/core';
+import { buildHederaClient, extractTopicId, privateKeyFromHex } from './hiero-client.js';
 import type { HederaAnchorOptions } from './types.js';
 
-function buildClient(options: HederaAnchorOptions): Client {
-  let client: Client;
-  if (options.network === 'mainnet') {
-    client = Client.forMainnet();
-  } else if (options.network === 'previewnet') {
-    client = Client.forPreviewnet();
-  } else {
-    client = Client.forTestnet();
-  }
+type HieroRegistrar = {
+  createDID: (
+    options: { privateKey: ReturnType<typeof privateKeyFromHex> },
+    providers: { client: Client },
+  ) => Promise<{ did: string; transactionId?: string }>;
+};
 
-  client.setOperator(
-    AccountId.fromString(options.operatorId),
-    PrivateKey.fromString(options.operatorKey),
-  );
-  return client;
+type HieroResolver = {
+  resolveDID: (did: string) => Promise<unknown>;
+};
+
+async function loadRegistrar(): Promise<HieroRegistrar> {
+  return import('@hiero-did-sdk/registrar') as Promise<HieroRegistrar>;
 }
 
+async function loadResolver(): Promise<HieroResolver> {
+  return import('@hiero-did-sdk/resolver') as Promise<HieroResolver>;
+}
+
+/**
+ * Registers a did:hedera identity via the Hiero DID registrar.
+ * Operator HBAR is debited for the HCS transaction.
+ */
 export async function anchorDidHedera(options: HederaAnchorOptions): Promise<{
   did: string;
   topicId: string;
   transactionId: string;
+  didDocument: unknown;
 }> {
   console.warn(
     `[did-hedera] Submitting paid Hedera HCS transaction on ${options.network}. ` +
       'Operator account HBAR balance will be debited.',
   );
 
-  const client = buildClient(options);
-  const payload = JSON.stringify(options.didDocument);
+  const client = buildHederaClient(options);
+  const privateKey = privateKeyFromHex(options.privateKeyHex);
+  const { createDID } = await loadRegistrar();
+  const { resolveDID } = await loadResolver();
 
   try {
-    const createTx = await new TopicCreateTransaction().execute(client);
-    const createReceipt = await createTx.getReceipt(client);
-    const topicId = createReceipt.topicId?.toString();
-    if (!topicId) {
-      throw new HederaAnchorFailedError('Topic creation receipt did not include a topic id');
-    }
-
-    const submitTx = await new TopicMessageSubmitTransaction()
-      .setTopicId(topicId)
-      .setMessage(payload)
-      .execute(client);
-    const submitReceipt = await submitTx.getReceipt(client);
-
-    const transactionId = submitTx.transactionId.toString();
-    const did = `did:hedera:${options.network}:${topicId}`;
+    const { did, transactionId } = await createDID({ privateKey }, { client });
+    const didDocument = await resolveDID(did);
+    const topicId = extractTopicId(did);
 
     return {
       did,
       topicId,
-      transactionId: submitReceipt.status.toString() === 'SUCCESS'
-        ? transactionId
-        : transactionId,
+      transactionId: transactionId ?? `hiero-did:${did}`,
+      didDocument,
     };
   } catch (error) {
     if (error instanceof HederaAnchorFailedError) {

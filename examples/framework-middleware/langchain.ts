@@ -24,8 +24,6 @@ async function main(): Promise<void> {
   const middleware = HelixIDMiddleware({
     walletPassphrase,
     walletFilePath: walletPath,
-    vcId: credential.vcId,
-    vcType: 'HelixAgentCredential',
     userDid,
     targetService,
   });
@@ -64,8 +62,6 @@ async function main(): Promise<void> {
   const wrappedTool = HelixIDToolWrapper(ordersTool, {
     walletPassphrase,
     walletFilePath: walletPath,
-    vcId: credential.vcId,
-    vcType: 'HelixAgentCredential',
     userDid,
     targetService,
   });

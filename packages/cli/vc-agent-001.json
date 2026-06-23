@@ -1,0 +1,39 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/credentials/v2",
+    "https://helix-id.io/contexts/v1"
+  ],
+  "id": "urn:uuid:fec9fdbb-e72b-4fbf-ada0-69bb5baa5cd5",
+  "type": [
+    "VerifiableCredential",
+    "HelixAgentCredential"
+  ],
+  "issuer": "did:web:example.com",
+  "validFrom": "2026-06-22T22:27:55.764Z",
+  "validUntil": "2026-09-20T22:27:55.764Z",
+  "credentialStatus": {
+    "id": "https://example.com/status/1#0",
+    "type": "BitstringStatusListEntry",
+    "statusPurpose": "revocation",
+    "statusListIndex": "0",
+    "statusListCredential": "https://example.com/status/1"
+  },
+  "credentialSubject": {
+    "id": "did:key:z6Mk...",
+    "type": "HelixAgent",
+    "privilegeScopes": [
+      "read:orders",
+      "write:bookings"
+    ],
+    "agentName": "did:key:z6Mk...",
+    "delegationDepth": 0,
+    "maxDelegationDepth": 1
+  },
+  "proof": {
+    "type": "Ed25519Signature2020",
+    "created": "2026-06-22T22:27:55.766Z",
+    "verificationMethod": "did:web:example.com#key-1",
+    "proofPurpose": "assertionMethod",
+    "proofValue": "4uCoB9pdDADCnJMAdabsfGSeDtri133cqh3cRZyK5e82DDxhb7xMbr9pYCDc1ev5jenZygSLwz9tMXLZiLYis1PK"
+  }
+}

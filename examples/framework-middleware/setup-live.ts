@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { access } from 'node:fs/promises';
 import { AgentWallet } from '@helix-id/sdk-js';
 import {
   createHelixClient,
@@ -33,12 +34,43 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 async function assertApiAvailable(): Promise<void> {
   const response = await fetch(`${helixApiUrl}/health`);
   if (!response.ok) {
-    throw new Error(`Helix API health check failed with ${response.status}. Start the API before running setup.`);
+    throw new Error(
+      `Helix API health check failed with ${response.status}. Start the API before running setup.`,
+    );
+  }
+}
+
+async function walletExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
   }
 }
 
 async function main(): Promise<void> {
   await ensureAgentDirectory();
+
+  const walletStore = new AgentWallet();
+  if (await walletExists(walletPath)) {
+    logStep('Setup', `Found existing wallet at ${walletPath}; skipping enrollment.`);
+    const wallet = await walletStore.load(walletPassphrase, walletPath);
+    const credential = await walletStore.getLatestCredential(
+      { vcType: 'HelixAgentCredential' },
+      walletPassphrase,
+      walletPath,
+    );
+    if (!credential) throw new Error('Wallet has no HelixAgentCredential');
+    const vc = JSON.parse(credential.vcJson) as WalletVC;
+    const expiresAt = vc.validUntil ?? vc.expirationDate ?? 'unknown';
+
+    logStep('Agent', `DID: ${wallet.did}`);
+    logStep('Agent', `Selected VC id: ${credential.vcId}`);
+    logStep('Agent', `Credential expiry: ${expiresAt}`);
+    return;
+  }
+
   await assertApiAvailable();
 
   logStep('Setup', `Using Helix API at ${helixApiUrl}`);
@@ -52,26 +84,29 @@ async function main(): Promise<void> {
   logStep('Agent Owner', `Enrollment token expires at ${enrollment.expiresAt}.`);
 
   const client = createHelixClient();
-  logStep('Agent', 'Generating an agent keypair locally and requesting the onboarding challenge.');
-  const challenge = await client.requestOnboardingChallenge(enrollment.token, requestedDomains);
-  logStep('Helix ID', `Challenge ${challenge.challengeId} issued; DID creation is prepared for real Hedera anchoring.`);
+  logStep('Agent', 'Creating a local did:key wallet and enrolling with the bootstrap token.');
 
-  logStep('Agent', 'Signing the challenge locally and completing onboarding.');
-  const onboarding = await client.completeOnboarding(
-    challenge.challengeId,
-    challenge.nonce,
+  // Create and persist a local did:key wallet (AgentWallet.create writes the file)
+  const wallet = await AgentWallet.create(walletPath, walletPassphrase);
+  logStep('Agent', `Generated local DID ${wallet.did} and saved wallet to ${walletPath}.`);
+
+  // Use the enroll endpoint (POST /v1/enroll). This posts the bootstrap token and a
+  // wallet-signed bootstrap proof to the API. Unlike the onboard flow, this does not
+  // prepare a Hedera anchoring request on the server and works with did:key local DIDs.
+  logStep('Agent', 'Enrolling with Helix API using bootstrap token (POST /v1/enroll).');
+  const issuedVC = await client.enroll(enrollment.token, wallet);
+
+  // Load the saved wallet and extract the HelixAgentCredential metadata for logging
+  const credential = await wallet.getLatestCredential(
+    { vcType: 'HelixAgentCredential' },
     walletPassphrase,
     walletPath,
   );
-
-  const walletStore = new AgentWallet();
-  const wallet = await walletStore.load(walletPassphrase, walletPath);
-  const credential = await walletStore.getLatestCredential({ vcType: 'HelixAgentCredential' }, walletPassphrase, walletPath);
-  if (!credential) throw new Error('Wallet has no HelixAgentCredential after onboarding');
+  if (!credential) throw new Error('Wallet has no HelixAgentCredential after enrollment');
   const vc = JSON.parse(credential.vcJson) as WalletVC;
   const expiresAt = vc.validUntil ?? vc.expirationDate ?? 'unknown';
 
-  logStep('Helix ID', `Issued VC ${onboarding.vcId} for ${onboarding.agentDid}.`);
+  logStep('Helix ID', `Issued VC ${credential.vcId} for ${wallet.did}.`);
   logStep('Agent', `Encrypted wallet saved to ${walletPath}.`);
   logStep('Agent', `DID: ${wallet.did}`);
   logStep('Agent', `Selected VC id: ${credential.vcId}`);

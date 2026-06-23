@@ -6,13 +6,11 @@ This document covers how we work, what we expect, and where you can plug in.
 
 ---
 
-## Open-Core Model
+## Open-Source Scope
 
-HelixID is open-core. Everything in this repo — SDK, DID methods, framework middleware, StatusList revocation, base Rego policies — is Apache 2.0. [HelixID Cloud](README.md#self-hosted-vs-cloud) (managed trust registry, ZKP selective disclosure, ABAC policy engine, compliance reporting) is a separate commercial product and lives in a different repo.
+Everything in this repository is Apache 2.0 licensed and self-hostable.
 
-A formal [`GOVERNANCE.md`](GOVERNANCE.md) with stewardship commitments — including what will and will not move between open-source and Cloud — is planned. Until it lands, the README's "Self-Hosted vs Cloud" section is the canonical boundary.
-
-If you're unsure where a feature belongs, open a Discussion before writing code. Rule of thumb: protocol primitives, SDK surface, standards conformance, and framework middleware are open-core. Multi-tenant operations, managed key custody, and commercial trust registry are Cloud.
+If you're unsure where a feature belongs, open a Discussion before writing code. Rule of thumb: protocol primitives, SDK surface, standards conformance, and framework middleware belong in this repo.
 
 ---
 
@@ -21,12 +19,10 @@ If you're unsure where a feature belongs, open a Discussion before writing code.
 In rough order of current priority:
 
 1. **DID method implementations** — additional resolvers (`did:web`, `did:jwk`, `did:peer`, other ledger-anchored methods). Must conform to W3C DID 1.0 and pass the DID resolution test suite.
-2. **Framework middleware** — integrations for new agent frameworks (AutoGPT, Semantic Kernel, Vercel AI SDK, custom orchestrators). Follow the pattern in `packages/langchain/` and `packages/crewai/`.
-3. **Rego policy library** — reusable policies for common agent scenarios (tool scopes, delegation depth, time-of-day, geographic constraints, data-class boundaries). Each policy needs tests and a worked example.
-4. **Benchmarks** — real-world performance across cache configurations, DID methods, and OPA policy complexity. See `benchmarks/` for the harness.
-5. **Interop testing** — W3C VC 2.0 interop vectors, cross-library issuance/verification (e.g., Veramo, Sphereon, Spruce), DIF test suites.
-6. **Documentation** — architecture deep-dives, tutorials, and runnable examples. Prefer working code over prose.
-7. **Security hardening** — fuzzing, formal verification of critical paths, threat models for new features.
+2. **Framework middleware** — integrations for new agent frameworks. Follow the pattern in `packages/langchain/` and `packages/mcp/`.
+3. **Interop testing** — W3C VC 2.0 interop vectors, cross-library issuance/verification (e.g., Veramo, Sphereon, Spruce), DIF test suites.
+4. **Documentation** — architecture deep-dives, tutorials, and runnable examples. Prefer working code over prose.
+5. **Security hardening** — fuzzing, formal verification of critical paths, threat models for new features.
 
 If you want to work on something not on this list, open a GitHub Discussion before writing code. We would rather align on scope early than ask you to redo work in review.
 
@@ -47,8 +43,7 @@ This saves time on both sides. A rejected PR after two weeks of work is a worse 
 - Node.js ≥ 20.x (LTS)
 - pnpm ≥ 9.x (`npm install -g pnpm`)
 - Git
-- Docker (for integration tests that need Redis, OPA server, or a local Hedera mirror node)
-- A Hedera testnet account for `did:hedera` work — [portal.hedera.com](https://portal.hedera.com)
+- Docker (for integration tests)
 
 ### Clone and Bootstrap
 
@@ -63,7 +58,7 @@ pnpm build
 
 ```bash
 pnpm test              # unit tests across all packages
-pnpm test:integration  # spins up Redis + OPA via docker-compose
+pnpm test:integration  # runs the integration suite via docker-compose
 pnpm test:interop      # W3C VC interop vectors
 pnpm bench             # performance benchmarks
 ```
@@ -71,20 +66,13 @@ pnpm bench             # performance benchmarks
 ### Run an Example
 
 ```bash
-cd examples/local-mode
-pnpm start
+pnpm --filter @helix-id/example-e2e-travel-concierge enroll
+pnpm --filter @helix-id/example-e2e-travel-concierge platform
 ```
 
 ### Environment Variables
 
-For anchored-mode development, copy `.env.example` to `.env.local`:
-
-```bash
-HEDERA_NETWORK=testnet
-HEDERA_OPERATOR_ID=0.0.xxxxx
-HEDERA_OPERATOR_KEY=302e020100...
-REDIS_URL=redis://localhost:6379
-```
+For local development, copy `.env.example` to `.env.local` and adjust the values you need.
 
 Never commit `.env.local` or any file containing private keys. The `.gitignore` blocks the common patterns, but do not rely on it — review your diff before committing.
 
@@ -96,19 +84,18 @@ This is a pnpm + Turborepo monorepo. Each package is independently versioned and
 
 ```
 helixid/
+├── helix-core/           # Core crypto, schemas, resolver, verification primitives
+├── helix-api/            # Fastify API
+├── helix-sdk-js/         # JS/TS SDK
 ├── packages/
-│   ├── sdk/              # Core — DIDs, VCs, verification, OPA bindings
-│   ├── mcp/              # MCP middleware
-│   ├── langchain/        # LangChain/LangGraph
-│   ├── crewai/           # CrewAI
-│   └── n8n/              # n8n node
-├── policies/             # Base Rego policy library
-├── examples/             # Runnable scenarios — treat these as documentation
-├── docs/                 # Architecture and design docs
-└── benchmarks/           # Performance harness
+│   ├── cli/              # CLI workflows
+│   ├── langchain/        # LangChain/LangGraph adapter
+│   └── mcp/              # MCP adapter
+├── examples/             # Runnable scenarios
+└── docs/                 # Architecture and design docs
 ```
 
-Changes touching `packages/sdk` are the highest-stakes. They ripple through every integration. Expect stricter review and a higher test bar.
+Changes touching `helix-core` and `helix-sdk-js` are the highest-stakes. They ripple through every integration. Expect stricter review and a higher test bar.
 
 ---
 
@@ -122,7 +109,6 @@ Changes touching `packages/sdk` are the highest-stakes. They ripple through ever
 feat/did-web-resolver
 fix/statuslist-cache-invalidation
 docs/delegation-tutorial
-chore/bump-hedera-sdk
 ```
 
 ### Conventional Commits (required)
@@ -139,14 +125,14 @@ We use [Conventional Commits](https://www.conventionalcommits.org/). The release
 
 Allowed types: `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `build`, `ci`, `chore`, `revert`.
 
-Scope is the package or area: `sdk`, `mcp`, `langchain`, `crewai`, `policies`, `docs`, `benchmarks`.
+Scope is the package or area: `core`, `api`, `sdk-js`, `mcp`, `langchain`, `cli`, `docs`.
 
 Examples:
 
 ```
 feat(sdk): add did:web resolver with HTTPS pinning
 
-fix(sdk): invalidate L1 cache on HCS revocation event
+fix(api): invalidate status-list cache after credential revocation
 
 perf(sdk): avoid re-parsing JWS on repeated verification
 
@@ -158,7 +144,7 @@ not string[]. Migration: use result.delegationChain.dids.
 
 ### Sign Your Commits (DCO)
 
-Every commit must be signed off under the [Developer Certificate of Origin](https://developercertificate.org/). We deliberately use DCO instead of a CLA — it's a lightweight attestation with no corporate-legal review tax, and it avoids the "we might relicense your contribution later" pattern that has eroded trust in several open-core projects over the past few years. By signing off, you affirm that you have the right to submit the work under Apache 2.0 and that your contribution can be used anywhere Apache 2.0 permits, including in HelixID Cloud.
+Every commit must be signed off under the [Developer Certificate of Origin](https://developercertificate.org/). We deliberately use DCO instead of a CLA — it's a lightweight attestation with no corporate-legal review tax. By signing off, you affirm that you have the right to submit the work under Apache 2.0.
 
 ```bash
 git commit -s -m "feat(sdk): add did:web resolver"
@@ -207,7 +193,7 @@ Closes #<issue>
 
 ### Review Expectations
 
-- Two maintainer approvals required for changes in `packages/sdk`
+- Two maintainer approvals required for changes in `helix-core` or `helix-sdk-js`
 - One maintainer approval for everything else
 - Reviewers respond within 3 business days — if silent longer, ping in Discussions
 - We squash-merge by default; commit history on `main` is one commit per PR

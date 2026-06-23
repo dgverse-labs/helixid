@@ -8,58 +8,50 @@ Without Helix ID, the platform would only see a request from software. With Heli
 
 ## Prerequisites
 
-Prepare Helix ID for real Hedera before running the example:
+Prepare the local Helix ID environment before running the example:
 
 ```sh
-pnpm setup:hedera
-```
+# Copy the example env from the repository root into this example directory. Make sure we have WALLET_PASSPHRASE and HELIX_BOOTSTRAP_TOKEN. HELIX_BOOTSTRAP_TOKEN can be obtained from /v1/enrollment-tokens
+cp ../../.env.example .env
 
-That script generates missing Helix/JWT key material, derives public keys, and updates `.env` without printing private keys. If you need a fresh issuer DID anchored on Hedera, run:
-
-```sh
-pnpm setup:hedera -- --create-issuer-did
-```
-
-Start a Helix ID API instance with the root `.env` exported and without `HEDERA_MOCK=true`:
-
-```sh
+# Export the env and start the Helix ID API (this will generate missing key material,
+# derive public keys, and update `.env` without printing private keys)
 set -a; source .env; set +a
 pnpm --filter @helix-id/api start
+
+# Keep the same exported `.env` in any shells that interact with the API:
+# use `set -a; source .env; set +a` again in new terminals.
 ```
 
-Then point this example at it:
+Note: The current API has `amazon` and `helix-delegation` as built-in VP target services. This example sets `HELIX_TARGET_SERVICE=amazon` by default even though the local verifier is a travel platform. Change `HELIX_TARGET_SERVICE` in your `.env` if you want the target service to match the platform exactly.
 
-```sh
-cp .env.example .env
-```
-
-The current API has `amazon` and `helix-delegation` as built-in VP target services, so this example uses `HELIX_TARGET_SERVICE=amazon` by default even though the local verifier is a travel platform.
+Helix ID API runs on port `3000` and the example booking platform listens on port `3001`.
 
 ## Run
 
-Terminal 1:
+Terminal 1 — enroll the agent:
 
 ```sh
 pnpm --filter @helix-id/example-e2e-travel-concierge enroll
 ```
 
-Watch for the agent DID, VC id, scopes, expiry, and `agent/wallet.enc`.
+Watch for the printed agent DID, VC id, scopes, expiry, and `agent/wallet.enc`.
 
-Terminal 2:
+Terminal 2 — start the booking platform (verifier):
 
 ```sh
 pnpm --filter @helix-id/example-e2e-travel-concierge platform
 ```
 
-The platform listens on port `3001` and logs every verification and authorization decision.
+The platform listens on port `3001` and logs verification and authorization decisions.
 
-Terminal 3:
+Terminal 3 — run the agent:
 
 ```sh
 pnpm --filter @helix-id/example-e2e-travel-concierge agent
 ```
 
-The agent performs five actions:
+The agent will perform five actions:
 
 1. Searches flights.
 2. Searches hotels.
@@ -69,14 +61,14 @@ The agent performs five actions:
 
 ## Revocation Moment
 
-Between action 4 and action 5, the agent script prints:
+Between action 4 and action 5 the agent prints a curl command like:
 
 ```sh
 curl -X POST http://localhost:3000/v1/vcs/{vcId}/revoke \
   -H "x-admin-api-key: $HELIX_ADMIN_API_KEY"
 ```
 
-Run it, then press Enter in the agent terminal. The next VP verification fails because Helix ID checks credential status on each verification.
+Replace `{vcId}` with the VC id printed during enrollment, run that curl to revoke, then press Enter in the agent terminal to let the script continue. The subsequent VP verification should fail because the VC status check will show it revoked.
 
 ## What Each File Demonstrates
 

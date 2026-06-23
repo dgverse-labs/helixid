@@ -98,7 +98,6 @@ Full method signature: `sdk.enroll({ enrollmentToken, publicKeyHex, domains })`.
 Makes a network call to `POST /v1/enroll`. What it returns: the challenge nonce.
 State explicitly: only the public key is submitted — the private key is never sent.
 What Helix ID does on receipt: validates the token, burns it, anchors the DID on
-Hedera, returns the challenge nonce.
 Errors thrown: token expired, token already used, invalid public key format.
 A complete TypeScript code example.
 
@@ -186,7 +185,6 @@ What it returns: the new VC. What the developer must do after: update the
 wallet using `AgentWallet.save()` with the new `vcJson`.
 What stays the same: `did`, `privateKeyHex`, `publicKeyHex`.
 What changes: `vcJson`.
-Errors thrown: credential not yet expired (too early to renew), credential
 already revoked (renewal not possible — re-enrollment required).
 A complete TypeScript code example.
 
@@ -195,9 +193,6 @@ A complete TypeScript code example.
 #### 8.1 sdk.resolveDID()
 Full method signature: `sdk.resolveDID(did)`.
 Behaviour depends on DID format:
-- `did:hedera:testnet:...` or `did:hedera:mainnet:...`: makes a network call
-  to resolve from Hedera via the Helix ID API
-- Note: `did:key:` format is planned but not yet implemented
 
 Return value: the DID document containing the public key and service endpoints.
 Errors thrown: DID not found, network failure, invalid DID format.
@@ -278,7 +273,6 @@ Do not fabricate version history.
   operation with no network call.
 - The crypto library is `@noble/curves` (Ed25519). Do not mention any other
   library.
-- `did:key:` format is planned but not implemented. Do not document it as
   currently available.
 - Link to ENROLLMENT-FLOW.md in section 4.
 - Link to guides/verify-a-vp.md in section 6.

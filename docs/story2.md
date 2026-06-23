@@ -10,8 +10,6 @@ Current format note: Helix emits VC Data Model 2.0-style credentials: `https://w
 
 ## What to Mock So This Story Can Start
 
-B2 depends on B1's `resolveDID`. Mock it as a function implementing `IDIDService` that accepts any DID string and returns a hardcoded valid DID document containing a known test public key. The mock does not hit a database or Hedera. A factory returning a fixed structure is sufficient.
-
 The real `DIDService` gets injected in production via `server.ts`. The mock gets injected in B2 tests.
 
 ---
@@ -96,7 +94,6 @@ This is intentionally the current VC 2.0-style shape.
   ],
   "id": "vc:helix:<cuid>",
   "type": ["VerifiableCredential", "HelixAgentCredential"],
-  "issuer": "did:hedera:testnet:<helix-id-operator-did>",
   "validFrom": "<ISO 8601>",
   "validUntil": "<ISO 8601>",
   "credentialStatus": {
@@ -226,7 +223,6 @@ Requires `x-admin-api-key`.
 
 ```json
 {
-  "subjectDid": "did:hedera:testnet:...",
   "subjectType": "agent",
   "privilegeScopes": ["read:orders", "write:orders"],
   "agentName": "My Shopping Agent",
@@ -458,8 +454,6 @@ Add error mappings in `HttpAdapter.ts` for `VC_NOT_FOUND`, `VC_ALREADY_REVOKED`,
 - `buildStatusListCredential` returns object with correct `@context` and `type` fields
 
 ### Integration Tests — `helix-api/tests/integration/vc.integration.test.ts`
-
-Setup: real PostgreSQL, MockHederaClient (for DIDService), MockDIDService (returns hardcoded DID document). `afterEach` truncates vc, status_list_entries, audit_log tables.
 
 Tests:
 

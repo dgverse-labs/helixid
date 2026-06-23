@@ -4,8 +4,6 @@
 
 B3 handles the presentation layer. Helix ID generates an unsigned VP template with a unique `vpId` and short expiry. The agent signs it locally using the SDK. External services verify the signed VP either by calling Helix ID's verify endpoint or by self-verifying with the DID document, embedded VC proof, and public status list.
 
-Current implementation note: Helix ID's verify endpoint resolves DIDs from the persisted DID store and checks VC revocation through server-side VC state. Public Bitstring Status List self-checks are supported by SDK/examples, but direct Mirror Node DID resolution is not yet implemented as a production verifier path.
-
 ---
 
 ## What to Mock So This Story Can Start
@@ -133,7 +131,6 @@ new VPBuilder(unsignedVP).sign(privateKeyHex, verificationMethod): Promise<Signe
 **Steps:**
 
 1. Validate `unsignedVP` against Zod `UnsignedVP` schema — throw `VPInvalidStructureError` if fails
-2. Check `unsignedVP.expirationDate` is in the future — throw `VPExpiredError` if already past. Prevents agent from signing a stale template.
 3. Deep-clone the unsigned VP object
 4. Serialize to canonical JSON (keys sorted recursively, no `proof` field present)
 5. `sha256(Buffer.from(serialized, 'utf-8'))` — produces 32-byte hash
@@ -163,8 +160,6 @@ Called by the agent SDK immediately before performing an action on an external s
 
 ```json
 {
-  "agentDid": "did:hedera:testnet:...",
-  "userDid": "did:hedera:testnet:...",
   "targetService": "amazon",
   "vcType": "HelixAgentCredential"
 }
@@ -216,8 +211,6 @@ Called by external services (Amazon, etc.) or by the agent itself for testing.
 ```json
 {
   "valid": true,
-  "agentDid": "did:hedera:testnet:...",
-  "userDid": "did:hedera:testnet:...",
   "targetService": "amazon",
   "verifiedAt": "2025-06-01T12:04:55Z"
 }
@@ -243,12 +236,10 @@ The internal audit log entry for a rejected VP includes the specific `internalRe
 2. Extract `vpId` from `signedVP.id`
 3. Look up `vpId` in `vp_ids` table → not found: log `VP_NOT_FOUND`, return `VP_VERIFICATION_FAILED`
 4. Check `consumedAt` is null → not null: log `VP_ALREADY_CONSUMED`, return `VP_VERIFICATION_FAILED`
-5. Check `expiresAt` is in future → past: log `VP_EXPIRED`, return `VP_VERIFICATION_FAILED`
 6. Resolve agent DID from `signedVP.holder` via `IDIDService.resolveDID` → failure: log `VP_AGENT_DID_NOT_FOUND`, return `VP_VERIFICATION_FAILED`
 7. Extract public key from resolved DID document via `extractPublicKeyFromDIDDocument`
 8. Verify VP signature: reconstruct canonical JSON without proof, sha256, verify with `verifySignature(hash, proof.proofValue, publicKeyHex)` → false: log `signature_invalid`, return `VP_VERIFICATION_FAILED`
 9. Extract embedded VC from `signedVP.verifiableCredential[0]`
-10. Check VC `validUntil` is in future → expired: log `vc_expired`, return `VP_VERIFICATION_FAILED`
 11. Check VC credential status via `vcService.getVCStatus(vc.id)` → revoked: log `vc_revoked`, return `VP_VERIFICATION_FAILED`. Public StatusList checks remain available for SDK/self-verification flows.
 12. **Atomic consumption** — `UPDATE vp_ids SET consumed_at = NOW() WHERE vp_id = ? AND consumed_at IS NULL`. If 0 rows updated, a concurrent request consumed it first → log `VP_ALREADY_CONSUMED`, return `VP_VERIFICATION_FAILED`
 13. Emit `VP_VERIFIED` audit event
@@ -309,17 +300,11 @@ Create `helix-api/docs/self-verification.md`.
 
 Document must cover:
 
-1. **DID Resolution:** How to resolve the holder and issuer DID documents. For the current implementation, examples may use the DID document returned by Helix ID/API state. Direct Mirror Node DID resolution should be documented as future/advanced work until the live resolver path is implemented.
-
 2. **Public Key Extraction:** How to find the `Ed25519VerificationKey2020` verification method in the DID document and decode `publicKeyMultibase` to raw bytes.
 
 3. **Signature Verification:** How to verify the VP proof — reconstruct canonical JSON without proof field, SHA-256 hash, Ed25519 verify against extracted public key.
 
 4. **Status List Check:** How to fetch the status list credential from the URL in `vc.credentialStatus.statusListCredential`, decode the `encodedList` field (base64url decode, gzip decompress, read bit at `statusListIndex`).
-
-5. **VP Expiry:** Check `signedVP.expirationDate` is in future before accepting.
-
-6. **VC Expiry:** Check embedded `vc.validUntil` is in future.
 
 7. **The vpId Obligation:** This section must be explicitly titled "Your Obligation for Replay Prevention". Text must state: "If you self-verify rather than calling the Helix ID verify endpoint, you are responsible for implementing vpId consumption tracking. You must store every `signedVP.id` value you have successfully verified and reject any subsequent request presenting the same `id`. Helix ID's verify endpoint handles this automatically. If you self-verify and do not implement this tracking, you are vulnerable to replay attacks."
 
@@ -338,8 +323,6 @@ Document must cover:
 - Signing with different private key → signature does not verify against original public key
 
 ### Integration Tests — `helix-api/tests/integration/vp.integration.test.ts`
-
-Setup: real PostgreSQL, MockDIDService, MockVCService.
 
 Tests:
 
