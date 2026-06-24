@@ -38,6 +38,89 @@ HelixID is a **5-layer trust stack** for AI agents, not just an identity library
 | **4. Audit**       | Operational record of issuance, verification/session bridge, revocation, and lifecycle events                    | Adapter-based `audit_log` store + structured stdout/file |
 | **5. Revocation**  | Decentralized, cacheable revocation that works offline                                                           | Bitstring Status List |
 
+## Roles
+
+HelixID is built around three distinct actors. Each has a different relationship with the SDK and the issuer service.
+
+| Role | Who | What they do |
+|---|---|---|
+| **Platform Operator** | The team building the AI product | Creates issuer DID, mints bootstrap tokens, issues VCs to agents, manages revocation |
+| **AI Agent** | The autonomous software process | Holds a wallet, signs VPs, presents credentials, delegates authority to sub-agents |
+| **Service Provider** | The API or service the agent calls | Verifies incoming VPs, checks scopes, optionally issues a session JWT or caches the result |
+
+### Platform Operator
+
+The operator runs the issuer service (self-hosted `helix-api` or CLI for low volume). They never touch agent private keys — they only control the issuance policy.
+
+```typescript
+// Operator: mint a bootstrap token for a new agent (authenticated operator call)
+// POST /v1/enrollment-tokens
+// { agentName, requestedScopes, maxDelegationDepth, requestedDomains }
+// → { bootstrapToken }
+
+// Operator: revoke an agent's credential
+// CLI
+helix revoke --vc-id <vcId> --status-list ./public/status/1.json --wallet issuer.enc
+```
+
+The operator's private key (issuer signing key) never leaves the issuer service. It is the trust anchor for every VC issued in their trust domain.
+
+### AI Agent
+
+The agent holds a wallet containing its DID, keypair, and credentials. All signing operations are local — no private key ever leaves the agent process.
+
+```typescript
+import { AgentWallet, VPBuilder, delegate } from '@helixid/sdk-js'
+
+// load wallet on every startup
+const wallet = await AgentWallet.loadOrCreate('./wallet.enc', process.env.WALLET_PASSPHRASE!)
+
+// build and sign a VP — fully local, no network
+const vp = await new VPBuilder({
+  vc: wallet.credentials[0],
+  holderDid: wallet.getDID(),
+  userDid: 'did:web:user.example.com',
+  targetService: 'orders-service',
+}).sign(wallet.getPrivateKeyHex(), `${wallet.getDID()}#key-1`)
+
+// delegate to a sub-agent — fully local, self-signed (Option A)
+const childVC = await delegate(
+  { to: 'did:key:z6Mk...sub-agent', scopes: ['read:orders'], expiresIn: 3600 },
+  wallet,
+)
+```
+
+### Service Provider
+
+The verifier never needs the issuer's API at runtime. `verifyVP()` is fully local — one HTTPS fetch for the StatusList (cached after first hit), everything else resolved offline.
+
+```typescript
+import { verifyVP, SessionManager } from '@helixid/sdk-js'
+
+const result = await verifyVP(incomingVP, {
+  expectedTargetService: 'orders-service',
+})
+
+// replay protection — verifier owns this store
+const seen = await redis.get(`vpid:${result.vpId}`)
+if (seen) throw new Error('REPLAY_DETECTED')
+await redis.set(`vpid:${result.vpId}`, '1', 'EX', result.expiresInSeconds)
+
+// scope check
+if (!result.privilegeScopes.includes('read:orders')) throw new Error('INSUFFICIENT_SCOPE')
+
+// session handling — verifier's choice, both optional
+
+// Option A: issue a short-lived JWT, agent reuses it for subsequent calls
+const session = new SessionManager({ secret: process.env.JWT_SECRET!, ttl: 600 })
+const token = await session.issue({ agentDid: result.agentDid, scopes: result.privilegeScopes })
+
+// Option B: cache the VP result by vpId, skip re-verification on repeat calls
+await cache.set(`vp:${result.vpId}`, result, { ttl: result.expiresInSeconds })
+```
+
+Neither session option is required. The verifier can re-verify the VP on every call if preferred. The SDK supports all three paths.
+
 ## Architecture
 
 HelixID uses a **hybrid 3-layer architecture** that delivers the trust properties of verifiable credentials with the performance of JWTs:
@@ -97,7 +180,68 @@ The DLT latency penalty exists only on the **write path** (DID anchoring, creden
 
 ## Quick Start
 
-### Install
+### 5-minute path (no infrastructure)
+
+No Postgres, no Redis, no Hedera account, no running API. Works immediately after install —
+useful for testing the VP/verification flow locally, or if you already have a VC issued by
+a self-hosted issuer or any other means.
+
+**Step 1 — Install the SDK**
+
+```bash
+npm install @helixid/sdk-js
+```
+
+**Step 2 — Generate an agent identity and load or self-issue a credential**
+
+```typescript
+import { AgentWallet, selfIssueVC } from '@helixid/sdk-js'
+
+const wallet = await AgentWallet.loadOrCreate('./wallet.enc', 'dev-passphrase')
+
+// If you already have a VC issued by a self-hosted issuer, CLI, or any other
+// spec-compliant source, load it directly:
+await wallet.addCredential(existingVC)
+
+// For local dev and testing only, you can self-issue a credential.
+// Self-signed VCs carry no issuer-attested authority and are rejected
+// by verifiers in production (allowSelfSigned defaults to false).
+const vc = await selfIssueVC(
+  { scopes: ['read:orders'], expiresIn: 3600 },
+  wallet,
+)
+await wallet.addCredential(vc)
+
+console.log(wallet.getDID()) // did:key:z6Mk...
+```
+
+**Step 3 — Build, present, and verify a VP (fully local)**
+
+```typescript
+import { VPBuilder, verifyVP } from '@helixid/sdk-js'
+
+const vp = await new VPBuilder({
+  vc: wallet.credentials[0],
+  holderDid: wallet.getDID(),
+  userDid: 'did:web:user.example.com',
+  targetService: 'orders-service',
+}).sign(wallet.getPrivateKeyHex(), `${wallet.getDID()}#key-1`)
+
+const result = await verifyVP(vp, {
+  expectedTargetService: 'orders-service',
+  allowSelfSigned: true,  // dev only — remove in production
+})
+
+console.log(result.valid, result.agentDid, result.privilegeScopes)
+// true  did:key:z6Mk...  ['read:orders']
+```
+
+Full round trip. No issuer, no API call, no Hedera. When ready for production, swap
+`selfIssueVC` for a real bootstrap token enrollment — everything else stays identical.
+
+---
+
+### Production path (self-hosted issuer)
 
 ```bash
 pnpm install
@@ -342,6 +486,22 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 - Note: missing `JWT_SECRET` has no effect on verifying API-issued EdDSA session tokens (those rely on the API public key), but it WILL prevent constructing a `SessionManager` for HS256 tokens in the SDK.
 
 - LangChain/LangGraph and MCP middleware
+
+### VP result caching (alternative to JWT sessions)
+
+If you prefer not to manage a JWT secret, the verifier can cache the VP verification result directly by `vpId`. On repeat calls the agent presents the same VP — the verifier gets a cache hit and skips re-verification without any JWT issuance.
+
+```typescript
+// first call — verify and cache
+const result = await verifyVP(incomingVP, { expectedTargetService: 'orders-service' })
+await cache.set(`vp:${result.vpId}`, result, { ttl: result.expiresInSeconds })
+
+// subsequent calls — cache hit, no re-verification
+const cached = await cache.get(`vp:${incomingVP.id}`)
+if (cached) return handleRequest(cached)
+```
+
+The VP's own expiry (`validUntil`) naturally bounds the cache TTL. No secret management required. Use this pattern for single-verifier deployments where the cache is local to the service.
 
 ## Project Structure
 
