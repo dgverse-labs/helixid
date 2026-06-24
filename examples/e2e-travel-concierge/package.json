@@ -11,8 +11,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@helixid/core": "workspace:*",
-    "@helixid/sdk-js": "workspace:*",
+    "@helixid/core": "^0.1.0",
+    "@helixid/sdk-js": "^0.1.1",
     "dotenv": "^17.4.2",
     "fastify": "^5.7.2",
     "tsx": "^4.0.0"

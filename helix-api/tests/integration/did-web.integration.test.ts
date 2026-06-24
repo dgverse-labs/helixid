@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import Fastify from 'fastify';
-import { buildDIDDocument } from '@helix-id/core';
+import { buildDIDDocument } from '@helixid/core';
 
 import didWebRoutes from '../../src/routes/did-web/index.js';
 

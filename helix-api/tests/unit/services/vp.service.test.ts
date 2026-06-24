@@ -7,11 +7,11 @@ import {
     createStatusList,
     generateKeyPair,
     type AgentVC,
-} from '@helix-id/core';
+} from '@helixid/core';
 import { ServiceNotFoundError } from '../../../src/repositories/service-registry.repository.js';
 
-vi.mock('@helix-id/core', async () => {
-  const actual = await vi.importActual('@helix-id/core') as any;
+vi.mock('@helixid/core', async () => {
+  const actual = await vi.importActual('@helixid/core') as any;
   return {
     ...actual,
     verifySignature: vi.fn(),
@@ -24,7 +24,7 @@ vi.mock('@helix-id/core', async () => {
   };
 });
 
-import { verifySignature } from '@helix-id/core';
+import { verifySignature } from '@helixid/core';
 
 describe('VPService Branch Coverage', () => {
   let repository: any;
@@ -71,7 +71,7 @@ describe('VPService Branch Coverage', () => {
   };
 
   const parentVC: AgentVC = {
-    '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helix-id.io/contexts/v1'],
+    '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helixid.io/contexts/v1'],
     id: 'vc-parent',
     type: ['VerifiableCredential', 'HelixAgentCredential'],
     issuer: 'did:helix:issuer',

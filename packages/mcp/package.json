@@ -1,18 +1,37 @@
 {
   "name": "@helixid/mcp",
   "version": "0.1.0",
-  "private": true,
+  "description": "HelixID middleware for Model Context Protocol (MCP) servers — inbound VP verification with scope enforcement and outbound VP attachment for agent-to-tool calls.",
   "type": "module",
-  "main": "./dist/src/index.js",
-  "types": "./dist/src/index.d.ts",
+  "license": "Apache-2.0",
+  "author": "DgVerse <hello@dgverse.in>",
+  "homepage": "https://www.dgverse.in/products/helix-id",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dgverse-labs/helixid",
+    "directory": "packages/mcp"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/src/index.js",
-      "types": "./dist/src/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --project tsconfig.json",
+    "prepublishOnly": "pnpm build",
     "test": "vitest run --passWithNoTests",
     "test:non-live": "vitest run --passWithNoTests",
     "test:unit": "vitest run tests --passWithNoTests",
@@ -20,8 +39,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@helixid/core": "workspace:*",
-    "@helixid/sdk-js": "workspace:*"
+    "@helixid/core": "^0.1.0",
+    "@helixid/sdk-js": "^0.1.1"
   },
   "peerDependencies": {
     "@modelcontextprotocol/sdk": "*"

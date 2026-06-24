@@ -1,0 +1,10 @@
+src/
+*.test.ts
+*.spec.ts
+__tests__/
+.env
+.env.*
+tsconfig.json
+tsconfig.build.json
+jest.config.*
+vitest.config.*

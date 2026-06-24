@@ -34,7 +34,7 @@ The JWT Session Bridge may mint short-lived stateless JWT sessions only after fu
 ## 2. Monorepo Structure
 
 ```
-helix-id/
+helixid/
 ├── helix-core/          # Shared primitives — VC schema, crypto, OpenAPI spec, config, error types
 ├── helix-api/           # Fastify HTTP API — self-hostable, stateful operations
 ├── helix-cli/           # Operator CLI — DID creation, VC issuance, revocation, StatusList management
@@ -159,7 +159,7 @@ Rules:
 
 - Framework adapters are ergonomic wrappers around the SDK and existing API only.
 - They must not contain credential issuance, VP verification semantics, DID anchoring logic, or policy decisions that belong in helix-api, helix-core, or the SDK.
-- TypeScript adapters use `@helix-id/sdk-js` and `@helix-id/core` workspace packages.
+- TypeScript adapters use `@helixid/sdk-js` and `@helixid/core` workspace packages.
 
 ### e2e
 

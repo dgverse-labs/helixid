@@ -1,8 +1,24 @@
 {
   "name": "@helixid/core",
   "version": "0.1.0",
-  "private": true,
+  "description": "Cryptographic primitives for AI agent identity — DID resolution, Ed25519 signing, VC/VP construction, delegation chains, and Bitstring Status List revocation. Framework-agnostic foundation for the HelixID trust stack.",
   "type": "module",
+  "license": "Apache-2.0",
+  "author": "DgVerse <hello@dgverse.in>",
+  "homepage": "https://www.dgverse.in/products/helix-id",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dgverse-labs/helixid",
+    "directory": "helix-core"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -14,7 +30,8 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --project tsconfig.json",
+    "prepublishOnly": "pnpm build",
     "test": "vitest run --coverage --passWithNoTests && node ../scripts/check-coverage-thresholds.mjs coverage/coverage-final.json 95 95 90 95 80 80 70 90",
     "test:non-live": "vitest run --passWithNoTests",
     "test:unit": "vitest run tests/unit --passWithNoTests",

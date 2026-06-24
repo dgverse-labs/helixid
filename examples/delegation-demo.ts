@@ -10,7 +10,7 @@ import {
   buildDelegationVC,
   MaxDelegationDepthExceededError,
   ScopeEscalationDeniedError,
-} from '../helix-core/src/index.js';
+} from '@helixid/core';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: join(__dirname, '..', '.env') });

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import { getPublicKey } from '@noble/ed25519';
 import { VPBuilder } from '../../../src/vp/VPBuilder.js';
-import { VPInvalidStructureError, VPExpiredError, verifySignature, hashCanonicalPayload, base58btcDecode } from '@helix-id/core';
+import { VPInvalidStructureError, VPExpiredError, verifySignature, hashCanonicalPayload, base58btcDecode } from '@helixid/core';
 
 describe('VPBuilder (SDK Unit Tests)', () => {
   const privateKeyHex = randomBytes(32).toString('hex');

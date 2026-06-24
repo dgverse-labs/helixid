@@ -1,7 +1,7 @@
 // Copyright 2026 DgVerse LLP
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { HelixClient } from '../../../src/client/HelixClient.js';
-import { createStatusList, generateKeyPair, issueJWT } from '@helix-id/core';
+import { createStatusList, generateKeyPair, issueJWT } from '@helixid/core';
 
 describe('HelixClient Full Unit Tests', () => {
   let mockHttp: any;

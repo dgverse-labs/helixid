@@ -7,7 +7,7 @@ import {
   getBit,
   hashCanonicalPayload,
   multibaseToPublicKeyHex,
-} from '../helix-core/src/index.js';
+} from '@helixid/core';
 import { createFreshSignedVP } from './verifier-example-utils.js';
 
 // Use self-verification when the verifier cannot or does not want to call

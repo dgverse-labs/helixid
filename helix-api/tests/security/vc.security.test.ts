@@ -14,7 +14,7 @@ import { describe, it, expect, beforeAll, afterEach, afterAll } from 'vitest';
 import Fastify from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { createTestPrisma } from '../utils/prisma.js';
-import { buildDIDDocument, verifySignature, hashCanonicalPayload, derivePublicKey } from '@helix-id/core';
+import { buildDIDDocument, verifySignature, hashCanonicalPayload, derivePublicKey } from '@helixid/core';
 import bs58 from 'bs58';
 
 import { VCService } from '../../src/services/vc/vc.service.js';

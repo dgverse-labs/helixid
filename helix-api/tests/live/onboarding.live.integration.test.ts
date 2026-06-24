@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import supertest from 'supertest';
-import { AgentWallet, HelixClient } from '@helix-id/sdk-js';
+import { AgentWallet, HelixClient } from '@helixid/sdk-js';
 import { createTestPrisma } from '../utils/prisma.js';
 import {
   LIVE_HEDERA_TIMEOUT_MS,

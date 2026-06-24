@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { Config } from '@helix-id/core';
+import type { Config } from '@helixid/core';
 import { InProcessCache } from '../../../src/cache/InProcessCache.js';
 import { NoopCache } from '../../../src/cache/NoopCache.js';
 import { RedisCache, type RedisLike } from '../../../src/cache/RedisCache.js';

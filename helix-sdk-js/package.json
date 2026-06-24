@@ -1,20 +1,37 @@
 {
   "name": "@helixid/sdk-js",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.1.1",
+  "description": "Cryptographic identity and authorization SDK for AI agents",
   "type": "module",
-  "main": "./dist/src/index.js",
-  "types": "./dist/src/index.d.ts",
+  "license": "Apache-2.0",
+  "author": "DgVerse <hello@dgverse.in>",
+  "homepage": "https://www.dgverse.in/products/helix-id",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dgverse-labs/helixid",
+    "directory": "helix-sdk-js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js",
-      "require": "./dist/src/index.js",
-      "default": "./dist/src/index.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --project tsconfig.json",
+    "prepublishOnly": "pnpm build",
     "test": "vitest run --coverage --passWithNoTests && node ../scripts/check-coverage-thresholds.mjs coverage/coverage-final.json 95 95 85 95 90 90 80 90",
     "test:non-live": "vitest run --passWithNoTests",
     "test:unit": "vitest run tests/unit --passWithNoTests",
@@ -25,7 +42,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@helixid/core": "workspace:*",
+    "@helixid/core": "^0.1.0",
     "@noble/ed25519": "^2.3.0"
   },
   "devDependencies": {

@@ -1,19 +1,37 @@
 {
   "name": "@helixid/did-hedera",
   "version": "0.1.0",
-  "private": true,
-  "description": "Optional Hedera DID method support for HelixID",
+  "description": "Optional Hedera DID method support for HelixID equipped for next major release only",
   "type": "module",
+  "license": "Apache-2.0",
+  "author": "DgVerse <hello@dgverse.in>",
+  "homepage": "https://www.dgverse.in/products/helix-id",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dgverse-labs/helixid",
+    "directory": "packages/did-hedera"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --project tsconfig.json",
+    "prepublishOnly": "pnpm build",
     "test": "vitest run --passWithNoTests",
     "test:non-live": "vitest run --passWithNoTests",
     "test:unit": "vitest run tests --passWithNoTests",
@@ -22,13 +40,13 @@
   },
   "dependencies": {
     "@hashgraph/sdk": "^2.49.0",
-    "@helixid/core": "workspace:*",
+    "@helixid/core": "^0.1.0",
     "@hiero-did-sdk/hcs": "^0.1.8",
     "@hiero-did-sdk/registrar": "^0.1.8",
     "@hiero-did-sdk/resolver": "^0.1.8"
   },
   "devDependencies": {
-    "@helixid/core": "workspace:*",
+    "@helixid/core": "^0.1.0",
     "@types/node": "^20.0.0",
     "typescript": "^5.4.0",
     "vitest": "^4.1.8"

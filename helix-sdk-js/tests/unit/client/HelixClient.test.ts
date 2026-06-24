@@ -87,7 +87,7 @@ describe('HelixClient Branch Coverage', () => {
         mockHttp.get.mockResolvedValue({ credentialSubject: { encodedList: 'A' } });
         // Assuming bit 0 is set in 'A'? No, bit calculation is core logic.
         // Let's mock getBit to return 1.
-        // Wait, checkVCStatus calls getBit from @helix-id/core.
+        // Wait, checkVCStatus calls getBit from @helixid/core.
         // I should mock it.
     });
   });

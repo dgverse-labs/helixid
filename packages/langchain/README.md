@@ -1,9 +1,9 @@
-# @helix-id/langchain
+# @helixid/langchain
 
 Thin LangChain/LangGraph adapter for Helix ID. It injects a locally signed VP into tool input metadata as `_helixVP`.
 
 ```ts
-import { HelixIDMiddleware, HelixIDToolWrapper, filterToolsByScope } from '@helix-id/langchain';
+import { HelixIDMiddleware, HelixIDToolWrapper, filterToolsByScope } from '@helixid/langchain';
 
 const helix = HelixIDMiddleware({
   walletPassphrase: process.env.AGENT_WALLET_PASSPHRASE!,

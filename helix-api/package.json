@@ -28,8 +28,8 @@
     "@fastify/sensible": "^6.0.0",
     "@fastify/swagger": "^9.7.0",
     "@fastify/swagger-ui": "^5.2.6",
-    "@helixid/core": "workspace:*",
-    "@helixid/did-hedera": "workspace:*",
+    "@helixid/core": "^0.1.0",
+    "@helixid/did-hedera": "^0.1.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.7.0",
     "better-sqlite3": "^12.11.1",
@@ -41,7 +41,7 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "@helixid/sdk-js": "workspace:*",
+    "@helixid/sdk-js": "^0.1.1",
     "@noble/ed25519": "^2.3.0",
     "@prisma/config": "^7.8.0",
     "@types/better-sqlite3": "^7.6.13",

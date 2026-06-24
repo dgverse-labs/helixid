@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import supertest from 'supertest';
-import { HelixClient, VPBuilder } from '@helix-id/sdk-js';
+import { HelixClient, VPBuilder } from '@helixid/sdk-js';
 import {
   LIVE_HEDERA_TIMEOUT_MS,
   onboardLiveAgent,

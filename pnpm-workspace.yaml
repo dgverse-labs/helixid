@@ -3,5 +3,6 @@ packages:
   - 'helix-api'
   - 'helix-sdk-js'
   - 'examples/*'
+  - 'examples'
   - 'packages/*'
   - 'e2e'

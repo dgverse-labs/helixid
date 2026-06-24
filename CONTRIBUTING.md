@@ -66,8 +66,8 @@ pnpm bench             # performance benchmarks
 ### Run an Example
 
 ```bash
-pnpm --filter @helix-id/example-e2e-travel-concierge enroll
-pnpm --filter @helix-id/example-e2e-travel-concierge platform
+pnpm --filter @helixid/example-e2e-travel-concierge enroll
+pnpm --filter @helixid/example-e2e-travel-concierge platform
 ```
 
 ### Environment Variables

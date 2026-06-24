@@ -26,7 +26,7 @@ describe('createHederaClient', () => {
   });
 
   it('returns HieroHederaClient when DID_METHOD=hedera and mock is off', async () => {
-    const { HieroHederaClient } = await import('@helix-id/did-hedera');
+    const { HieroHederaClient } = await import('@helixid/did-hedera');
     const client = await createHederaClient(baseConfig as never, {
       DID_METHOD: 'hedera',
     });
@@ -42,7 +42,7 @@ describe('createHederaClient', () => {
           throw new Error('module not found');
         },
       ),
-    ).rejects.toThrow(/DID_METHOD=hedera requires @helix-id\/did-hedera/);
+    ).rejects.toThrow(/DID_METHOD=hedera requires @helixid\/did-hedera/);
   });
 
   it('rejects Hedera operations with a clear message when disabled', async () => {

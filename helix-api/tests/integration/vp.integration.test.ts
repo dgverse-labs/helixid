@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterAll, beforeAll } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import Fastify, { FastifyInstance } from 'fastify';
 import { getPublicKey } from '@noble/ed25519';
-import { base58btcEncode, hashCanonicalPayload, signBytes, type AuditEvent, type AuditEventType, type SignedVP } from '@helix-id/core';
+import { base58btcEncode, hashCanonicalPayload, signBytes, type AuditEvent, type AuditEventType, type SignedVP } from '@helixid/core';
 
 import { VPRepository, type VpIdRecord } from '../../src/repositories/vp.repository.js';
 import { ServiceRegistryRepository } from '../../src/repositories/service-registry.repository.js';

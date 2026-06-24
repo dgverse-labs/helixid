@@ -13,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ApiAuditLogger } from '../../src/audit/index.js';
 import type { PrismaClient } from '@prisma/client';
-import type { AuditEvent } from '@helix-id/core';
+import type { AuditEvent } from '@helixid/core';
 
 describe('ApiAuditLogger', () => {
   let mockPrisma: any;

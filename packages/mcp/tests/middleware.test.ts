@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { generateKeyPair } from '@helix-id/core';
-import { AgentWallet, verifyVP as verifyVPExport } from '@helix-id/sdk-js';
+import { generateKeyPair } from '@helixid/core';
+import { AgentWallet, verifyVP as verifyVPExport } from '@helixid/sdk-js';
 import { attachHelixVP } from '../src/attach.js';
 import { helixidMCPMiddleware } from '../src/middleware.js';
 
-vi.mock('@helix-id/sdk-js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@helix-id/sdk-js')>();
+vi.mock('@helixid/sdk-js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@helixid/sdk-js')>();
   return {
     ...actual,
     verifyVP: vi.fn(actual.verifyVP),

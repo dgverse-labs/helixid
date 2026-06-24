@@ -9,11 +9,11 @@ Status: Parked, very important
 Issued Helix VCs currently include:
 
 - `https://www.w3.org/ns/credentials/v2`
-- `https://helix-id.io/contexts/v1`
+- `https://helixid.io/contexts/v1`
 
-The W3C context is hosted, but `https://helix-id.io/contexts/v1` is Helix ID's custom JSON-LD context and is not currently hosted. Today the API/SDK verification path uses local canonical JSON signing and does not fetch this context, so local demos can still work. For production-facing VC 2.0 interoperability, the custom context must either be hosted or replaced with an explicit inline/context strategy.
+The W3C context is hosted, but `https://helixid.io/contexts/v1` is Helix ID's custom JSON-LD context and is not currently hosted. Today the API/SDK verification path uses local canonical JSON signing and does not fetch this context, so local demos can still work. For production-facing VC 2.0 interoperability, the custom context must either be hosted or replaced with an explicit inline/context strategy.
 
-- Host `https://helix-id.io/contexts/v1` before claiming full public JSON-LD/VC ecosystem interoperability.
+- Host `https://helixid.io/contexts/v1` before claiming full public JSON-LD/VC ecosystem interoperability.
 - Define Helix-specific terms such as `HelixAgentCredential`, `HelixUserCredential`, `privilegeScopes`, `agentName`, `delegatedFrom`, `delegationDepth`, `maxDelegationDepth`, and `parentVcId`.
 - Document clearly whether Helix verification fetches remote contexts or only uses local canonical JSON signing.
 - Add tests or docs proving issued VC context URLs are resolvable when public interoperability is in scope.

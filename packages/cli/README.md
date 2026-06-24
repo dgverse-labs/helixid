@@ -1,4 +1,4 @@
-# @helix-id/cli
+# @helixid/cli
 
 Platform Operator CLI for HelixID setup-time operations. The binary is named `helix`.
 
@@ -11,7 +11,7 @@ From the monorepo root:
 ```bash
 nvm use
 pnpm install
-pnpm --filter @helix-id/cli build
+pnpm --filter @helixid/cli build
 ```
 
 Run locally during development:

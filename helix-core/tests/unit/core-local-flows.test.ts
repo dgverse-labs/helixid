@@ -50,7 +50,7 @@ async function issuerSignedVC(
     maxDelegationDepth: 1,
   };
   const payload = {
-    '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helix-id.io/contexts/v1'],
+    '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helixid.io/contexts/v1'],
     id: `vc:test:${crypto.randomUUID()}`,
     type: ['VerifiableCredential', 'HelixAgentCredential'],
     issuer: issuer.did,

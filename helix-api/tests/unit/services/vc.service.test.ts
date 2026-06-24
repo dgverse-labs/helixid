@@ -1,7 +1,7 @@
 // Copyright 2026 DgVerse LLP
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { VCService } from '../../../src/services/vc/vc.service.js';
-import { ErrorCode, buildDIDDocument, createStatusList, derivePublicKey } from '@helix-id/core';
+import { ErrorCode, buildDIDDocument, createStatusList, derivePublicKey } from '@helixid/core';
 
 describe('VCService Branch Coverage', () => {
   let repository: any;

@@ -3,7 +3,7 @@ import { AgentVCSchema, UserVCSchema } from '../../../src/schemas/vc.js';
 
 describe('VC Schemas', () => {
   const validAgentVC = {
-    '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helix-id.io/contexts/v1'],
+    '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helixid.io/contexts/v1'],
     id: 'vc:helix:123',
     type: ['VerifiableCredential', 'HelixAgentCredential'],
     issuer: 'did:helix:issuer',
@@ -25,7 +25,7 @@ describe('VC Schemas', () => {
   };
 
   const validUserVC = {
-    '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helix-id.io/contexts/v1'],
+    '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helixid.io/contexts/v1'],
     id: 'vc:helix:456',
     type: ['VerifiableCredential', 'HelixUserCredential'],
     issuer: 'did:helix:issuer',

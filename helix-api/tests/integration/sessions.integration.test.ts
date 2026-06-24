@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { generateKeyPair, publicKeyToMultibase } from '@helix-id/core';
+import { generateKeyPair, publicKeyToMultibase } from '@helixid/core';
 import sessionRoutes from '../../src/routes/sessions/index.js';
 
 describe('Session API integration', () => {

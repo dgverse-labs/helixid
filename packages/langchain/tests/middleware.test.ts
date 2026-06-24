@@ -1,9 +1,9 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { generateKeyPair } from '@helix-id/core';
-import { AgentWallet } from '@helix-id/sdk-js';
+import { generateKeyPair } from '@helixid/core';
+import { AgentWallet } from '@helixid/sdk-js';
 import { HelixIDMiddleware, HelixIDToolWrapper, filterToolsByScope } from '../src/index.js';
 
-describe('@helix-id/langchain', () => {
+describe('@helixid/langchain', () => {
   let keyPair: { publicKey: string; privateKey: string };
   const agentDid = 'did:hedera:testnet:agent';
 

@@ -4,7 +4,7 @@ Start the API first:
 
 ```sh
 set -a; source .env; set +a
-pnpm --filter @helix-id/api start
+pnpm --filter @helixid/api start
 ```
 
 Verifier examples now mint fresh credentials and sign fresh VPs automatically (no fixture file needed).
@@ -26,7 +26,7 @@ pnpm example:revocation-check
 
 ```sh
 JWT_SECRET=replace-with-a-strong-secret \
-pnpm --filter @helix-id/api exec tsx ../examples/verifier-session-cycle.ts
+pnpm --filter @helixid/api exec tsx ../examples/verifier-session-cycle.ts
 ```
 
 Flow: verify VP once → issue verifier-owned JWT → subsequent calls verify JWT locally until TTL expiry.
@@ -34,7 +34,7 @@ Flow: verify VP once → issue verifier-owned JWT → subsequent calls verify JW
 ### Path B — VP-result caching (no JWT)
 
 ```sh
-pnpm --filter @helix-id/api exec tsx ../examples/verifier-vp-cache-cycle.ts
+pnpm --filter @helixid/api exec tsx ../examples/verifier-vp-cache-cycle.ts
 ```
 
 Flow: verify VP once → cache verification result by `vpId` with TTL → subsequent calls with same `vpId` are cache hits.
@@ -69,7 +69,7 @@ Then run:
 ```sh
 pnpm install
 set -a; source .env; set +a
-pnpm --filter @helix-id/api dev
+pnpm --filter @helixid/api dev
 ```
 
 In another terminal with the same environment exported:

@@ -1,7 +1,7 @@
 // Copyright 2026 DgVerse LLP
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DIDService } from '../../../src/services/did/did.service.js';
-import { ErrorCode, HelixError } from '@helix-id/core';
+import { ErrorCode, HelixError } from '@helixid/core';
 
 describe('DIDService Branch Coverage', () => {
   let repository: any;

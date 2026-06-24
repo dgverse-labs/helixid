@@ -24,8 +24,8 @@ describe('helix did create --method hedera without did-hedera', () => {
   });
 
   it('exits with install instruction when did-hedera cannot be imported', async () => {
-    vi.doMock('@helix-id/did-hedera', () => {
-      throw new Error('Cannot find module @helix-id/did-hedera');
+    vi.doMock('@helixid/did-hedera', () => {
+      throw new Error('Cannot find module @helixid/did-hedera');
     });
 
     const { runDidCreate } = await import('../src/commands/did.js');
@@ -39,7 +39,7 @@ describe('helix did create --method hedera without did-hedera', () => {
       wallet: join(tempDir, 'issuer.enc'),
     })).rejects.toThrow('exit:1');
 
-    expect(stderr.some((line) => line.includes('Hedera DID method requires: npm install @helix-id/did-hedera'))).toBe(true);
+    expect(stderr.some((line) => line.includes('Hedera DID method requires: npm install @helixid/did-hedera'))).toBe(true);
     exitSpy.mockRestore();
   });
 });

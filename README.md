@@ -104,7 +104,7 @@ pnpm install
 pnpm build
 ```
 
-This is a pnpm workspace. The current SDK package is `@helix-id/sdk-js`, backed by the `@helix-id/api` service.
+This is a pnpm workspace. The current SDK package is `@helixid/sdk-js`, backed by the `@helixid/api` service.
 
 ### Configure the API
 
@@ -129,7 +129,7 @@ Start the API:
 
 ```bash
 set -a; source .env; set +a
-pnpm --filter @helix-id/api dev
+pnpm --filter @helixid/api dev
 ```
 
 Troubleshooting (SQLite users): if startup fails with
@@ -140,8 +140,8 @@ Use Node 20 LTS and regenerate Prisma client:
 
 ```bash
 pnpm install
-pnpm --filter @helix-id/api db:generate
-pnpm --filter @helix-id/api dev
+pnpm --filter @helixid/api db:generate
+pnpm --filter @helixid/api dev
 ```
 
 If needed, force a clean reinstall:
@@ -149,8 +149,8 @@ If needed, force a clean reinstall:
 ```bash
 rm -rf node_modules helix-api/node_modules
 pnpm install --force
-pnpm --filter @helix-id/api db:generate
-pnpm --filter @helix-id/api dev
+pnpm --filter @helixid/api db:generate
+pnpm --filter @helixid/api dev
 ```
 
 SQLite mode does not require running database migrations.
@@ -160,7 +160,7 @@ SQLite mode does not require running database migrations.
 The onboarding flow is a single SDK round trip using a one-time **bootstrap token** (single-use, short TTL) delivered out-of-band (env var, secret manager, CI variable).
 
 ```typescript
-import { AgentWallet, HelixClient } from '@helix-id/sdk-js'
+import { AgentWallet, HelixClient } from '@helixid/sdk-js'
 
 const wallet = await AgentWallet.create('./wallet.enc', process.env.WALLET_PASSPHRASE!)
 const client = new HelixClient(process.env.HELIX_API_URL!)
@@ -186,7 +186,7 @@ For a runnable version, see `examples/e2e-travel-concierge/operator/enroll-agent
 ### Present and Verify a VP (SDK-local)
 
 ```typescript
-import { AgentWallet, VPBuilder, verifyVP } from '@helix-id/sdk-js';
+import { AgentWallet, VPBuilder, verifyVP } from '@helixid/sdk-js';
 
 const wallet = await AgentWallet.load('agent/wallet.enc', 'change-this-passphrase');
 const credential = wallet.credentials[0];
@@ -211,7 +211,7 @@ console.log(result.valid, result.agentDid, result.privilegeScopes);
 ### Delegate Authority (SDK-local, self-signed)
 
 ```typescript
-import { AgentWallet, delegate } from '@helix-id/sdk-js';
+import { AgentWallet, delegate } from '@helixid/sdk-js';
 
 const wallet = await AgentWallet.load('agent/wallet.enc', 'change-this-passphrase');
 
@@ -239,7 +239,7 @@ Delegation is **Option A**: Agent A signs the child VC locally, and verifiers en
 ### LangChain / LangGraph
 
 ```typescript
-import { HelixIDMiddleware } from '@helix-id/langchain';
+import { HelixIDMiddleware } from '@helixid/langchain';
 
 const middleware = HelixIDMiddleware({
   walletPassphrase: process.env.WALLET_PASSPHRASE!,
@@ -252,7 +252,7 @@ const middleware = HelixIDMiddleware({
 ### MCP (Model Context Protocol)
 
 ```typescript
-import { attachHelixVP, helixidMCPMiddleware } from '@helix-id/mcp';
+import { attachHelixVP, helixidMCPMiddleware } from '@helixid/mcp';
 
 const requireHelix = helixidMCPMiddleware({
   requiredScopes: ['read:orders'],

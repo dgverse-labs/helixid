@@ -17,7 +17,7 @@ cp ../../.env.example .env
 # Export the env and start the Helix ID API (this will generate missing key material,
 # derive public keys, and update `.env` without printing private keys)
 set -a; source .env; set +a
-pnpm --filter @helix-id/api start
+pnpm --filter @helixid/api start
 
 # Keep the same exported `.env` in any shells that interact with the API:
 # use `set -a; source .env; set +a` again in new terminals.
@@ -32,7 +32,7 @@ Helix ID API runs on port `3000` and the example booking platform listens on por
 Terminal 1 — enroll the agent:
 
 ```sh
-pnpm --filter @helix-id/example-e2e-travel-concierge enroll
+pnpm --filter @helixid/example-e2e-travel-concierge enroll
 ```
 
 Watch for the printed agent DID, VC id, scopes, expiry, and `agent/wallet.enc`.
@@ -40,7 +40,7 @@ Watch for the printed agent DID, VC id, scopes, expiry, and `agent/wallet.enc`.
 Terminal 2 — start the booking platform (verifier):
 
 ```sh
-pnpm --filter @helix-id/example-e2e-travel-concierge platform
+pnpm --filter @helixid/example-e2e-travel-concierge platform
 ```
 
 The platform listens on port `3001` and logs verification and authorization decisions.
@@ -48,7 +48,7 @@ The platform listens on port `3001` and logs verification and authorization deci
 Terminal 3 — run the agent:
 
 ```sh
-pnpm --filter @helix-id/example-e2e-travel-concierge agent
+pnpm --filter @helixid/example-e2e-travel-concierge agent
 ```
 
 The agent will perform five actions:

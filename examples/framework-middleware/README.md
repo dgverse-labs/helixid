@@ -33,7 +33,7 @@ Start the API with the root environment loaded:
 
 ```sh
 set -a; source .env; set +a
-pnpm --filter @helix-id/api dev
+pnpm --filter @helixid/api dev
 ```
 
 ## Run

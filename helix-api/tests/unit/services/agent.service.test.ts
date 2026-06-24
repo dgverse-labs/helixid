@@ -4,7 +4,7 @@ import { AgentService } from '../../../src/services/agent/agent.service.js';
 import { 
   ServiceNotFoundError,
   ServiceAlreadyExistsError
-} from '@helix-id/core';
+} from '@helixid/core';
 
 describe('AgentService Unit Tests', () => {
   let repository: any;

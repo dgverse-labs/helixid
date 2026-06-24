@@ -120,7 +120,7 @@ and every deviation from the constitution is recorded here.
 
 ## 2026-05-28 — Optional Peer Dependencies for Framework Adapters
 
-**Decision:** Story 7 framework adapter packages declare framework SDKs as optional peers: `@modelcontextprotocol/sdk` for `@helix-id/mcp` and `@langchain/core` for `@helix-id/langchain`.
+**Decision:** Story 7 framework adapter packages declare framework SDKs as optional peers: `@modelcontextprotocol/sdk` for `@helixid/mcp` and `@langchain/core` for `@helixid/langchain`.
 
 **Reason:** The adapters are intentionally thin and structural. They should not force every Helix ID install to pull MCP or LangChain dependencies, but applications using those frameworks still get explicit peer dependency metadata.
 

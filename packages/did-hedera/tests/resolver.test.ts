@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildDIDDocument, generateKeyPair } from '@helix-id/core';
+import { buildDIDDocument, generateKeyPair } from '@helixid/core';
 import { mirrorBaseUrl, parseHederaDid } from '../src/mirror.js';
 import { resolveDidHedera } from '../src/resolver.js';
 

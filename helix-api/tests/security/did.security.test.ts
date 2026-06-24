@@ -13,7 +13,7 @@
 import { describe, it, expect, beforeAll, afterEach, afterAll } from 'vitest';
 import Fastify from 'fastify';
 import { PrismaClient } from '@prisma/client';
-import { generateKeyPair } from '@helix-id/core';
+import { generateKeyPair } from '@helixid/core';
 import { createTestPrisma } from '../utils/prisma.js';
 
 import { DIDService } from '../../src/services/did/did.service.js';
