@@ -17,7 +17,7 @@ const helixApiUrl = process.env.API_BASE_URL ?? 'http://localhost:3000';
 const platformUrl = process.env.BOOKING_PLATFORM_URL ?? 'http://localhost:3001';
 const targetService = process.env.HELIX_TARGET_SERVICE ?? 'amazon';
 const walletPassphrase = process.env.WALLET_PASSPHRASE ?? 'change-this-passphrase';
-const userDID = 'did:hedera:testnet:user-demo-traveler';
+const userDID = 'did:web:user-demo-traveler';
 
 type WalletVC = {
   id: string;
