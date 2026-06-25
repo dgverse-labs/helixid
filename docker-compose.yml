@@ -1,16 +1,137 @@
+# Helix ID – local development & testing
+#
+# ── Quick start (SQLite – zero config) ───────────────────────────────────────
+#   docker compose up
+#
+# ── With PostgreSQL ───────────────────────────────────────────────────────────
+#   HELIX_STORAGE_ADAPTER=postgres docker compose --profile postgres up
+#
+# ── With Hedera DID method ────────────────────────────────────────────────────
+#   docker compose -f docker-compose.yml -f docker-compose.hedera.yml up
+#
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+#   API:        http://localhost:3000
+#   Swagger UI: http://localhost:3000/documentation
+#   Health:     http://localhost:3000/health
+#
+# ── Customising ───────────────────────────────────────────────────────────────
+#   Copy .env.example → .env and override any variable listed below.
+#   Shell-exported variables take precedence over .env.
+
+name: helixid
+
 services:
+
+  # ── helix-api ───────────────────────────────────────────────────────────────
   helix-api:
     build:
       context: .
       dockerfile: Dockerfile
-
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
+    environment:
+      NODE_ENV: development
+      PORT: "3000"
 
-    env_file:
-      - .env
+      # Storage ─────────────────────────────────────────────────────────────────
+      # sqlite  → default, no extra services needed
+      # postgres → set HELIX_STORAGE_ADAPTER=postgres and add --profile postgres
+      HELIX_STORAGE_ADAPTER: ${HELIX_STORAGE_ADAPTER:-sqlite}
+      HELIX_SQLITE_PATH: /app/data/helixid.sqlite
+      DATABASE_URL: ${DATABASE_URL:-postgresql://helixid:helixid@postgres:5432/helixid}
+
+      # Cache ───────────────────────────────────────────────────────────────────
+      # memory → default
+      # redis  → set HELIX_CACHE_ADAPTER=redis and REDIS_URL=redis://redis:6379
+      HELIX_CACHE_ADAPTER: ${HELIX_CACHE_ADAPTER:-memory}
+      CACHE_ENABLED: ${CACHE_ENABLED:-true}
+      DID_CACHE_L1_TTL_SECONDS: ${DID_CACHE_L1_TTL_SECONDS:-300}
+      STATUS_LIST_CACHE_L1_TTL_SECONDS: ${STATUS_LIST_CACHE_L1_TTL_SECONDS:-60}
+
+      # DID ─────────────────────────────────────────────────────────────────────
+      # web    → default, issuer DID = did:web:<DID_DOMAIN>
+      # key    → set DID_METHOD=key
+      # hedera → use docker-compose.hedera.yml override
+      DID_METHOD: ${DID_METHOD:-web}
+      DID_DOMAIN: ${DID_DOMAIN:-localhost:3000}
+      API_BASE_URL: ${API_BASE_URL:-http://localhost:3000}
+
+      # Secrets ─────────────────────────────────────────────────────────────────
+      # ⚠ DEV-ONLY defaults below – replace before any non-local deployment
+      #
+      # Generate a real signing key:
+      #   node -e "import('@helixid/core').then(m => console.log(m.generateKeyPair().privateKey))"
+      HELIX_SIGNING_KEY: ${HELIX_SIGNING_KEY:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+      #
+      # Admin key for /v1/vcs issue · revoke · renew (min 32 chars in production):
+      #   openssl rand -hex 32
+      HELIX_ADMIN_API_KEY: ${HELIX_ADMIN_API_KEY:-dev-admin-key-change-in-production}
+
+      # TTLs (seconds) ──────────────────────────────────────────────────────────
+      ENROLLMENT_TOKEN_TTL_SECONDS: ${ENROLLMENT_TOKEN_TTL_SECONDS:-900}
+      CHALLENGE_TTL_SECONDS: ${CHALLENGE_TTL_SECONDS:-300}
+      VP_TTL_SECONDS: ${VP_TTL_SECONDS:-300}
+      JWT_SESSION_TTL_SECONDS: ${JWT_SESSION_TTL_SECONDS:-600}
+
+      # Audit ───────────────────────────────────────────────────────────────────
+      # stdout | file | both
+      AUDIT_LOG_DESTINATION: ${AUDIT_LOG_DESTINATION:-stdout}
+
+    volumes:
+      - helix_data:/app/data   # persists SQLite DB between restarts
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false   # only enforced when --profile postgres is active
+      migrate:
+        condition: service_completed_successfully
+        required: false   # only enforced when --profile postgres is active
 
     restart: unless-stopped
 
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  # Activate with: --profile postgres
+  # Also set:      HELIX_STORAGE_ADAPTER=postgres (or add it to .env)
+  postgres:
+    image: postgres:16-alpine
+    profiles: [postgres]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-helixid}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-helixid}
+      POSTGRES_DB: ${POSTGRES_DB:-helixid}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - ./data:/app/data
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-helixid} -d ${POSTGRES_DB:-helixid}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Runs `prisma migrate deploy` once after postgres is ready, then exits.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: [postgres]
+    working_dir: /app/helix-api
+    command: ["/app/node_modules/.bin/prisma", "migrate", "deploy"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://helixid:helixid@postgres:5432/helixid}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  helix_data:
+  postgres_data:
