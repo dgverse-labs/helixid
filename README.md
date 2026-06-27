@@ -559,6 +559,16 @@ Key areas where help is needed:
 
 [Apache License 2.0](LICENSE) — chosen for enterprise compatibility, explicit patent protection, and no copyleft friction for proprietary AI agent integrations.
 
+## Contributors
+
+Thanks to everyone who has contributed to HelixID!
+
+<a href="https://github.com/dgverse-labs/helixid/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=dgverse-labs/helixid" />
+</a>
+
+<sub>Made with [contrib.rocks](https://contrib.rocks)</sub>
+
 ## Built By
 
 HelixID is built by [DgVerse](https://www.dgverse.in) — building the trust layer for digital credentials and AI agents.
