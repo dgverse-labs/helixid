@@ -123,60 +123,73 @@ Neither session option is required. The verifier can re-verify the VP on every c
 
 ## Architecture
 
-HelixID uses a **hybrid 3-layer architecture** that delivers the trust properties of verifiable credentials with the performance of JWTs:
+HelixID uses a hybrid 3-layer architecture that delivers the trust properties
+of verifiable credentials with the performance of JWTs:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     YOUR AI AGENT                           │
-│                                                             │
-│  ┌─────────────┐   ┌──────────────┐   ┌─────────────────┐  │
-│  │  Layer 3    │   │   Layer 2    │   │    Layer 1      │  │
-│  │  Ed25519    │   │  Ephemeral   │   │   VC-Based      │  │
-│  │  Direct     │   │    JWT       │   │   Identity      │  │
-│  │  Signing    │   │  Sessions    │   │                 │  │
-│  │             │   │              │   │                 │  │
-│  │ • did:key   │   │ • Verify VC  │   │ • DID creation  │  │
-│  │ • Local dev │   │   once       │   │ • Delegated VCs │  │
-│  │ • MCP tool  │   │ • Issue JWT  │   │ • StatusList    │  │
-│  │   auth      │   │   (5-15 min) │   │   revocation    │  │
-│  │             │   │ • Hot path   │   │ • Cross-org     │  │
-│  │  ~0.1ms     │   │  ~0.1ms/req  │   │   trust          │  │
-│  └─────────────┘   └──────────────┘   └─────────────────┘  │
-│                                                             │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │    API audit log (adapter store + stdout/file)       │   │
-│  │   Issuance · revocation · session-bridge verification │   │
-│  └──────────────────────────────────────────────────────┘   │
+│                     YOUR AI AGENT                            │
+│                                                                │
+│  ┌─────────────┐   ┌──────────────┐   ┌─────────────────┐   │
+│  │  Layer 3    │   │   Layer 2    │   │    Layer 1      │   │
+│  │  Ed25519    │   │  Ephemeral   │   │   VC-Based       │   │
+│  │  Direct     │   │    JWT       │   │   Identity       │   │
+│  │  Signing    │   │  Sessions    │   │                  │   │
+│  │             │   │              │   │                  │   │
+│  │ • did:key   │   │ • Verify VC  │   │ • DID creation   │   │
+│  │ • Local dev │   │   once       │   │ • Delegated VCs  │   │
+│  │ • MCP tool  │   │ • Issue JWT  │   │ • StatusList     │   │
+│  │   auth      │   │   (5-15 min) │   │   revocation     │   │
+│  │             │   │ • Hot path   │   │ • Cross-org      │   │
+│  │  ~0.1ms     │   │  ~0.1ms/req  │   │   trust          │   │
+│  └─────────────┘   └──────────────┘   └─────────────────┘   │
+│                                                                │
+│  ┌──────────────────────────────────────────────────────┐    │
+│  │    API audit log (adapter store + stdout/file)        │    │
+│  │   Issuance · revocation · session-bridge verification │    │
+│  └──────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 **Why three layers?** Different trust contexts need different tradeoffs:
 
-- **Layer 1 (VCs):** Use when agents cross organizational boundaries, when delegation chains matter, when you need revocation and audit. This is the foundation.
-- **Layer 2 (JWT sessions):** Verify the VC once, issue a short-lived JWT for subsequent calls. Best for high-frequency internal calls where you've already established trust.
-- **Layer 3 (Ed25519 direct):** For local development, MCP tool authentication, and internal agent-to-tool calls where both parties share a trust context.
+- **Layer 1 (VCs)** — Use when agents cross organizational boundaries, when
+  delegation chains matter, when you need revocation and audit. This is the
+  foundation.
+- **Layer 2 (JWT sessions)** — Verify the VC once, issue a short-lived JWT
+  for subsequent calls. Best for high-frequency internal calls where you've
+  already established trust.
+- **Layer 3 (Ed25519 direct)** — For local development, MCP tool
+  authentication, and internal agent-to-tool calls where both parties share
+  a trust context.
 
 ## Performance
 
 > "DLT is slow" is the first objection. Here's the data.
 
-The DLT latency penalty exists only on the **write path** (DID anchoring, credential issuance). The **verification hot path** — what matters for real-time agent interactions — never touches the ledger.
+The DLT latency penalty exists only on the **write path** (DID anchoring,
+credential issuance). The **verification hot path** — what matters for
+real-time agent interactions — never touches the ledger.
 
-| Operation                       | HelixID (cached)     | JWT/OAuth                 | Raw Ed25519   |
-| ------------------------------- | -------------------- | ------------------------- | ------------- |
-| Credential verification         | ~1-6 ms              | 1-5 ms                    | ~0.1 ms       |
-| DID resolution                  | ~0.01 ms (cache hit) | N/A                       | N/A           |
-| Revocation check                | ~0.01 ms (cached)    | 50-200 ms (introspection) | Not supported |
-| **Full verification (warm)**    | **~1-6 ms**          | **1-5 ms**                | **~0.1 ms**   |
+| Operation | HelixID (cached) | JWT/OAuth | Raw Ed25519 |
+|---|---|---|---|
+| Credential verification | ~1-6 ms | 1-5 ms | ~0.1 ms |
+| DID resolution | ~0.01 ms (cache hit) | N/A | N/A |
+| Revocation check | ~0.01 ms (cached) | 50-200 ms (introspection) | Not supported |
+| Full verification (warm) | ~1-6 ms | 1-5 ms | ~0.1 ms |
 
-**Context:** A single LLM inference call takes 500ms-5s. HelixID verification at ~5ms is noise in that budget. You get the same verification speed as JWT, backed by cryptographic trust that JWT can never provide.
+**Context:** A single LLM inference call takes 500ms-5s. HelixID verification
+at ~5ms is noise in that budget. You get the same verification speed as JWT,
+backed by cryptographic trust that JWT can never provide.
 
 **Caching architecture:**
-
-- **L1:** In-process memory cache (default for current runs) — DID documents and status lists
-- **External sources:** DID/status lookups may still read external sources as needed
-
-**Session token bridge:** For high-frequency scenarios (1000+ RPS), verify the VC once (~5ms), issue an ephemeral JWT for subsequent calls (~0.1ms). Best of both worlds.
+- **L1:** In-process memory cache (default for current runs) — DID documents
+  and status lists
+- **External sources:** DID/status lookups may still read external sources
+  as needed
+- **Session token bridge:** For high-frequency scenarios (1000+ RPS), verify
+  the VC once (~5ms), issue an ephemeral JWT for subsequent calls (~0.1ms).
+  Best of both worlds.
 
 ## Quick Start
 
