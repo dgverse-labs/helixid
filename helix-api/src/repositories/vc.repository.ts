@@ -354,6 +354,41 @@ export class VcRepository {
     });
   }
 
+  async findMany(filters: { subjectDid?: string | undefined } = {}): Promise<VCRecord[]> {
+    if (this.prisma) {
+      if (!hasRealRaw(this.prisma)) {
+        return this.db.vc.findMany({
+          where: filters.subjectDid ? { subjectDid: filters.subjectDid } : {},
+          orderBy: { createdAt: 'desc' },
+        });
+      }
+
+      if (filters.subjectDid) {
+        return (this.prisma as PrismaRaw).$queryRawUnsafe<VCRecord[]>(
+          `SELECT * FROM "vcs" WHERE "subjectDid" = $1 ORDER BY "createdAt" DESC`,
+          filters.subjectDid,
+        );
+      }
+      return (this.prisma as PrismaRaw).$queryRawUnsafe<VCRecord[]>(
+        `SELECT * FROM "vcs" ORDER BY "createdAt" DESC`,
+      );
+    }
+
+    if (this.sqlite) {
+      const where = filters.subjectDid
+        ? `WHERE subject_did = ${sqliteLiteral(filters.subjectDid)}`
+        : '';
+      const rows = this.sqlite.query<SqliteVcRow>(`
+        SELECT * FROM vcs ${where} ORDER BY created_at DESC
+      `);
+      return rows.map((row) => fromSqliteVcRow(row)).filter((v): v is VCRecord => Boolean(v));
+    }
+
+    return [...this.vcs.values()]
+      .filter((r) => !filters.subjectDid || r.subjectDid === filters.subjectDid)
+      .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
+  }
+
   async findStatusListById(listId: string): Promise<StatusListEntryRecord | null> {
     if (this.prisma) {
       return this.db.statusListEntry.findUnique({ where: { listId } });

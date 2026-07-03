@@ -89,6 +89,23 @@ export interface VCDetails {
   renewedByVcId: string | null;
 }
 
+export interface ListVCsFilters {
+  subjectDid?: string | undefined;
+  status?: 'active' | 'revoked' | 'expired' | undefined;
+  limit?: number | undefined;
+}
+
+export interface VCSummary {
+  vcId: string;
+  subjectDid: string;
+  agentName?: string;
+  scopes: string[];
+  status: 'active' | 'revoked' | 'expired';
+  issuedAt: string;
+  expiresAt: string;
+  parentVcId?: string;
+}
+
 export interface RenewVCOptions {
   privilegeScopes?: string[] | undefined;
   expiresInSeconds?: number | undefined;
@@ -103,6 +120,7 @@ export interface IVCService {
     vcType?: string,
   ): Promise<Record<string, unknown> | null>;
   issueVC(params: IssueVCParams, requestId: string): Promise<IssueVCResult>;
+  listVCs(filters: ListVCsFilters): Promise<VCSummary[]>;
   getVC(vcId: string, requestId: string): Promise<VCDetails>;
   revokeVC(
     vcId: string,
@@ -331,6 +349,45 @@ export class VCService implements IVCService {
       statusListIndex: claimedIndex,
       expiresAt: expiresAt.toISOString(),
     };
+  }
+
+  async listVCs(filters: ListVCsFilters): Promise<VCSummary[]> {
+    const records = await this.vcRepo.findMany({ subjectDid: filters.subjectDid });
+    const limit = filters.limit ?? 50;
+    const now = Date.now();
+
+    const summaries = records.map((record): VCSummary => {
+      let status: 'active' | 'revoked' | 'expired' = 'active';
+      if (record.revokedAt) status = 'revoked';
+      else if (record.expiresAt.getTime() <= now) status = 'expired';
+
+      const vcJson =
+        typeof record.vcJson === 'string' ? JSON.parse(record.vcJson) : record.vcJson;
+      const subject = getCredentialSubject(vcJson);
+      const scopes = Array.isArray(record.privilegeScopes)
+        ? (record.privilegeScopes as string[])
+        : typeof record.privilegeScopes === 'string'
+          ? (JSON.parse(record.privilegeScopes) as string[])
+          : [];
+      const validFrom = (asRecord(vcJson).validFrom as string | undefined) ?? '';
+      const parentVcId = record.parentVcId ?? subject.parentVcId;
+
+      return {
+        vcId: record.vcId,
+        subjectDid: record.subjectDid,
+        ...(subject.agentName ? { agentName: subject.agentName } : {}),
+        scopes,
+        status,
+        issuedAt: record.createdAt?.toISOString() ?? validFrom,
+        expiresAt: record.expiresAt.toISOString(),
+        ...(parentVcId ? { parentVcId } : {}),
+      };
+    });
+
+    const filtered = filters.status
+      ? summaries.filter((summary) => summary.status === filters.status)
+      : summaries;
+    return filtered.slice(0, limit);
   }
 
   async getVC(vcId: string, requestId: string): Promise<VCDetails> {

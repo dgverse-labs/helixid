@@ -25,6 +25,7 @@ import { DidRepository } from './repositories/did.repository.js';
 import { VcRepository } from './repositories/vc.repository.js';
 import { VPRepository } from './repositories/vp.repository.js';
 import { AgentRepository } from './repositories/agent.repository.js';
+import { AuditLogRepository } from './repositories/audit-log.repository.js';
 import { ServiceRegistryRepository } from './repositories/service-registry.repository.js';
 import { createDidCache, createStatusListCache } from './cache/cacheFactory.js';
 import { extractEd25519PublicKeyHexFromDIDDocument } from './services/did/publicKey.js';
@@ -38,6 +39,7 @@ import vcRoutes from './routes/vc/index.js';
 import statusListRoutes from './routes/status-list/index.js';
 import vpRoutes from './routes/vp/index.js';
 import agentRoutes from './routes/agent/index.js';
+import auditRoutes from './routes/audit/index.js';
 import sessionRoutes from './routes/sessions/index.js';
 import type { RedisLike } from './cache/RedisCache.js';
 import { SqliteStore } from './storage/sqlite.js';
@@ -82,6 +84,7 @@ const vcRepository = new VcRepository(prisma, sqlite);
 const vpRepository = new VPRepository(prisma, sqlite);
 const agentRepository = new AgentRepository(prisma, sqlite);
 const serviceRegistry = new ServiceRegistryRepository();
+const auditLogRepository = new AuditLogRepository(prisma, sqlite);
 
 await ensureIssuerDidCached();
 
@@ -213,6 +216,11 @@ await app.register(sessionRoutes, {
   publicKeyHex: jwtSessionKeyPair.publicKey,
 });
 await app.register(agentRoutes, { prefix: '/v1', agentService });
+await app.register(auditRoutes, {
+  prefix: '/v1/audit-log',
+  auditLogRepository,
+  adminApiKey: config.HELIX_ADMIN_API_KEY,
+});
 
 const shutdown = async (): Promise<void> => {
   app.log.info('Helix ID API shutting down...');
