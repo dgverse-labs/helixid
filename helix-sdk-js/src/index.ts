@@ -17,6 +17,7 @@ export type {
   EnrollmentTokenResult,
   ServiceInput,
   VcFilters,
+  VCResponse,
   VCSummary,
 } from './client/HelixClient.js';
 
