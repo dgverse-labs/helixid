@@ -92,6 +92,69 @@ export interface HelixClientOptions {
   adminApiKey?: string;
 }
 
+export interface VcFilters {
+  subjectDid?: string;
+  status?: 'active' | 'revoked' | 'expired';
+  limit?: number;
+}
+
+export interface VCSummary {
+  vcId: string;
+  subjectDid: string;
+  agentName?: string;
+  scopes: string[];
+  status: 'active' | 'revoked' | 'expired';
+  issuedAt: string;
+  expiresAt: string;
+  parentVcId?: string;
+}
+
+export interface AuditFilters {
+  eventType?: string;
+  since?: string;
+  limit?: number;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  eventType: string;
+  timestamp: string;
+  subjectDid?: string;
+  vcId?: string;
+  targetService?: string;
+  result?: string;
+}
+
+export interface EnrollmentTokenInput {
+  agentName: string;
+  requestedScopes: string[];
+  requestedDomains?: string[];
+  maxDelegationDepth?: number;
+}
+
+export interface EnrollmentTokenResult {
+  token: string;
+  expiresAt: string;
+}
+
+export interface ServiceInput {
+  serviceName: string;
+  displayName: string;
+  verifiedDomain: string;
+  publicKeyMultibase: string;
+  apiEndpoint: string;
+  metadata?: Record<string, unknown>;
+}
+
+function buildQueryString(params: Record<string, string | number | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) search.set(key, String(value));
+  }
+  const query = search.toString();
+  return query ? `?${query}` : '';
+}
+
 type DIDResolveResponse = {
   didDocument?: DIDDocument;
   document?: DIDDocument;
@@ -201,6 +264,32 @@ export class HelixClient {
   async getVC(vcId: string): Promise<VCResponse> {
     if (!this.http.get) throw new Error('GET not implemented by adapter');
     return this.http.get(`/v1/vcs/${encodeURIComponent(vcId)}`);
+  }
+
+  async listVCs(filters: VcFilters = {}): Promise<VCSummary[]> {
+    if (!this.http.get) throw new Error('GET not implemented by adapter');
+    return this.http.get(
+      `/v1/vcs${buildQueryString({
+        subjectDid: filters.subjectDid,
+        status: filters.status,
+        limit: filters.limit,
+      })}`,
+    );
+  }
+
+  async getAuditLog(filters: AuditFilters = {}): Promise<AuditLogEntry[]> {
+    if (!this.http.get) throw new Error('GET not implemented by adapter');
+    return this.http.get(
+      `/v1/audit-log${buildQueryString({
+        eventType: filters.eventType,
+        since: filters.since,
+        limit: filters.limit,
+      })}`,
+    );
+  }
+
+  async createEnrollmentToken(input: EnrollmentTokenInput): Promise<EnrollmentTokenResult> {
+    return this.http.post('/v1/enrollment-tokens', input);
   }
 
   async revokeVC(vcId: string): Promise<VCResponse> {
@@ -347,6 +436,10 @@ export class HelixClient {
   async getService(serviceName: string): Promise<Record<string, unknown>> {
     if (!this.http.get) throw new Error('GET not implemented by adapter');
     return this.http.get(`/v1/services/${serviceName}`);
+  }
+
+  async registerService(input: ServiceInput): Promise<Record<string, unknown>> {
+    return this.http.post('/v1/services', { metadata: {}, ...input });
   }
 
   __setTestHttpAdapter(adapter: HttpAdapterLike): void {
