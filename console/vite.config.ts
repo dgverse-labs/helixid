@@ -6,19 +6,61 @@
 
 /// <reference types="vitest/config" />
 import { createRequire } from 'node:module';
+import { dirname } from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 const require = createRequire(import.meta.url);
 
-export default defineConfig({
-  // @helixid/sdk-js (via @helixid/core) imports node:crypto/zlib/fs; the
-  // Console only exercises the HTTP client paths, but the imports must
-  // still resolve in a browser bundle.
-  // 'module' is excluded so the node:module alias below wins over the
-  // plugin's empty mock (which lacks createRequire).
-  plugins: [react(), nodePolyfills({ exclude: ['module'] })],
+// node-stdlib-browser is vite-plugin-node-polyfills' own dependency; its
+// esbuild shim provides module-scope global/process/Buffer to pre-bundled
+// deps in dev (see below).
+const esbuildShim = require.resolve('node-stdlib-browser/helpers/esbuild/shim', {
+  paths: [dirname(require.resolve('vite-plugin-node-polyfills/shims/buffer'))],
+});
+
+// @helixid/sdk-js (via @helixid/core) imports node:crypto/zlib/fs; the
+// Console only exercises the HTTP client paths, but the imports must still
+// resolve in a browser bundle, and crypto-browserify's modules read
+// global/process at module scope.
+//
+// The polyfill plugin handles all of that for `vite build`. In dev its
+// globals banners are broken: each banner imports its own shim into every
+// pre-bundled dep chunk — including the chunk defining that shim — which
+// throws "Cannot access ... before initialization". So in dev the banners
+// are disabled and the same globals come from esbuild's inject mechanism
+// during dependency pre-bundling instead.
+export default defineConfig(({ command }) => ({
+  plugins: [
+    react(),
+    nodePolyfills({
+      // Excluded so the node:module alias below wins over the plugin's
+      // empty mock (which lacks createRequire).
+      exclude: ['module'],
+      ...(command === 'build'
+        ? {}
+        : { globals: { Buffer: false, global: false, process: false } }),
+    }),
+  ],
+  optimizeDeps: {
+    esbuildOptions: {
+      inject: [esbuildShim],
+      define: {
+        global: 'global',
+        process: 'process',
+        Buffer: 'Buffer',
+      },
+    },
+  },
+  server: {
+    // Local dev only: with VITE_API_BASE_URL unset the SDK issues relative
+    // /v1 requests, proxied here to a local helix-api (which has no CORS
+    // handling). Containers use the runtime-injected API_BASE_URL instead.
+    proxy: {
+      '/v1': 'http://localhost:3400',
+    },
+  },
   resolve: {
     // The plugin injects shim imports into the linked workspace packages
     // (helix-sdk-js/dist), where pnpm's isolated node_modules can't resolve
@@ -64,4 +106,4 @@ export default defineConfig({
       ],
     },
   },
-});
+}));
