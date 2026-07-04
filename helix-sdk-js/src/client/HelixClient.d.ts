@@ -1,4 +1,4 @@
-import { type DIDDocument, type HelixJWTPayload, type KeyPair, type ServiceEndpoint, type SignedVC } from '@helixid/core';
+import { type DIDDocument, type HelixJWTPayload, type KeyPair, type ServiceEndpoint, type SignedVC, type SignedVP, type StatusListCredential, type VerifyVPOptions, type VerifyVPResult } from '@helixid/core';
 import { HttpAdapter } from '../http/HttpAdapter.js';
 import { AgentWallet } from '../wallet/AgentWallet.js';
 interface PendingKeyPair {
@@ -37,6 +37,39 @@ export interface VCResponse {
     expiresAt?: string;
     [key: string]: unknown;
 }
+export interface ListVCFilters {
+    subjectDid?: string;
+    status?: 'active' | 'revoked' | 'expired';
+    limit?: number;
+}
+export interface VCSummary {
+    vcId: string;
+    subjectDid: string;
+    agentName?: string;
+    scopes: string[];
+    status: 'active' | 'revoked' | 'expired';
+    issuedAt: string;
+    expiresAt: string;
+    parentVcId?: string;
+}
+export interface AuditLogFilters {
+    eventType?: string;
+    since?: string;
+    limit?: number;
+}
+export interface AuditLogEvent {
+    id: string;
+    eventType: string;
+    timestamp: string;
+    subjectDid?: string;
+    vcId?: string;
+    targetService?: string;
+    result?: string;
+    delegatedFrom?: string;
+    delegatedTo?: string;
+    parentVcId?: string;
+    delegationDepth?: number;
+}
 export interface StatusListCredentialResponse {
     credentialSubject: {
         encodedList: string;
@@ -57,6 +90,18 @@ export interface SessionPublicKeyResponse {
 export interface HelixClientOptions {
     adminApiKey?: string;
 }
+export interface RegisterServiceOptions {
+    serviceName: string;
+    displayName: string;
+    verifiedDomain: string;
+    publicKeyMultibase: string;
+    apiEndpoint: string;
+    metadata: Record<string, unknown>;
+}
+export interface CreateStatusListOptions {
+    listId?: string;
+    length?: number;
+}
 export declare class HelixClient {
     private http;
     private readonly wallet;
@@ -65,6 +110,7 @@ export declare class HelixClient {
     constructor(apiUrl?: string);
     constructor(baseUrl: string, options?: HelixClientOptions);
     constructor(http: HttpAdapter, baseUrl: string);
+    registerService(options: RegisterServiceOptions): Promise<Record<string, unknown>>;
     createDID(options: CreateDIDOptions): Promise<CreateDIDResult>;
     resolveDID(did: string, options?: {
         live?: boolean;
@@ -92,12 +138,16 @@ export declare class HelixClient {
         expiresAt: string;
     }>;
     getVC(vcId: string): Promise<VCResponse>;
+    listVCs(filters?: ListVCFilters): Promise<VCSummary[]>;
     revokeVC(vcId: string): Promise<VCResponse>;
     renewVC(vcId: string, overrides?: {
         privilegeScopes?: string[];
         expiresInSeconds?: number;
     }): Promise<VCResponse>;
     getStatusList(listId: string): Promise<StatusListCredentialResponse>;
+    createStatusList(options?: CreateStatusListOptions): Promise<StatusListCredential>;
+    getAuditLog(filters?: AuditLogFilters): Promise<AuditLogEvent[]>;
+    verifyVP(vp: SignedVP, options?: VerifyVPOptions): Promise<VerifyVPResult>;
     checkVCStatus(vc: SignedVC): Promise<'active' | 'revoked' | 'expired'>;
     fetchSessionPublicKey(): Promise<string>;
     verifySessionToken(token: string, publicKeyHex: string): HelixJWTPayload;

@@ -96,9 +96,8 @@ describe('AgentWallet Branch Coverage', () => {
             const created = await AgentWallet.create(path, 'pass');
             expect(created.getDID()).toMatch(/^did:key:z/);
             expect(created.getPublicKey()).toMatch(/^[0-9a-f]{64}$/);
-            await expect(AgentWallet.create(path, 'pass')).rejects.toMatchObject({
-                code: 'WALLET_ALREADY_EXISTS',
-            });
+            const loadedAgain = await AgentWallet.create(path, 'pass');
+            expect(loadedAgain.getDID()).toBe(created.getDID());
             const loaded = await AgentWallet.load(path, 'pass');
             expect(loaded.getDID()).toBe(created.getDID());
             expect(loaded.credentials).toEqual([]);

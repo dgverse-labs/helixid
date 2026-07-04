@@ -1,4 +1,4 @@
-import { generateKeyPair, getBit, SDKOnlyModeNoAPIError, verifyJWT, signBytes, signData, } from '@helixid/core';
+import { AuditEvents, generateKeyPair, getBit, HelixError, SDKOnlyModeNoAPIError, verifyVP as coreVerifyVP, verifyJWT, signBytes, signData, } from '@helixid/core';
 import { HttpAdapter } from '../http/HttpAdapter.js';
 import { AgentWallet } from '../wallet/AgentWallet.js';
 function bootstrapProofPayload(input) {
@@ -7,6 +7,15 @@ function bootstrapProofPayload(input) {
         agentDid: input.agentDid,
         timestamp: input.timestamp,
     });
+}
+function toQueryString(params) {
+    const search = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined)
+            search.set(key, String(value));
+    }
+    const query = search.toString();
+    return query ? `?${query}` : '';
 }
 const SDK_ONLY_HTTP_ADAPTER = {
     post: async () => {
@@ -18,8 +27,17 @@ export class HelixClient {
     wallet = new AgentWallet();
     pendingKeyPair = null;
     sdkOnlyMode;
+    apiAuditEnabled;
     constructor(first, second) {
         this.sdkOnlyMode = first === undefined;
+        this.apiAuditEnabled =
+            !this.sdkOnlyMode &&
+                (typeof first === 'string'
+                    ? typeof second === 'object' && second !== null && Boolean(second.adminApiKey)
+                    : first !== undefined &&
+                        'hasAdminApiKey' in first &&
+                        typeof first.hasAdminApiKey === 'function' &&
+                        first.hasAdminApiKey());
         this.http =
             first === undefined
                 ? SDK_ONLY_HTTP_ADAPTER
@@ -40,6 +58,10 @@ export class HelixClient {
             hederaTransactionId: response.hederaTransactionId,
             keyPair,
         };
+    }
+    async registerService(options) {
+        this.assertAPIConfigured();
+        return this.http.post('/v1/services', options);
     }
     async resolveDID(did, options) {
         const query = options?.live ? '?live=true' : '';
@@ -78,6 +100,15 @@ export class HelixClient {
             throw new Error('GET not implemented by adapter');
         return this.http.get(`/v1/vcs/${encodeURIComponent(vcId)}`);
     }
+    async listVCs(filters = {}) {
+        if (!this.http.get)
+            throw new Error('GET not implemented by adapter');
+        return this.http.get(`/v1/vcs${toQueryString({
+            subjectDid: filters.subjectDid,
+            status: filters.status,
+            limit: filters.limit,
+        })}`);
+    }
     async revokeVC(vcId) {
         return this.http.post(`/v1/vcs/${encodeURIComponent(vcId)}/revoke`);
     }
@@ -88,6 +119,60 @@ export class HelixClient {
         if (!this.http.get)
             throw new Error('GET not implemented by adapter');
         return this.http.get(`/v1/status-list/${encodeURIComponent(listId)}`);
+    }
+    async createStatusList(options = {}) {
+        this.assertAPIConfigured();
+        return this.http.post('/v1/status-list', options);
+    }
+    async getAuditLog(filters = {}) {
+        if (!this.http.get)
+            throw new Error('GET not implemented by adapter');
+        return this.http.get(`/v1/audit-log${toQueryString({
+            eventType: filters.eventType,
+            since: filters.since,
+            limit: filters.limit,
+        })}`);
+    }
+    async verifyVP(vp, options = {}) {
+        try {
+            const result = await coreVerifyVP(vp, options);
+            const successAudit = {
+                vpId: result.vpId,
+                agentDid: result.agentDid,
+                targetService: vp.targetService,
+                result: 'success',
+                delegationChain: result.delegationChain,
+                delegationDepth: Math.max(result.delegationChain.length - 1, 0),
+                verifiedAt: new Date().toISOString(),
+                source: 'sdk',
+            };
+            const delegatedFrom = result.delegationChain.at(-2)?.subject;
+            if (delegatedFrom !== undefined) {
+                successAudit.delegatedFrom = delegatedFrom;
+            }
+            const delegatedTo = result.delegationChain.at(-1)?.subject;
+            if (delegatedTo !== undefined) {
+                successAudit.delegatedTo = delegatedTo;
+            }
+            const parentVcId = result.delegationChain.at(-2)?.vcId;
+            if (parentVcId !== undefined) {
+                successAudit.parentVcId = parentVcId;
+            }
+            await this.recordVPVerificationAudit(successAudit);
+            return result;
+        }
+        catch (error) {
+            await this.recordVPVerificationAudit({
+                vpId: vp.id,
+                agentDid: vp.holder,
+                targetService: vp.targetService,
+                result: 'rejected',
+                reason: this.describeVerificationFailure(error),
+                verifiedAt: new Date().toISOString(),
+                source: 'sdk',
+            });
+            throw error;
+        }
     }
     async checkVCStatus(vc) {
         const credential = vc;
@@ -182,12 +267,36 @@ export class HelixClient {
     __getPendingKeyPairForTest() {
         return this.pendingKeyPair;
     }
+    async recordVPVerificationAudit(entry) {
+        if (!this.apiAuditEnabled) {
+            return;
+        }
+        try {
+            await this.http.post('/v1/audit-log/vp-verification', {
+                ...entry,
+                subjectDid: entry.agentDid,
+                eventType: entry.result === 'success' ? AuditEvents.VP_VERIFIED : AuditEvents.VP_REJECTED,
+            });
+        }
+        catch {
+            // Audit writes are best-effort. Verification result remains authoritative.
+        }
+    }
     async signPendingDidCreatePayload(_challengeId) {
         void _challengeId;
         if (!this.pendingKeyPair?.didCreateSigningPayloadHex) {
             return undefined;
         }
         return signBytes(Buffer.from(this.pendingKeyPair.didCreateSigningPayloadHex, 'hex'), this.pendingKeyPair.privateKey);
+    }
+    describeVerificationFailure(error) {
+        if (error instanceof HelixError) {
+            return error.code;
+        }
+        if (error instanceof Error) {
+            return error.message;
+        }
+        return String(error);
     }
     assertAPIConfigured() {
         if (this.sdkOnlyMode) {

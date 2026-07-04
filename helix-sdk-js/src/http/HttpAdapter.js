@@ -15,6 +15,9 @@ export class HttpAdapter {
     async delete(path) {
         return this.request('DELETE', path);
     }
+    hasAdminApiKey() {
+        return this.adminApiKey !== undefined && this.adminApiKey.length > 0;
+    }
     async request(method, path, body) {
         const url = path.startsWith('http') ? path : `${this.baseUrl}${path}`;
         const init = {

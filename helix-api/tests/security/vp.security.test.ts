@@ -6,6 +6,7 @@ import { base58btcEncode, hashCanonicalPayload, signBytes, type AuditEvent, type
 
 import { VPRepository, type VpIdRecord } from '../../src/repositories/vp.repository.js';
 import { ServiceRegistryRepository } from '../../src/repositories/service-registry.repository.js';
+import { AgentRepository } from '../../src/repositories/agent.repository.js';
 import { VPService } from '../../src/services/vp/vp.service.js';
 import { MockDIDService } from '../mocks/MockDIDService.js';
 import { MockVCService } from '../mocks/MockVCService.js';
@@ -90,12 +91,21 @@ describe('VP security API', () => {
     vcService = new MockVCService();
     auditLogger = new TestAuditLogger();
     repository = new InMemoryVPRepository();
+    const agentRepository = new AgentRepository();
+    await agentRepository.createService({
+      serviceName: 'amazon',
+      displayName: 'Amazon',
+      verifiedDomain: 'https://amazon.com',
+      publicKeyMultibase: 'z123',
+      apiEndpoint: 'https://api.amazon.com/helix/verify',
+      metadata: '{}',
+    });
 
     service = new VPService(
       repository,
       didService,
       vcService,
-      new ServiceRegistryRepository(['amazon']),
+      new ServiceRegistryRepository(agentRepository),
       auditLogger,
       300,
       { signingKey: privateKeyHex, issuerDid: defaultDid, ttlSeconds: 600 }

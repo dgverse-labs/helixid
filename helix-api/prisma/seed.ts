@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
+import { BUILT_IN_SERVICES } from '../src/repositories/service-registry.repository.js';
 
 // Prisma 7 requires a driver adapter. We use @prisma/adapter-pg.
 const connectionString = process.env.DATABASE_URL || 'postgresql://helixid_test:helixid_test@localhost:5432/helixid_test';
@@ -15,20 +16,24 @@ async function main() {
   const agentDid = 'did:hedera:testnet:42ubDg7iWCsGJTemHKEUWDQifEHM3KPHTmQgN5Hofogm_0.0.8050123';
   const issuerDid = 'did:hedera:testnet:3GyeSet8RyahYaPyUoSmD9dfftpCmtZDmKwjGdzdBnkq_0.0.7553278';
 
-  // 1. Create a Service
-  await prisma.serviceRegistry.upsert({
-    where: { serviceName: 'amazon' },
-    update: {},
-    create: {
-      serviceName: 'amazon',
-      displayName: 'Amazon Retail',
-      verifiedDomain: 'amazon.com',
-      publicKeyMultibase: 'z6MkgYvYFsCcNycDE9iJ6shfX88oZ3LGH5x9R673d39R',
-      apiEndpoint: 'https://api.amazon.com/helix-verify',
-      metadata: '{}',
-      active: true
-    }
-  });
+  // 1. Create built-in VP target services as registry rows.
+  for (const service of BUILT_IN_SERVICES) {
+    await prisma.serviceRegistry.upsert({
+      where: { serviceName: service.serviceName },
+      update: {
+        displayName: service.displayName,
+        verifiedDomain: service.verifiedDomain,
+        publicKeyMultibase: service.publicKeyMultibase,
+        apiEndpoint: service.apiEndpoint,
+        metadata: service.metadata,
+        active: true,
+      },
+      create: {
+        ...service,
+        active: true,
+      },
+    });
+  }
 
   // 2. Create Agent DID Record
   await prisma.did.upsert({

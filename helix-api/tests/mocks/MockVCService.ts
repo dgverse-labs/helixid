@@ -1,4 +1,4 @@
-import { createStatusList, setBit } from '@helixid/core';
+import { buildStatusListCredential, createStatusList, setBit } from '@helixid/core';
 import type {
   IVCService,
   IssueVCInput,
@@ -56,9 +56,48 @@ export class MockVCService implements IVCService {
     return this.status;
   }
 
+  async listVCs(): Promise<Array<{
+    vcId: string;
+    subjectDid: string;
+    agentName?: string;
+    scopes: string[];
+    status: VCStatus;
+    issuedAt: string;
+    expiresAt: string;
+    parentVcId?: string;
+  }>> {
+    return [{
+      vcId: 'vc:test:1',
+      subjectDid: 'did:web:agent.example.com',
+      agentName: 'Test Agent',
+      scopes: ['read'],
+      status: this.status,
+      issuedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }];
+  }
+
   async getStatusList(): Promise<{ credentialSubject: { encodedList: string } }> {
     const list = this.status === 'revoked' ? setBit(createStatusList(), 0, 1) : createStatusList();
     return { credentialSubject: { encodedList: list } };
+  }
+
+  async createStatusList(input?: { listId?: string; length?: number }): Promise<{
+    '@context': string[];
+    id: string;
+    type: string[];
+    issuer: string;
+    validFrom: string;
+    credentialSubject: {
+      id: string;
+      type: 'BitstringStatusList';
+      statusPurpose: 'revocation';
+      encodedList: string;
+    };
+  }> {
+    const listId = input?.listId ?? 'helix-status-list-1';
+    const encodedList = createStatusList(input?.length);
+    return buildStatusListCredential(listId, encodedList, 'did:web:localhost:3000', 'http://localhost:3000');
   }
 
   async findRecordByVcId(

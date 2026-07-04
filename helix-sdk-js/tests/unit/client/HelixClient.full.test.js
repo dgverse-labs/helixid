@@ -1,7 +1,7 @@
 // Copyright 2026 DgVerse LLP
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { HelixClient } from '../../../src/client/HelixClient.js';
-import { createStatusList, generateKeyPair, issueJWT } from '@helixid/core';
+import { createStatusList, generateKeyPair, issueJWT, publicKeyToMultibase, selfIssueVC, VPBuilder } from '@helixid/core';
 describe('HelixClient Full Unit Tests', () => {
     let mockHttp;
     let client;
@@ -10,6 +10,7 @@ describe('HelixClient Full Unit Tests', () => {
             get: vi.fn(),
             post: vi.fn(),
             delete: vi.fn(),
+            hasAdminApiKey: vi.fn(() => false),
         };
         client = new HelixClient(mockHttp, 'http://api');
     });
@@ -78,10 +79,60 @@ describe('HelixClient Full Unit Tests', () => {
         await client.getService('s1');
         expect(mockHttp.get).toHaveBeenCalledWith('/v1/services/s1');
     });
-    it('does not expose local VP/delegation helpers on HelixClient', () => {
-        expect('verifyVP' in client).toBe(false);
+    it('exposes API-backed VP verification but not delegation helpers', () => {
+        expect(typeof client.verifyVP).toBe('function');
         expect('createVPTemplate' in client).toBe(false);
         expect('delegate' in client).toBe(false);
+    });
+    it('audits successful VP verification when the client can write audit logs', async () => {
+        const wallet = generateKeyPair();
+        const did = `did:key:${publicKeyToMultibase(wallet.publicKey)}`;
+        const vc = await selfIssueVC({ scopes: ['read:orders'] }, { did, privateKeyHex: wallet.privateKey });
+        const vp = await new VPBuilder({
+            vc,
+            holderDid: did,
+            targetService: 'orders',
+            userDid: did,
+        }).sign(wallet.privateKey, `${did}#key-1`);
+        const auditHttp = {
+            get: vi.fn(),
+            post: vi.fn().mockResolvedValue({ recorded: true }),
+            delete: vi.fn(),
+            hasAdminApiKey: vi.fn(() => true),
+        };
+        const auditClient = new HelixClient(auditHttp, 'http://api');
+        const result = await auditClient.verifyVP(vp, { allowSelfSigned: true });
+        expect(result).toMatchObject({
+            valid: true,
+            agentDid: did,
+            vpId: vp.id,
+        });
+        expect(auditHttp.post).toHaveBeenCalledWith('/v1/audit-log/vp-verification', expect.objectContaining({
+            vpId: vp.id,
+            agentDid: did,
+            subjectDid: did,
+            targetService: 'orders',
+            result: 'success',
+            source: 'sdk',
+            eventType: 'VP_VERIFIED',
+        }));
+    });
+    it('audits rejected VP verification when verification fails', async () => {
+        const auditHttp = {
+            get: vi.fn(),
+            post: vi.fn().mockResolvedValue({ recorded: true }),
+            delete: vi.fn(),
+            hasAdminApiKey: vi.fn(() => true),
+        };
+        const auditClient = new HelixClient(auditHttp, 'http://api');
+        await expect(auditClient.verifyVP({ id: 'vp:test', holder: 'did:key:abc' })).rejects.toThrow();
+        expect(auditHttp.post).toHaveBeenCalledWith('/v1/audit-log/vp-verification', expect.objectContaining({
+            vpId: 'vp:test',
+            agentDid: 'did:key:abc',
+            result: 'rejected',
+            source: 'sdk',
+            eventType: 'VP_REJECTED',
+        }));
     });
     it('fetches and locally verifies JWT session tokens', async () => {
         const keys = generateKeyPair();

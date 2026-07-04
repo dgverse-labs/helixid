@@ -1,7 +1,10 @@
 import {
+  AuditEvents,
   generateKeyPair,
   getBit,
+  HelixError,
   SDKOnlyModeNoAPIError,
+  verifyVP as coreVerifyVP,
   verifyJWT,
   signBytes,
   signData,
@@ -9,7 +12,11 @@ import {
   type HelixJWTPayload,
   type KeyPair,
   type ServiceEndpoint,
+  type StatusListCredential,
   type SignedVC,
+  type SignedVP,
+  type VerifyVPOptions,
+  type VerifyVPResult,
 } from '@helixid/core';
 import { HttpAdapter } from '../http/HttpAdapter.js';
 import { AgentWallet } from '../wallet/AgentWallet.js';
@@ -32,10 +39,34 @@ interface PendingKeyPair {
   didCreateSigningPayloadHex?: string | undefined;
 }
 
+interface VPVerificationAuditEntry {
+  vpId: string;
+  agentDid: string;
+  targetService?: string;
+  result: 'success' | 'rejected';
+  reason?: string;
+  delegationChain?: VerifyVPResult['delegationChain'];
+  delegatedFrom?: string;
+  delegatedTo?: string;
+  parentVcId?: string;
+  delegationDepth?: number;
+  verifiedAt: string;
+  source: 'sdk';
+}
+
 interface HttpAdapterLike {
   post<T>(path: string, body?: unknown): Promise<T>;
   get?<T>(path: string): Promise<T>;
   delete?<T>(path: string): Promise<T>;
+}
+
+function toQueryString(params: Record<string, string | number | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) search.set(key, String(value));
+  }
+  const query = search.toString();
+  return query ? `?${query}` : '';
 }
 
 export interface CreateDIDOptions {
@@ -68,6 +99,43 @@ export interface VCResponse {
   [key: string]: unknown;
 }
 
+export interface ListVCFilters {
+  subjectDid?: string;
+  status?: 'active' | 'revoked' | 'expired';
+  limit?: number;
+}
+
+export interface VCSummary {
+  vcId: string;
+  subjectDid: string;
+  agentName?: string;
+  scopes: string[];
+  status: 'active' | 'revoked' | 'expired';
+  issuedAt: string;
+  expiresAt: string;
+  parentVcId?: string;
+}
+
+export interface AuditLogFilters {
+  eventType?: string;
+  since?: string;
+  limit?: number;
+}
+
+export interface AuditLogEvent {
+  id: string;
+  eventType: string;
+  timestamp: string;
+  subjectDid?: string;
+  vcId?: string;
+  targetService?: string;
+  result?: string;
+  delegatedFrom?: string;
+  delegatedTo?: string;
+  parentVcId?: string;
+  delegationDepth?: number;
+}
+
 export interface StatusListCredentialResponse {
   credentialSubject: {
     encodedList: string;
@@ -92,6 +160,20 @@ export interface HelixClientOptions {
   adminApiKey?: string;
 }
 
+export interface RegisterServiceOptions {
+  serviceName: string;
+  displayName: string;
+  verifiedDomain: string;
+  publicKeyMultibase: string;
+  apiEndpoint: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface CreateStatusListOptions {
+  listId?: string;
+  length?: number;
+}
+
 type DIDResolveResponse = {
   didDocument?: DIDDocument;
   document?: DIDDocument;
@@ -108,12 +190,21 @@ export class HelixClient {
   private readonly wallet = new AgentWallet();
   private pendingKeyPair: PendingKeyPair | null = null;
   private readonly sdkOnlyMode: boolean;
+  private readonly apiAuditEnabled: boolean;
 
   constructor(apiUrl?: string);
   constructor(baseUrl: string, options?: HelixClientOptions);
   constructor(http: HttpAdapter, baseUrl: string);
   constructor(first?: string | HttpAdapter, second?: string | HelixClientOptions) {
     this.sdkOnlyMode = first === undefined;
+    this.apiAuditEnabled =
+      !this.sdkOnlyMode &&
+      (typeof first === 'string'
+        ? typeof second === 'object' && second !== null && Boolean(second.adminApiKey)
+        : first !== undefined &&
+          'hasAdminApiKey' in first &&
+          typeof first.hasAdminApiKey === 'function' &&
+          first.hasAdminApiKey());
     this.http =
       first === undefined
         ? SDK_ONLY_HTTP_ADAPTER
@@ -140,6 +231,11 @@ export class HelixClient {
       hederaTransactionId: response.hederaTransactionId,
       keyPair,
     };
+  }
+
+  async registerService(options: RegisterServiceOptions): Promise<Record<string, unknown>> {
+    this.assertAPIConfigured();
+    return this.http.post<Record<string, unknown>>('/v1/services', options);
   }
 
   async resolveDID(
@@ -203,6 +299,17 @@ export class HelixClient {
     return this.http.get(`/v1/vcs/${encodeURIComponent(vcId)}`);
   }
 
+  async listVCs(filters: ListVCFilters = {}): Promise<VCSummary[]> {
+    if (!this.http.get) throw new Error('GET not implemented by adapter');
+    return this.http.get(
+      `/v1/vcs${toQueryString({
+        subjectDid: filters.subjectDid,
+        status: filters.status,
+        limit: filters.limit,
+      })}`,
+    );
+  }
+
   async revokeVC(vcId: string): Promise<VCResponse> {
     return this.http.post(`/v1/vcs/${encodeURIComponent(vcId)}/revoke`);
   }
@@ -217,6 +324,59 @@ export class HelixClient {
   async getStatusList(listId: string): Promise<StatusListCredentialResponse> {
     if (!this.http.get) throw new Error('GET not implemented by adapter');
     return this.http.get(`/v1/status-list/${encodeURIComponent(listId)}`);
+  }
+
+  async createStatusList(
+    options: CreateStatusListOptions = {},
+  ): Promise<StatusListCredential> {
+    this.assertAPIConfigured();
+    return this.http.post<StatusListCredential>('/v1/status-list', options);
+  }
+
+  async getAuditLog(filters: AuditLogFilters = {}): Promise<AuditLogEvent[]> {
+    if (!this.http.get) throw new Error('GET not implemented by adapter');
+    return this.http.get(
+      `/v1/audit-log${toQueryString({
+        eventType: filters.eventType,
+        since: filters.since,
+        limit: filters.limit,
+      })}`,
+    );
+  }
+
+  async verifyVP(vp: SignedVP, options: VerifyVPOptions = {}): Promise<VerifyVPResult> {
+    try {
+      const result = await coreVerifyVP(vp, options);
+      const successAudit: VPVerificationAuditEntry = {
+        vpId: result.vpId,
+        agentDid: result.agentDid,
+        targetService: vp.targetService,
+        result: 'success',
+        delegationChain: result.delegationChain,
+        delegationDepth: Math.max(result.delegationChain.length - 1, 0),
+        verifiedAt: new Date().toISOString(),
+        source: 'sdk',
+      };
+      const delegatedFrom = result.delegationChain.at(-2)?.subject;
+      if (delegatedFrom !== undefined) successAudit.delegatedFrom = delegatedFrom;
+      const delegatedTo = result.delegationChain.at(-1)?.subject;
+      if (delegatedTo !== undefined) successAudit.delegatedTo = delegatedTo;
+      const parentVcId = result.delegationChain.at(-2)?.vcId;
+      if (parentVcId !== undefined) successAudit.parentVcId = parentVcId;
+      await this.recordVPVerificationAudit(successAudit);
+      return result;
+    } catch (error) {
+      await this.recordVPVerificationAudit({
+        vpId: vp.id,
+        agentDid: vp.holder,
+        targetService: vp.targetService,
+        result: 'rejected',
+        reason: this.describeVerificationFailure(error),
+        verifiedAt: new Date().toISOString(),
+        source: 'sdk',
+      });
+      throw error;
+    }
   }
 
   async checkVCStatus(vc: SignedVC): Promise<'active' | 'revoked' | 'expired'> {
@@ -357,6 +517,22 @@ export class HelixClient {
     return this.pendingKeyPair;
   }
 
+  private async recordVPVerificationAudit(entry: VPVerificationAuditEntry): Promise<void> {
+    if (!this.apiAuditEnabled) {
+      return;
+    }
+
+    try {
+      await this.http.post('/v1/audit-log/vp-verification', {
+        ...entry,
+        subjectDid: entry.agentDid,
+        eventType: entry.result === 'success' ? AuditEvents.VP_VERIFIED : AuditEvents.VP_REJECTED,
+      });
+    } catch {
+      // Audit writes are best-effort. Verification result remains authoritative.
+    }
+  }
+
   private async signPendingDidCreatePayload(_challengeId: string): Promise<string | undefined> {
     void _challengeId;
     if (!this.pendingKeyPair?.didCreateSigningPayloadHex) {
@@ -366,6 +542,16 @@ export class HelixClient {
       Buffer.from(this.pendingKeyPair.didCreateSigningPayloadHex, 'hex'),
       this.pendingKeyPair.privateKey,
     );
+  }
+
+  private describeVerificationFailure(error: unknown): string {
+    if (error instanceof HelixError) {
+      return error.code;
+    }
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return String(error);
   }
 
   private assertAPIConfigured(): void {

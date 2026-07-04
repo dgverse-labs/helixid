@@ -24,6 +24,12 @@ export interface VCRecord {
   updatedAt?: Date;
 }
 
+export interface ListVcFilters {
+  subjectDid?: string | undefined;
+  status?: 'active' | 'revoked' | 'expired' | undefined;
+  limit: number;
+}
+
 export interface StatusListEntryRecord {
   listId: string;
   encodedList: string;
@@ -56,6 +62,7 @@ type PrismaLike = PrismaClient & {
   statusListEntry: {
     create(args: unknown): Promise<StatusListEntryRecord>;
     findUnique(args: unknown): Promise<StatusListEntryRecord | null>;
+    upsert(args: unknown): Promise<StatusListEntryRecord>;
     update(args: unknown): Promise<StatusListEntryRecord>;
   };
 };
@@ -137,6 +144,13 @@ function fromSqliteVcRow(row: SqliteVcRow | undefined): VCRecord | null {
   if (row.created_at) base.createdAt = new Date(row.created_at);
   if (row.updated_at) base.updatedAt = new Date(row.updated_at);
   return base;
+}
+
+function matchesStatus(record: VCRecord, status: ListVcFilters['status'], now = new Date()): boolean {
+  if (!status) return true;
+  if (status === 'revoked') return Boolean(record.revokedAt);
+  if (status === 'expired') return !record.revokedAt && record.expiresAt.getTime() <= now.getTime();
+  return !record.revokedAt && record.expiresAt.getTime() > now.getTime();
 }
 
 function fromSqliteStatusListRow(
@@ -288,6 +302,57 @@ export class VcRepository {
     return this.vcs.get(vcId) ?? null;
   }
 
+  async listVcs(filters: ListVcFilters): Promise<VCRecord[]> {
+    const now = new Date();
+    if (this.prisma) {
+      const where: Record<string, unknown> = {};
+      if (filters.subjectDid) where.subjectDid = filters.subjectDid;
+      if (filters.status === 'revoked') {
+        where.revokedAt = { not: null };
+      } else if (filters.status === 'expired') {
+        where.revokedAt = null;
+        where.expiresAt = { lte: now };
+      } else if (filters.status === 'active') {
+        where.revokedAt = null;
+        where.expiresAt = { gt: now };
+      }
+
+      return this.db.vc.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: filters.limit,
+      });
+    }
+
+    if (this.sqlite) {
+      const conditions: string[] = [];
+      if (filters.subjectDid) conditions.push(`subject_did = ${sqliteLiteral(filters.subjectDid)}`);
+      if (filters.status === 'revoked') {
+        conditions.push('revoked_at IS NOT NULL');
+      } else if (filters.status === 'expired') {
+        conditions.push('revoked_at IS NULL');
+        conditions.push(`expires_at <= ${sqliteLiteral(now.toISOString())}`);
+      } else if (filters.status === 'active') {
+        conditions.push('revoked_at IS NULL');
+        conditions.push(`expires_at > ${sqliteLiteral(now.toISOString())}`);
+      }
+      const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+      const rows = this.sqlite.query<SqliteVcRow>(`
+        SELECT * FROM vcs
+        ${where}
+        ORDER BY created_at DESC
+        LIMIT ${filters.limit}
+      `);
+      return rows.map((row) => fromSqliteVcRow(row)).filter((v): v is VCRecord => Boolean(v));
+    }
+
+    return [...this.vcs.values()]
+      .filter((record) => (filters.subjectDid ? record.subjectDid === filters.subjectDid : true))
+      .filter((record) => matchesStatus(record, filters.status, now))
+      .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0))
+      .slice(0, filters.limit);
+  }
+
   async findActiveBySubjectDid(subjectDid: string, vcType?: string): Promise<VCRecord[]> {
     if (this.prisma) {
       if (!hasRealRaw(this.prisma)) {
@@ -369,8 +434,10 @@ export class VcRepository {
 
   async createStatusList(listId: string, encodedList: string): Promise<StatusListEntryRecord> {
     if (this.prisma) {
-      return this.db.statusListEntry.create({
-        data: { listId, encodedList, nextIndex: 0 },
+      return this.db.statusListEntry.upsert({
+        where: { listId },
+        create: { listId, encodedList, nextIndex: 0 },
+        update: { encodedList, nextIndex: 0 },
       });
     }
     if (this.sqlite) {
@@ -383,6 +450,10 @@ export class VcRepository {
           0,
           ${sqliteLiteral(now)}
         )
+        ON CONFLICT(list_id) DO UPDATE SET
+          encoded_list = excluded.encoded_list,
+          next_index = excluded.next_index,
+          updated_at = excluded.updated_at
       `);
       return { listId, encodedList, nextIndex: 0, updatedAt: now };
     }
