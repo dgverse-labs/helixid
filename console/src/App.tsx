@@ -5,23 +5,34 @@
 //    http://www.apache.org/licenses/LICENSE-2.0
 
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { AuditRefreshProvider } from './context/AuditRefreshContext';
+import { ThemeProvider } from './theme/ThemeContext';
+import { AuthProvider } from './auth/AuthContext';
+import { RequireAuth } from './auth/RequireAuth';
 import { AppLayout } from './components/layout/AppLayout';
+import { LoginPage } from './pages/LoginPage';
 import { AgentsPage } from './pages/AgentsPage';
 import { EnrollPage } from './pages/EnrollPage';
 import { ServicesPage } from './pages/ServicesPage';
+import { AuditPage } from './pages/AuditPage';
 
 export function App() {
   return (
-    <AuditRefreshProvider>
-      <Routes>
-        <Route element={<AppLayout />}>
-          <Route path="/" element={<Navigate to="/agents" replace />} />
-          <Route path="/agents" element={<AgentsPage />} />
-          <Route path="/enroll" element={<EnrollPage />} />
-          <Route path="/services" element={<ServicesPage />} />
-        </Route>
-      </Routes>
-    </AuditRefreshProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route element={<RequireAuth />}>
+            <Route element={<AppLayout />}>
+              <Route path="/" element={<Navigate to="/agents" replace />} />
+              <Route path="/agents" element={<AgentsPage />} />
+              <Route path="/enroll" element={<EnrollPage />} />
+              <Route path="/services" element={<ServicesPage />} />
+              <Route path="/audit" element={<AuditPage />} />
+            </Route>
+          </Route>
+          <Route path="*" element={<Navigate to="/agents" replace />} />
+        </Routes>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

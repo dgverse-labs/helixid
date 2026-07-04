@@ -9,10 +9,8 @@ import { api } from '../api/client';
 import type { ServiceInput, ServiceRecord } from '../api/types';
 import { ServiceList } from '../components/services/ServiceList';
 import { ServiceForm } from '../components/services/ServiceForm';
-import { useAuditRefresh } from '../hooks/useAuditRefresh';
 
 export function ServicesPage() {
-  const { refreshAudit } = useAuditRefresh();
   const [services, setServices] = useState<ServiceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +41,6 @@ export function ServicesPage() {
         .registerService(input)
         .then(async () => {
           setToast(`Registered ${input.serviceName}`);
-          refreshAudit();
           await loadServices();
         })
         .catch((err: unknown) => {
@@ -51,7 +48,7 @@ export function ServicesPage() {
         })
         .finally(() => setSubmitting(false));
     },
-    [loadServices, refreshAudit],
+    [loadServices],
   );
 
   return (

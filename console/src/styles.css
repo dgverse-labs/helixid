@@ -1,14 +1,53 @@
 /* ------------------------------------------------------------------ *
- * HelixID Console — dark operator theme.
- * Palette mirrors helixid.dev brand tokens (globals.css): ink #0a0a0a,
- * signal orange #ff6a00 used sparingly, hairline borders, mono details.
+ * HelixID Console theme.
+ * Two token sets driven by [data-theme] on <html>; light is the default.
+ * Palette mirrors the helixid.dev brand: neutral base + a single signal
+ * orange (#ff6a00), one radius/shadow/spacing scale, mono for identifiers.
+ * The sidebar keeps a fixed dark brand panel in both themes so the
+ * wordmark stays legible and the app reads as a premium console.
  * ------------------------------------------------------------------ */
 
 :root {
+  color-scheme: light;
+
+  --bg: #f6f6f4;
+  --surface: #ffffff;
+  --surface-2: #f1f1ef;
+  --surface-3: #e7e7e3;
+  --hairline: rgba(18, 18, 22, 0.09);
+  --hairline-strong: rgba(18, 18, 22, 0.16);
+
+  --ink: #17171a;
+  --ink-muted: #55555b;
+  --ink-faint: #7a7a80;
+
+  --accent: #ff6a00;
+  --accent-strong: #c7510a; /* AA-safe orange text on light */
+  --accent-soft: #fff1e8;
+  --accent-glow: rgba(255, 106, 0, 0.18);
+  --accent-ink: #1c1206; /* text on an accent fill */
+
+  --success: #0e7a41;
+  --success-soft: #e7f5ec;
+  --danger: #b3271b;
+  --danger-soft: #fdece9;
+  --warning: #8a6100;
+  --warning-soft: #fbf1d9;
+
+  --code-bg: #f5f5f3;
+  --shadow-card: 0 1px 2px rgba(16, 16, 20, 0.05), 0 6px 20px rgba(16, 16, 20, 0.06);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+
+  --radius: 14px;
+  --radius-sm: 9px;
+}
+
+[data-theme='dark'] {
   color-scheme: dark;
 
   --bg: #0a0a0a;
-  --bg-sidebar: #0d0d0d;
   --surface: #131313;
   --surface-2: #191919;
   --surface-3: #202020;
@@ -19,7 +58,6 @@
   --ink-muted: #9c9c98;
   --ink-faint: #67676a;
 
-  --accent: #ff6a00;
   --accent-strong: #ff8433;
   --accent-soft: rgba(255, 106, 0, 0.12);
   --accent-glow: rgba(255, 106, 0, 0.35);
@@ -31,11 +69,7 @@
   --warning: #e8b93b;
   --warning-soft: rgba(232, 185, 59, 0.12);
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, monospace;
-
-  --radius: 14px;
-  --radius-sm: 9px;
+  --code-bg: #0d0d0d;
   --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 30px rgba(0, 0, 0, 0.35);
 }
 
@@ -88,7 +122,7 @@ a {
 }
 
 /* ---------------------------------------------------------------- */
-/* App shell: fixed sidebar + fluid main + audit rail                */
+/* App shell: fixed dark sidebar + themed content column             */
 /* ---------------------------------------------------------------- */
 
 .app-layout {
@@ -98,8 +132,9 @@ a {
 }
 
 .app-sidebar {
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--hairline);
+  background: #0c0c0c;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e8e8e6;
   padding: 22px 14px;
   display: flex;
   flex-direction: column;
@@ -142,7 +177,7 @@ a {
   padding: 10px 12px;
   border-radius: var(--radius-sm);
   border-left: 2px solid transparent;
-  color: var(--ink-muted);
+  color: #9a9a97;
   text-decoration: none;
   font-weight: 500;
   transition: background 0.16s ease, color 0.16s ease;
@@ -155,14 +190,14 @@ a {
 }
 
 .app-nav a:hover {
-  background: var(--surface-2);
-  color: var(--ink);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
 }
 
 .app-nav a.active {
-  background: var(--accent-soft);
+  background: rgba(255, 106, 0, 0.14);
   border-left-color: var(--accent);
-  color: var(--accent-strong);
+  color: #ff8433;
 }
 
 .sidebar-foot {
@@ -170,26 +205,88 @@ a {
   padding: 10px 12px;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-faint);
-  border-top: 1px solid var(--hairline);
+  color: #5a5a5a;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.app-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 330px;
-  gap: 26px;
-  padding: 30px 30px 48px;
-  align-items: start;
+.app-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100vh;
 }
 
-@media (max-width: 1180px) {
-  .app-body {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.app-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  padding: 12px 30px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.logout-button {
+  font-size: 13px;
+  padding: 7px 14px;
 }
 
 .app-main {
+  padding: 28px 30px 48px;
   min-width: 0;
+}
+
+/* ---------------------------------------------------------------- */
+/* Theme toggle switch                                               */
+/* ---------------------------------------------------------------- */
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  background: transparent;
+  border: none;
+  padding: 4px;
+  color: var(--ink-muted);
+}
+
+.theme-toggle-icon {
+  display: grid;
+  place-items: center;
+  color: var(--ink-muted);
+}
+
+.theme-toggle-track {
+  position: relative;
+  width: 38px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  border: 1px solid var(--hairline-strong);
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.theme-toggle[aria-checked='true'] .theme-toggle-track {
+  background: var(--accent-soft);
+  border-color: rgba(255, 106, 0, 0.4);
+}
+
+.theme-toggle-thumb {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  transition: transform 0.18s ease;
+}
+
+.theme-toggle[aria-checked='true'] .theme-toggle-thumb {
+  transform: translateX(18px);
 }
 
 /* ---------------------------------------------------------------- */
@@ -233,7 +330,7 @@ button:not(.unstyled) {
 
 button:not(.unstyled):hover:not(:disabled) {
   background: var(--surface-3);
-  border-color: rgba(255, 255, 255, 0.22);
+  border-color: var(--hairline-strong);
 }
 
 button:not(.unstyled):active:not(:disabled) {
@@ -241,7 +338,7 @@ button:not(.unstyled):active:not(:disabled) {
 }
 
 button:disabled {
-  opacity: 0.45;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
@@ -249,24 +346,26 @@ button[type='submit'],
 .btn-primary {
   background: var(--accent);
   border-color: transparent;
-  color: #140a03;
+  color: var(--accent-ink);
   font-weight: 650;
 }
 
-button[type='submit']:hover:not(:disabled) {
+button[type='submit']:hover:not(:disabled),
+.btn-primary:hover:not(:disabled) {
   background: var(--accent-strong) !important;
   border-color: transparent !important;
+  color: #fff;
 }
 
 .revoke-button {
   background: var(--danger-soft) !important;
-  border-color: rgba(240, 86, 74, 0.4) !important;
+  border-color: var(--danger) !important;
   color: var(--danger) !important;
   font-weight: 600;
 }
 
 .revoke-button:hover:not(:disabled) {
-  background: rgba(240, 86, 74, 0.22) !important;
+  filter: brightness(0.97);
 }
 
 /* ---------------------------------------------------------------- */
@@ -282,7 +381,7 @@ button[type='submit']:hover:not(:disabled) {
 
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 14px;
   margin-bottom: 22px;
 }
@@ -313,7 +412,7 @@ button[type='submit']:hover:not(:disabled) {
   display: grid;
   place-items: center;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-strong);
 }
 
 .stat-icon svg {
@@ -347,15 +446,6 @@ button[type='submit']:hover:not(:disabled) {
 
 .table-card {
   overflow: hidden;
-}
-
-.table-card-header {
-  padding: 18px 20px 6px;
-}
-
-.table-card-header h2 {
-  font-size: 16.5px;
-  font-weight: 650;
 }
 
 table {
@@ -409,9 +499,9 @@ tbody tr:last-child td {
   width: 30px;
   height: 30px;
   border-radius: 9px;
-  background: var(--surface-3);
+  background: var(--surface-2);
   border: 1px solid var(--hairline);
-  color: var(--accent);
+  color: var(--accent-strong);
   display: grid;
   place-items: center;
   flex: none;
@@ -435,7 +525,7 @@ tbody tr:last-child td {
 .scope-chip {
   display: inline-flex;
   align-items: center;
-  background: var(--surface-3);
+  background: var(--surface-2);
   border: 1px solid var(--hairline-strong);
   border-radius: 999px;
   padding: 2px 9px;
@@ -487,7 +577,6 @@ tbody tr:last-child td {
   font-family: var(--font-mono);
 }
 
-/* DID copy button */
 .did-copy {
   background: none;
   border: none;
@@ -501,7 +590,7 @@ tbody tr:last-child td {
 }
 
 .did-copy:hover {
-  background: var(--surface-3);
+  background: var(--surface-2);
   color: var(--ink);
 }
 
@@ -609,7 +698,7 @@ tbody tr:last-child td {
   max-height: 320px;
   font-family: var(--font-mono);
   font-size: 12px;
-  background: #0d0d0d;
+  background: var(--code-bg);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   padding: 14px;
@@ -683,7 +772,7 @@ input,
 textarea,
 select {
   font: inherit;
-  background: var(--surface-2);
+  background: var(--surface);
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-sm);
   color: var(--ink);
@@ -733,7 +822,7 @@ textarea:focus {
   font-family: var(--font-mono);
   font-size: 16px;
   color: var(--accent-strong);
-  background: #0d0d0d;
+  background: var(--code-bg);
   border: 1px dashed rgba(255, 106, 0, 0.45);
   border-radius: var(--radius-sm);
   padding: 14px 16px;
@@ -779,13 +868,13 @@ textarea:focus {
 
 .enrollment-success {
   background: var(--success-soft);
-  border: 1px solid rgba(52, 211, 116, 0.35);
+  border: 1px solid var(--success);
   color: var(--success);
 }
 
 .enrollment-timeout {
   background: var(--warning-soft);
-  border: 1px solid rgba(232, 185, 59, 0.35);
+  border: 1px solid var(--warning);
   color: var(--warning);
 }
 
@@ -796,36 +885,14 @@ textarea:focus {
 }
 
 /* ---------------------------------------------------------------- */
-/* Audit rail                                                        */
+/* Audit page (timeline)                                             */
 /* ---------------------------------------------------------------- */
 
-.audit-rail {
-  position: sticky;
-  top: 30px;
-  padding: 20px;
-  max-height: calc(100vh - 60px);
-  overflow-y: auto;
+.audit-card {
+  padding: 6px 22px;
 }
 
-.audit-rail h2 {
-  font-size: 15px;
-  font-weight: 650;
-  margin-bottom: 14px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.audit-rail h2::before {
-  content: '';
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 10px var(--accent-glow);
-}
-
-.audit-rail ul {
+.audit-timeline {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -833,7 +900,7 @@ textarea:focus {
 
 .audit-entry {
   position: relative;
-  padding: 10px 0 12px 22px;
+  padding: 13px 0 13px 22px;
   border-bottom: 1px solid var(--hairline);
 }
 
@@ -841,12 +908,11 @@ textarea:focus {
   border-bottom: none;
 }
 
-/* timeline dot + line */
 .audit-entry::before {
   content: '';
   position: absolute;
-  left: 4px;
-  top: 16px;
+  left: 2px;
+  top: 18px;
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -855,17 +921,14 @@ textarea:focus {
 
 .audit-entry.tone-success::before {
   background: var(--success);
-  box-shadow: 0 0 8px rgba(52, 211, 116, 0.5);
 }
 
 .audit-entry.tone-danger::before {
   background: var(--danger);
-  box-shadow: 0 0 8px rgba(240, 86, 74, 0.5);
 }
 
 .audit-entry.tone-accent::before {
   background: var(--accent);
-  box-shadow: 0 0 8px var(--accent-glow);
 }
 
 .audit-entry-top {
@@ -877,10 +940,11 @@ textarea:focus {
 
 .audit-event-type {
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  color: var(--ink);
 }
 
 .tone-success .audit-event-type {
@@ -896,7 +960,7 @@ textarea:focus {
 }
 
 .audit-entry time {
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--ink-faint);
   white-space: nowrap;
 }
@@ -904,7 +968,7 @@ textarea:focus {
 .audit-description {
   margin-top: 3px;
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--ink-muted);
   word-break: break-all;
 }
@@ -921,9 +985,75 @@ textarea:focus {
   border-bottom-color: var(--accent-strong);
 }
 
-.audit-empty {
-  color: var(--ink-faint);
+/* ---------------------------------------------------------------- */
+/* Login                                                             */
+/* ---------------------------------------------------------------- */
+
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 32px;
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 22px;
+}
+
+.login-mark {
+  width: 34px;
+  height: 40px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 12px var(--accent-glow));
+}
+
+.login-word {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.login-word .accent {
+  color: var(--accent);
+}
+
+.login-card h1 {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.login-subtitle {
+  color: var(--ink-muted);
+  font-size: 13.5px;
+  margin: 5px 0 20px;
+}
+
+.login-form {
+  display: grid;
+  gap: 15px;
+}
+
+.login-form label {
+  display: grid;
+  gap: 6px;
   font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.login-form .btn-primary {
+  margin-top: 4px;
+  padding: 10px 15px;
 }
 
 /* ---------------------------------------------------------------- */
@@ -953,10 +1083,11 @@ textarea:focus {
 
 [role='alert'] {
   background: var(--danger-soft);
-  border: 1px solid rgba(240, 86, 74, 0.35);
+  border: 1px solid var(--danger);
   border-radius: var(--radius-sm);
   color: var(--danger);
   padding: 10px 14px;
+  font-size: 13.5px;
 }
 
 .loading-note {
@@ -964,7 +1095,6 @@ textarea:focus {
   padding: 8px 2px;
 }
 
-/* subtle scrollbars */
 ::-webkit-scrollbar {
   width: 9px;
   height: 9px;

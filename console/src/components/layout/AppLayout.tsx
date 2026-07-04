@@ -4,13 +4,22 @@
 // You may obtain a copy of the License at
 //    http://www.apache.org/licenses/LICENSE-2.0
 
-import { NavLink, Outlet } from 'react-router-dom';
-import { AuditRail } from './AuditRail';
-import { ActivityIcon, BotIcon, KeyIcon } from './icons';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../auth/useAuth';
+import { ActivityIcon, BotIcon, KeyIcon, ShieldIcon } from './icons';
+import { ThemeToggle } from './ThemeToggle';
 import helixMark from '../../assets/helix-mark.png';
 import helixWordmark from '../../assets/helix-wordmark.png';
 
 export function AppLayout() {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login', { replace: true });
+  };
+
   return (
     <div className="app-layout">
       <aside className="app-sidebar">
@@ -31,14 +40,23 @@ export function AppLayout() {
             <ActivityIcon />
             Services
           </NavLink>
+          <NavLink to="/audit">
+            <ShieldIcon />
+            Audit
+          </NavLink>
         </nav>
         <div className="sidebar-foot">operator console</div>
       </aside>
-      <div className="app-body">
+      <div className="app-content">
+        <header className="app-topbar">
+          <ThemeToggle />
+          <button type="button" className="logout-button" onClick={handleLogout}>
+            Sign out
+          </button>
+        </header>
         <main className="app-main">
           <Outlet />
         </main>
-        <AuditRail />
       </div>
     </div>
   );

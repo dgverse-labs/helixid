@@ -11,7 +11,6 @@ import type { VCResponse, VCSummary } from '../api/types';
 import { AgentList } from '../components/agents/AgentList';
 import { AgentDetailPanel } from '../components/agents/AgentDetailPanel';
 import { ActivityIcon, BotIcon, KeyIcon, ShieldIcon } from '../components/layout/icons';
-import { useAuditRefresh } from '../hooks/useAuditRefresh';
 
 /** One row per DID: the API returns newest first, so keep first occurrence. */
 function latestPerDid(vcs: VCSummary[]): VCSummary[] {
@@ -26,7 +25,6 @@ function latestPerDid(vcs: VCSummary[]): VCSummary[] {
 export function AgentsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const subjectDidFilter = searchParams.get('subjectDid');
-  const { refreshAudit } = useAuditRefresh();
 
   const [agents, setAgents] = useState<VCSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,11 +82,10 @@ export function AgentsPage() {
       await api.revokeAgent(selected.vcId);
       await loadDetail(selected);
       setToast(`Revoked ${selected.vcId}`);
-      refreshAudit();
     } catch (err: unknown) {
       setToast(err instanceof Error ? err.message : 'Revocation failed');
     }
-  }, [selected, loadDetail, refreshAudit]);
+  }, [selected, loadDetail]);
 
   const activeCount = agents.filter((a) => a.status === 'active').length;
   const revokedCount = agents.filter((a) => a.status === 'revoked').length;

@@ -5,8 +5,8 @@
 //    http://www.apache.org/licenses/LICENSE-2.0
 
 import { useContext } from 'react';
-import { AuditRefreshContext, type AuditRefreshValue } from '../context/AuditRefreshContext';
+import { ThemeContext, type ThemeValue } from './ThemeContext';
 
-export function useAuditRefresh(): AuditRefreshValue {
-  return useContext(AuditRefreshContext);
+export function useTheme(): ThemeValue {
+  return useContext(ThemeContext);
 }

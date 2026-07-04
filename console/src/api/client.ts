@@ -5,6 +5,7 @@
 //    http://www.apache.org/licenses/LICENSE-2.0
 
 import { HelixClient } from '@helixid/sdk-js';
+import { getApiConfig } from '../runtimeConfig';
 import type {
   AuditFilters,
   EnrollmentTokenInput,
@@ -12,40 +13,10 @@ import type {
   VcFilters,
 } from './types';
 
-interface HelixRuntimeConfig {
-  API_BASE_URL?: string;
-  ADMIN_API_KEY?: string;
-}
-
-declare global {
-  interface Window {
-    __HELIXID_CONFIG__?: HelixRuntimeConfig;
-  }
-}
-
-/**
- * The only place in the app that reads configuration (dev spec §6).
- *
- * In containers, window.__HELIXID_CONFIG__ is populated by env-config.js,
- * generated from the container's environment at startup — the same
- * pre-built image runs with different ADMIN_API_KEY / API_BASE_URL per
- * environment, so this cannot be a build-time Vite variable. The
- * import.meta.env fallback exists only for local `npm run dev`.
- *
- * API_BASE_URL must be reachable from the operator's browser (the browser
- * makes the calls), not the compose-internal DNS name.
- */
-function readConfig(): { apiBaseUrl: string; adminApiKey: string } {
-  const runtime = typeof window === 'undefined' ? undefined : window.__HELIXID_CONFIG__;
-  return {
-    apiBaseUrl:
-      runtime?.API_BASE_URL ?? (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '',
-    adminApiKey:
-      runtime?.ADMIN_API_KEY ?? (import.meta.env.VITE_ADMIN_API_KEY as string | undefined) ?? '',
-  };
-}
-
-const { apiBaseUrl, adminApiKey } = readConfig();
+// Runtime config comes from the single seam in runtimeConfig.ts (dev
+// spec §6): window.__HELIXID_CONFIG__ in containers, VITE_* only for local
+// dev. This module owns the HelixClient wiring; components import `api`.
+const { apiBaseUrl, adminApiKey } = getApiConfig();
 
 // The admin key is attached here, once, for every call the client makes.
 // OPEN ITEM (dev spec §5.3): whether POST /v1/services requires

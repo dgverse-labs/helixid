@@ -8,7 +8,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 import { usePolling } from '../../hooks/usePolling';
-import { useAuditRefresh } from '../../hooks/useAuditRefresh';
 
 export const POLL_INTERVAL_MS = 3_000;
 export const POLL_TIMEOUT_MS = 120_000;
@@ -25,7 +24,6 @@ export interface EnrollmentStatusProps {
  */
 export function EnrollmentStatus({ tokenCreatedAt }: EnrollmentStatusProps) {
   const [enrolled, setEnrolled] = useState(false);
-  const { refreshAudit } = useAuditRefresh();
   // Guards against a late in-flight response after detection or timeout.
   const doneRef = useRef(false);
 
@@ -40,12 +38,11 @@ export function EnrollmentStatus({ tokenCreatedAt }: EnrollmentStatusProps) {
         if (events.length > 0 && !doneRef.current) {
           doneRef.current = true;
           setEnrolled(true);
-          refreshAudit();
         }
       } catch {
         // Transient poll failures are fine; the next tick retries.
       }
-    }, [tokenCreatedAt, refreshAudit]),
+    }, [tokenCreatedAt]),
     POLL_INTERVAL_MS,
     { timeoutMs: POLL_TIMEOUT_MS },
   );
