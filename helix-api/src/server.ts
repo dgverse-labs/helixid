@@ -26,7 +26,6 @@ import { VcRepository } from './repositories/vc.repository.js';
 import { VPRepository } from './repositories/vp.repository.js';
 import { AuditLogRepository } from './repositories/audit-log.repository.js';
 import { AgentRepository } from './repositories/agent.repository.js';
-import { AuditLogRepository } from './repositories/audit-log.repository.js';
 import { ServiceRegistryRepository } from './repositories/service-registry.repository.js';
 import { createDidCache, createStatusListCache } from './cache/cacheFactory.js';
 import { extractEd25519PublicKeyHexFromDIDDocument } from './services/did/publicKey.js';
@@ -228,11 +227,6 @@ await app.register(auditLogRoutes, {
   adminApiKey: config.HELIX_ADMIN_API_KEY,
 });
 await app.register(agentRoutes, { prefix: '/v1', agentService });
-await app.register(auditRoutes, {
-  prefix: '/v1/audit-log',
-  auditLogRepository,
-  adminApiKey: config.HELIX_ADMIN_API_KEY,
-});
 
 const shutdown = async (): Promise<void> => {
   app.log.info('Helix ID API shutting down...');

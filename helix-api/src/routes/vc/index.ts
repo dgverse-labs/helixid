@@ -77,18 +77,6 @@ const vcRoutes: FastifyPluginAsync<VcRouteOptions> = async (fastify, options) =>
     return reply.status(201).send(result);
   });
 
-  // GET /v1/vcs - List VC summaries
-  fastify.get('', async (request, reply) => {
-    requireAdmin(request);
-    const query = request.query as ListVCQuery;
-    const result = await vcService.listVCs({
-      subjectDid: query.subjectDid,
-      status: query.status,
-      limit: query.limit === undefined ? undefined : Number(query.limit),
-    });
-    return reply.send(result);
-  });
-
   // GET /v1/vcs/:vcId - Get VC details
   fastify.get('/:vcId', async (request, reply) => {
     const { vcId } = request.params as VCParams;
