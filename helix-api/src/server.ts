@@ -24,6 +24,7 @@ import { createHederaClient } from './hedera/createHederaClient.js';
 import { DidRepository } from './repositories/did.repository.js';
 import { VcRepository } from './repositories/vc.repository.js';
 import { VPRepository } from './repositories/vp.repository.js';
+import { AuditLogRepository } from './repositories/audit-log.repository.js';
 import { AgentRepository } from './repositories/agent.repository.js';
 import { AuditLogRepository } from './repositories/audit-log.repository.js';
 import { ServiceRegistryRepository } from './repositories/service-registry.repository.js';
@@ -39,7 +40,7 @@ import vcRoutes from './routes/vc/index.js';
 import statusListRoutes from './routes/status-list/index.js';
 import vpRoutes from './routes/vp/index.js';
 import agentRoutes from './routes/agent/index.js';
-import auditRoutes from './routes/audit/index.js';
+import auditLogRoutes from './routes/audit-log/index.js';
 import sessionRoutes from './routes/sessions/index.js';
 import type { RedisLike } from './cache/RedisCache.js';
 import { SqliteStore } from './storage/sqlite.js';
@@ -82,9 +83,10 @@ const auditLogger = new ApiAuditLogger(prisma, config, sqlite);
 const didRepository = new DidRepository(prisma, sqlite);
 const vcRepository = new VcRepository(prisma, sqlite);
 const vpRepository = new VPRepository(prisma, sqlite);
-const agentRepository = new AgentRepository(prisma, sqlite);
-const serviceRegistry = new ServiceRegistryRepository();
 const auditLogRepository = new AuditLogRepository(prisma, sqlite);
+const agentRepository = new AgentRepository(prisma, sqlite);
+const serviceRegistry = new ServiceRegistryRepository(agentRepository);
+await serviceRegistry.seedBuiltIns();
 
 await ensureIssuerDidCached();
 
@@ -209,11 +211,21 @@ await app.register(vcRoutes, {
   vcService,
   adminApiKey: config.HELIX_ADMIN_API_KEY,
 });
-await app.register(statusListRoutes, { prefix: '/v1/status-list', vcService });
+await app.register(statusListRoutes, {
+  prefix: '/v1/status-list',
+  vcService,
+  adminApiKey: config.HELIX_ADMIN_API_KEY,
+});
 await app.register(vpRoutes, { prefix: '/v1/vp', vpService });
 await app.register(sessionRoutes, {
   prefix: '/v1/sessions',
   publicKeyHex: jwtSessionKeyPair.publicKey,
+});
+await app.register(auditLogRoutes, {
+  prefix: '/v1/audit-log',
+  auditLogRepository,
+  auditLogger,
+  adminApiKey: config.HELIX_ADMIN_API_KEY,
 });
 await app.register(agentRoutes, { prefix: '/v1', agentService });
 await app.register(auditRoutes, {

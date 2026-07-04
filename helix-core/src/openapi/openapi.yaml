@@ -91,6 +91,39 @@ paths:
         "204":
           description: DID deactivated
   /v1/vcs:
+    get:
+      summary: List VC summaries
+      description: Admin-only issuer operation. Requires x-admin-api-key.
+      parameters:
+        - in: query
+          name: subjectDid
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [active, revoked, expired]
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 500
+        - in: header
+          name: x-admin-api-key
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: VC summaries
+        "403":
+          description: Admin authorization required
     post:
       summary: Issue a VC
       requestBody:
@@ -159,6 +192,32 @@ paths:
       responses:
         "200":
           description: Status list credential
+  /v1/status-list:
+    post:
+      summary: Create or replace the default StatusList2021 credential
+      parameters:
+        - in: header
+          name: x-admin-api-key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                listId:
+                  type: string
+                length:
+                  type: integer
+                  minimum: 1
+      responses:
+        "201":
+          description: Status list credential created
+        "403":
+          description: Admin authorization required
   /v1/vp/verify:
     post:
       summary: Verify signed VP only for JWT session bridge flow
@@ -226,6 +285,86 @@ paths:
       responses:
         "200":
           description: Service found
+  /v1/audit-log:
+    get:
+      summary: List audit events
+      description: Admin-only audit operation. Requires x-admin-api-key.
+      parameters:
+        - in: query
+          name: eventType
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: since
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 500
+        - in: header
+          name: x-admin-api-key
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audit event summaries
+        "403":
+          description: Admin authorization required
+  /v1/audit-log/vp-verification:
+    post:
+      summary: Record VP verification audit entry
+      description: Admin-only audit operation for API-backed VP verification outcomes. Requires x-admin-api-key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vpId, agentDid, result]
+              properties:
+                vpId:
+                  type: string
+                agentDid:
+                  type: string
+                subjectDid:
+                  type: string
+                targetService:
+                  type: string
+                result:
+                  type: string
+                  enum: [success, rejected]
+                reason:
+                  type: string
+                delegationChain:
+                  type: array
+                  items:
+                    type: object
+                verifiedAt:
+                  type: string
+                  format: date-time
+                source:
+                  type: string
+                  enum: [sdk]
+      parameters:
+        - in: header
+          name: x-admin-api-key
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Audit entry recorded
+        "403":
+          description: Admin authorization required
 components:
   schemas:
     CreateDIDRequest:

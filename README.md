@@ -210,7 +210,8 @@ npm install @helixid/sdk-js
 ```typescript
 import { AgentWallet, selfIssueVC } from '@helixid/sdk-js'
 
-const wallet = await AgentWallet.loadOrCreate('./wallet.enc', 'dev-passphrase')
+const wallet = await AgentWallet.create('./wallet.enc', 'dev-passphrase');
+
 
 // If you already have a VC issued by a self-hosted issuer, CLI, or any other
 // spec-compliant source, load it directly:
@@ -254,7 +255,73 @@ Full round trip. No issuer, no API call, no Hedera. When ready for production, s
 
 ---
 
-### Production path (self-hosted issuer)
+### Full Demo (self-hosted, Travel Concierge)
+
+See HelixID enforce scoped access, delegation, and revocation against a real
+AI travel-booking agent — with a live audit trail of every trust decision.
+
+Prefer a guided walkthrough? **[Try it on our website →](https://dgverse.in/helixid/try-it-out)**
+Same demo, no local setup.
+
+To run it yourself:
+
+**Step 1 — Get an LLM API key**
+
+The concierge agent needs access to an LLM. Grab a free key from one of:
+
+- [Anthropic Console](https://console.anthropic.com/settings/keys)
+- [OpenAI Platform](https://platform.openai.com/api-keys)
+
+**Step 2 — Get the demo**
+
+Download the demo package:
+
+[helixid-travel-concierge-demo.zip](#) — pre-filled `.env` with working demo defaults (LLM key still manual).
+
+Unzip it, then set your key:
+
+```bash
+# --- LLM Provider ---
+# Which LLM to use: "anthropic" (default) or "openai".
+LLM_PROVIDER=anthropic
+
+# LLM API key obtained from your LLM provider.
+LLM_API_KEY=your-llm-api-key
+```
+
+**Step 3 — Run it**
+
+```bash
+docker-compose up
+```
+
+This starts the issuer API (sqlite + in-memory cache + `did:web`), the
+**HelixID Console**, the travel-concierge web app, and two pre-provisioned
+agent wallets. A one-shot setup service pre-registers the booking backend as
+a known service, seeds scopes, pre-onboards the demo agents, and seeds a
+status list — fully wired, nothing else to configure.
+
+Open **http://localhost:5173** for the demo. The terminal will also print a
+URL for the **Console** — the operator view where you'll revoke credentials
+and watch enrollment happen live in Step 4.
+
+**Step 4 — Try the security patterns**
+
+| Scenario | What it shows |
+|---|---|
+| **Search vs. Book** | The Search Agent can look up flights but its VP is rejected when it tries to book — scope enforcement, not a role flag in a database. |
+| **Delegate to a Sub-Agent** | The Concierge Agent delegates a reduced, time-boxed credential to a search sub-agent. The sub-agent can search, but can't book — even though it inherited from an agent that could. |
+| **Revoke Mid-Flight** | An operator revokes the Concierge Agent's credential while it's active. Its very next request is rejected — no key rotation, anywhere. |
+| **Onboard a New Agent, Live** | From the Console, mint a bootstrap token and watch a brand-new agent enroll and receive its VC in real time — the only scenario that isn't pre-seeded. |
+
+Every action above appears in real time in the **Console's audit panel**, so
+you can watch exactly which credential authorized which action, and when.
+
+---
+
+### Building your own integration
+
+The demo above runs the full trust chain for you. If you're wiring HelixID into your own agent or service, here's what's happening under the hood at each step:
 
 ```bash
 pnpm install
@@ -263,7 +330,7 @@ pnpm build
 
 This is a pnpm workspace. The current SDK package is `@helixid/sdk-js`, backed by the `@helixid/api` service.
 
-### Configure the API
+#### Configure the API
 
 Create or update `.env`. The default runtime is **no external infra** beyond the API process itself: `sqlite` storage + in-memory cache + `did:web`.
 
@@ -312,7 +379,27 @@ pnpm --filter @helixid/api dev
 
 SQLite mode does not require running database migrations.
 
-### Enroll an Agent
+#### Register your service
+
+Before any agent can be issued a VP targeting your service, the service itself must be registered. This is the same registry used for both service metadata *and* VP-target eligibility — register once, and it's immediately usable as a `targetService`.
+
+```bash
+curl -X POST $API_BASE_URL/v1/services \
+  -H "x-admin-api-key: $HELIX_ADMIN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "serviceName": "orders-service",
+    "displayName": "Orders Service",
+    "verifiedDomain": "orders.example.com",
+    "publicKeyMultibase": "z6Mk...",
+    "apiEndpoint": "https://orders.example.com/api",
+    "metadata": {}
+  }'
+```
+
+`serviceName` must be unique and `verifiedDomain`/`apiEndpoint` must be HTTPS. Once registered, `orders-service` can be used as a `targetService` in VP templates, VP builds, and `verifyVP()`'s `expectedTargetService`.
+
+#### Enroll an Agent
 
 The onboarding flow is a single SDK round trip using a one-time **bootstrap token** (single-use, short TTL) delivered out-of-band (env var, secret manager, CI variable).
 
@@ -327,7 +414,7 @@ const vc = await client.enroll(process.env.HELIX_BOOTSTRAP_TOKEN!, wallet)
 console.log(wallet.did, vc.id)
 ```
 
-A bootstrap token is **not** an identity credential. It is a one-time permission slip that says: “whoever presents this may enroll one new agent with these scopes/delegation limits/domains.”
+A bootstrap token is **not** an identity credential. It is a one-time permission slip that says: "whoever presents this may enroll one new agent with these scopes/delegation limits/domains."
 
 Creating that token is a privileged **operator policy action** (not an agent action), because it decides authority:
 
@@ -338,9 +425,7 @@ Creating that token is a privileged **operator policy action** (not an agent act
 
 This boundary is intentional: if agents could mint their own bootstrap tokens, identity and authorization would collapse into self-granted authority.
 
-For a runnable version, see `examples/e2e-travel-concierge/operator/enroll-agent.ts`.
-
-### Present and Verify a VP (SDK-local)
+#### Present and Verify a VP (SDK-local)
 
 ```typescript
 import { AgentWallet, VPBuilder, verifyVP } from '@helixid/sdk-js';
@@ -353,11 +438,11 @@ const signedVP = await new VPBuilder({
   vc: credential,
   holderDid: wallet.getDID(),
   userDid: 'did:web:user.example.com',
-  targetService: 'analytics-service',
+  targetService: 'orders-service',
 }).sign(wallet.getPrivateKeyHex(), `${wallet.getDID()}#key-1`);
 
 const result = await verifyVP(signedVP, {
-  expectedTargetService: 'analytics-service',
+  expectedTargetService: 'orders-service',
 });
 
 console.log(result.valid, result.agentDid, result.privilegeScopes);
@@ -365,7 +450,7 @@ console.log(result.valid, result.agentDid, result.privilegeScopes);
 
 `verifyVP()` runs locally (no API call): VP signature, VC signature, validity window, revocation (when credentialStatus exists), target-service checks, and delegation-chain integrity. `vpId` is returned for caller-managed replay protection. If you need a session JWT bridge, call `POST /v1/vp/verify` with `session: true`.
 
-### Delegate Authority (SDK-local, self-signed)
+#### Delegate Authority (SDK-local, self-signed)
 
 ```typescript
 import { AgentWallet, delegate } from '@helixid/sdk-js';

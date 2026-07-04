@@ -521,6 +521,63 @@ export class AgentRepository {
     return record;
   }
 
+  async upsertService(
+    data: Omit<ServiceRegistryRecord, 'id' | 'active' | 'createdAt' | 'updatedAt'>,
+  ): Promise<ServiceRegistryRecord> {
+    if (this.prisma) {
+      return this.prisma.serviceRegistry.upsert({
+        where: { serviceName: data.serviceName },
+        update: { ...data, active: true },
+        create: { ...data, active: true },
+      });
+    }
+
+    if (this.sqlite) {
+      const id = makeId('svc');
+      const now = new Date();
+      this.sqlite.execute(`
+        INSERT INTO service_registry (
+          id, service_name, display_name, verified_domain,
+          public_key_multibase, api_endpoint, metadata, active, created_at, updated_at
+        ) VALUES (
+          ${sqliteLiteral(id)},
+          ${sqliteLiteral(data.serviceName)},
+          ${sqliteLiteral(data.displayName)},
+          ${sqliteLiteral(data.verifiedDomain)},
+          ${sqliteLiteral(data.publicKeyMultibase)},
+          ${sqliteLiteral(data.apiEndpoint)},
+          ${sqliteLiteral(data.metadata)},
+          1,
+          ${sqliteLiteral(now)},
+          ${sqliteLiteral(now)}
+        )
+        ON CONFLICT(service_name) DO UPDATE SET
+          display_name = excluded.display_name,
+          verified_domain = excluded.verified_domain,
+          public_key_multibase = excluded.public_key_multibase,
+          api_endpoint = excluded.api_endpoint,
+          metadata = excluded.metadata,
+          active = 1,
+          updated_at = excluded.updated_at
+      `);
+      const record = await this.findServiceByName(data.serviceName);
+      if (!record) throw new Error('Service upsert returned no row');
+      return record;
+    }
+
+    const existing = this.services.get(data.serviceName);
+    const now = new Date();
+    const record: ServiceRegistryRecord = {
+      id: existing?.id ?? makeId('svc'),
+      ...data,
+      active: true,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.services.set(record.serviceName, record);
+    return record;
+  }
+
   async getServiceByName(serviceName: string): Promise<ServiceRegistryRecord | null> {
     if (this.prisma) {
       return this.prisma.serviceRegistry.findFirst({ where: { serviceName, active: true } });

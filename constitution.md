@@ -185,7 +185,7 @@ e2e/
 | Component | Language | Version |
 |---|---|---|
 | helix-api | TypeScript | Node.js >= 20 LTS |
-| helix-sdk-js | TypeScript | Node.js >= 18 LTS |
+| helix-sdk-js | TypeScript | Node.js >= 20 LTS |
 | helix-core | TypeScript | Node.js >= 20 LTS |
 
 ### API Layer

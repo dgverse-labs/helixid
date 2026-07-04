@@ -59,6 +59,14 @@ type HelixHttpErrorLike = {
   message: string;
 };
 
+type DelegationChainSummary = {
+  vcId: string;
+  issuer: string;
+  subjectDid: string;
+  parentVcId?: string;
+  delegationDepth: number;
+};
+
 interface JWTSessionOptions {
   signingKey: string;
   issuerDid: string;
@@ -86,6 +94,21 @@ function extractPublicKeyHex(doc: unknown): string {
     return Buffer.from(decoded.slice(2)).toString('hex');
   }
   throw new VPAgentDIDNotFoundError();
+}
+
+function summarizeDelegationChain(chain: AgentVC[]): DelegationChainSummary[] {
+  return chain.map((vc) => {
+    const summary: DelegationChainSummary = {
+      vcId: vc.id,
+      issuer: vc.issuer,
+      subjectDid: vc.credentialSubject.id,
+      delegationDepth: vc.credentialSubject.delegationDepth ?? 0,
+    };
+    if (vc.credentialSubject.parentVcId !== undefined) {
+      summary.parentVcId = vc.credentialSubject.parentVcId;
+    }
+    return summary;
+  });
 }
 
 function decodeBase58ProofValue(proofValue: string): Uint8Array {
@@ -293,9 +316,11 @@ export class VPService implements IVPService {
       }
 
       const agentParse = AgentVCSchema.safeParse(vc);
+      let delegationChainSummary: DelegationChainSummary[] | undefined;
       if (agentParse.success && (agentParse.data.credentialSubject.delegationDepth ?? 0) > 0) {
         const chain = await this.reconstructDelegationChain(agentParse.data, requestId);
         await this.verifyDelegationChain(chain, requestId);
+        delegationChainSummary = summarizeDelegationChain(chain);
         this.auditLogger.log(AuditEvents.CHAIN_VERIFIED, {
           requestId,
           leafVcId: agentParse.data.id,
@@ -314,6 +339,11 @@ export class VPService implements IVPService {
         agentDid: parsed.data.holder,
         result: 'success',
         verifiedAt,
+        delegatedFrom: delegationChainSummary?.at(-2)?.subjectDid,
+        delegatedTo: delegationChainSummary?.at(-1)?.subjectDid,
+        parentVcId: delegationChainSummary?.at(-1)?.parentVcId,
+        delegationDepth: delegationChainSummary?.at(-1)?.delegationDepth,
+        ...(delegationChainSummary ? { delegationChain: delegationChainSummary } : {}),
       });
 
       const result: VPVerificationResult = {

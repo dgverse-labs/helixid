@@ -60,6 +60,31 @@ function getCredentialSubject(value: unknown): CredentialSubject {
   return asRecord(record.credentialSubject) as CredentialSubject;
 }
 
+function normalizeListLimit(limit: number | undefined): number {
+  if (limit === undefined) return 50;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    throw new HelixError(ErrorCode.VALIDATION_ERROR, 'limit must be an integer between 1 and 500', 400);
+  }
+  return limit;
+}
+
+function normalizeListStatus(status: string | undefined): 'active' | 'revoked' | 'expired' | undefined {
+  if (status === undefined || status === 'active' || status === 'revoked' || status === 'expired') {
+    return status;
+  }
+  throw new HelixError(
+    ErrorCode.VALIDATION_ERROR,
+    'status must be one of active, revoked, or expired',
+    400,
+  );
+}
+
+function getRecordStatus(record: { revokedAt: Date | null; expiresAt: Date }): 'active' | 'revoked' | 'expired' {
+  if (record.revokedAt) return 'revoked';
+  if (record.expiresAt.getTime() <= Date.now()) return 'expired';
+  return 'active';
+}
+
 export interface IssueVCParams {
   subjectDid: string;
   subjectType: 'agent' | 'user';
@@ -89,21 +114,21 @@ export interface VCDetails {
   renewedByVcId: string | null;
 }
 
-export interface ListVCsFilters {
+export interface ListVCFilters {
   subjectDid?: string | undefined;
-  status?: 'active' | 'revoked' | 'expired' | undefined;
+  status?: string | undefined;
   limit?: number | undefined;
 }
 
 export interface VCSummary {
   vcId: string;
   subjectDid: string;
-  agentName?: string;
+  agentName?: string | undefined;
   scopes: string[];
   status: 'active' | 'revoked' | 'expired';
   issuedAt: string;
   expiresAt: string;
-  parentVcId?: string;
+  parentVcId?: string | undefined;
 }
 
 export interface RenewVCOptions {
@@ -120,7 +145,7 @@ export interface IVCService {
     vcType?: string,
   ): Promise<Record<string, unknown> | null>;
   issueVC(params: IssueVCParams, requestId: string): Promise<IssueVCResult>;
-  listVCs(filters: ListVCsFilters): Promise<VCSummary[]>;
+  listVCs(filters?: ListVCFilters): Promise<VCSummary[]>;
   getVC(vcId: string, requestId: string): Promise<VCDetails>;
   revokeVC(
     vcId: string,
@@ -138,6 +163,10 @@ export interface IVCService {
     status: 'active' | 'revoked' | 'expired';
   } | null>;
   getStatusList(listId: string): Promise<ReturnType<typeof buildStatusListCredential>>;
+  createStatusList(input?: {
+    listId?: string;
+    length?: number;
+  }): Promise<ReturnType<typeof buildStatusListCredential>>;
 }
 
 /**
@@ -243,8 +272,12 @@ export class VCService implements IVCService {
     // 3. Claim status list index
     let list = await this.vcRepo.findStatusListById(this.DEFAULT_STATUS_LIST_ID);
     if (!list) {
-      const initialEncoded = createStatusList();
-      list = await this.vcRepo.createStatusList(this.DEFAULT_STATUS_LIST_ID, initialEncoded);
+      const statusList = await this.createStatusList({ listId: this.DEFAULT_STATUS_LIST_ID });
+      list = {
+        listId: this.DEFAULT_STATUS_LIST_ID,
+        encodedList: statusList.credentialSubject.encodedList,
+        nextIndex: 0,
+      };
     }
 
     if (list.nextIndex >= 131072) {
@@ -412,6 +445,37 @@ export class VCService implements IVCService {
     };
   }
 
+  async listVCs(filters: ListVCFilters = {}): Promise<VCSummary[]> {
+    const records = await this.vcRepo.listVcs({
+      subjectDid: filters.subjectDid,
+      status: normalizeListStatus(filters.status),
+      limit: normalizeListLimit(filters.limit),
+    });
+
+    return records.map((record) => {
+      const vc = asRecord(record.vcJson);
+      const subject = getCredentialSubject(vc);
+      const scopes = Array.isArray(record.privilegeScopes)
+        ? record.privilegeScopes.filter((scope): scope is string => typeof scope === 'string')
+        : Array.isArray(asRecord(vc.credentialSubject).privilegeScopes)
+          ? (asRecord(vc.credentialSubject).privilegeScopes as unknown[]).filter(
+              (scope): scope is string => typeof scope === 'string',
+            )
+          : [];
+      const summary: VCSummary = {
+        vcId: record.vcId,
+        subjectDid: record.subjectDid,
+        scopes,
+        status: getRecordStatus(record),
+        issuedAt: (record.createdAt ?? new Date(0)).toISOString(),
+        expiresAt: record.expiresAt.toISOString(),
+      };
+      if (subject.agentName) summary.agentName = subject.agentName;
+      if (record.parentVcId) summary.parentVcId = record.parentVcId;
+      return summary;
+    });
+  }
+
   async getVCStatus(vcId: string): Promise<'active' | 'revoked' | 'expired'> {
     const record = await this.vcRepo.findByVcId(vcId);
     if (!record) throw new HelixError(ErrorCode.VC_NOT_FOUND, 'Credential not found', 404);
@@ -532,6 +596,16 @@ export class VCService implements IVCService {
     await this.statusListCache.set(listId, list.encodedList, this.statusListCacheTtlSeconds);
 
     return buildStatusListCredential(listId, list.encodedList, this.issuerDid, this.apiBaseUrl);
+  }
+
+  async createStatusList(
+    input: { listId?: string; length?: number } = {},
+  ): Promise<ReturnType<typeof buildStatusListCredential>> {
+    const listId = input.listId ?? this.DEFAULT_STATUS_LIST_ID;
+    const encodedList = createStatusList(input.length);
+    await this.vcRepo.createStatusList(listId, encodedList);
+    await this.statusListCache.set(listId, encodedList, this.statusListCacheTtlSeconds);
+    return buildStatusListCredential(listId, encodedList, this.issuerDid, this.apiBaseUrl);
   }
 
   private async signCredential(credential: HelixVC): Promise<SignedVC> {

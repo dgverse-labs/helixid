@@ -54,7 +54,11 @@ describe('VC API Integration', () => {
     app = Fastify({ logger: false });
     app.setErrorHandler(errorHandler);
     await app.register(vcRoutes, { prefix: '/v1/vcs', vcService, adminApiKey: 'test-admin-key-0001' });
-    await app.register(statusListRoutes, { prefix: '/v1/status-list', vcService });
+    await app.register(statusListRoutes, {
+      prefix: '/v1/status-list',
+      vcService,
+      adminApiKey: 'test-admin-key-0001',
+    });
     await app.ready();
 
     // Create a test DID to issue VCs to
@@ -228,6 +232,48 @@ describe('VC API Integration', () => {
       expect(response.headers['cache-control']).toBe('public, max-age=300');
       const body = JSON.parse(response.body);
       expect(body.type).toContain('BitstringStatusListCredential');
+    });
+  });
+
+  describe('POST /v1/status-list', () => {
+    it('creates or replaces the default status list credential', async () => {
+      const firstIssue = await app.inject({
+        method: 'POST',
+        url: '/v1/vcs',
+        headers: { 'x-admin-api-key': 'test-admin-key-0001' },
+        payload: { subjectDid: didId, subjectType: 'user', userId: 'test-user' },
+      });
+      expect(JSON.parse(firstIssue.body).statusListIndex).toBe(0);
+
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/v1/status-list',
+        headers: { 'x-admin-api-key': 'test-admin-key-0001' },
+        payload: { length: 64 },
+      });
+
+      expect(createRes.statusCode).toBe(201);
+      const created = JSON.parse(createRes.body);
+      expect(created.credentialSubject.encodedList).toBeDefined();
+
+      const secondIssue = await app.inject({
+        method: 'POST',
+        url: '/v1/vcs',
+        headers: { 'x-admin-api-key': 'test-admin-key-0001' },
+        payload: { subjectDid: didId, subjectType: 'user', userId: 'test-user-2' },
+      });
+      expect(JSON.parse(secondIssue.body).statusListIndex).toBe(0);
+    });
+
+    it('requires admin authorization', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v1/status-list',
+        payload: { length: 64 },
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(JSON.parse(response.body).error.code).toBe(ErrorCode.ADMIN_AUTH_REQUIRED);
     });
   });
 });

@@ -37,5 +37,21 @@ export interface IVCService {
   } | null>;
   getVCStatus(vcId: string): Promise<VCStatus>;
   getStatusList(listId: string): Promise<{ credentialSubject: { encodedList: string } }>;
+  createStatusList(input?: {
+    listId?: string;
+    length?: number;
+  }): Promise<{
+    '@context': string[];
+    id: string;
+    type: string[];
+    issuer: string;
+    validFrom: string;
+    credentialSubject: {
+      id: string;
+      type: 'BitstringStatusList';
+      statusPurpose: 'revocation';
+      encodedList: string;
+    };
+  }>;
   issueVC(input: IssueVCInput, requestId: string): Promise<IssueVCResult>;
 }
