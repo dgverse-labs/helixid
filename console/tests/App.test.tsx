@@ -1,6 +1,6 @@
 // Copyright 2026 DgVerse LLP
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { App } from '../src/App';
@@ -19,6 +19,7 @@ vi.mock('../src/api/client', () => ({
 }));
 
 const mocked = vi.mocked(api);
+const AUTH_KEY = 'helixid.console.auth';
 
 function renderApp(initialEntry = '/') {
   return render(
@@ -28,9 +29,12 @@ function renderApp(initialEntry = '/') {
   );
 }
 
-describe('App', () => {
+describe('App shell + routing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
+    localStorage.clear();
+    delete window.__HELIXID_CONFIG__;
     mocked.listAgents.mockResolvedValue([]);
     mocked.listServices.mockResolvedValue([]);
     mocked.getAuditLog.mockResolvedValue([
@@ -41,59 +45,60 @@ describe('App', () => {
         subjectDid: 'did:hedera:testnet:billing',
         vcId: 'vc:helix:billing',
       },
-      {
-        id: '2',
-        eventType: 'jwt_issued',
-        timestamp: '2026-06-01T11:00:00.000Z',
-      },
-      {
-        id: '3',
-        eventType: 'vp_verified',
-        timestamp: '2026-06-01T10:00:00.000Z',
-        targetService: 'orders-api',
-        result: 'success',
-      },
     ]);
   });
 
-  it('redirects / to the Agents page and shows the audit rail on every page', async () => {
-    renderApp();
+  it('redirects an unauthenticated visit to the login page', async () => {
+    renderApp('/agents');
+    expect(
+      await screen.findByRole('heading', { name: /operator sign in/i }),
+    ).toBeInTheDocument();
+    // Protected chrome is not rendered.
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+  });
+
+  it('renders the shell with a four-item nav (incl. Audit) when authenticated', async () => {
+    sessionStorage.setItem(AUTH_KEY, 'true');
+    renderApp('/');
 
     expect(await screen.findByRole('heading', { name: 'Agents' })).toBeInTheDocument();
-
-    // The persistent audit rail is populated from getAuditLog({limit: 20}).
-    const rail = screen.getByRole('complementary', { name: /audit log/i });
-    expect(mocked.getAuditLog).toHaveBeenCalledWith({ limit: 20 });
-    expect(await within(rail).findByText('vc_revoked')).toBeInTheDocument();
-
-    // Entries with a subjectDid deep-link to the pre-filtered Agents page.
+    for (const name of ['Agents', 'Enroll', 'Services', 'Audit']) {
+      expect(screen.getByRole('link', { name })).toBeInTheDocument();
+    }
+    // The persistent audit rail is gone — audit now lives on its own page.
     expect(
-      within(rail).getByRole('link', { name: /did:hedera:testnet:billing/ }),
+      screen.queryByRole('complementary', { name: /audit log/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('navigates to the Audit page and shows deep-linked events', async () => {
+    sessionStorage.setItem(AUTH_KEY, 'true');
+    renderApp('/');
+    await screen.findByRole('heading', { name: 'Agents' });
+
+    await userEvent.click(screen.getByRole('link', { name: 'Audit' }));
+
+    expect(
+      await screen.findByRole('heading', { name: /audit & governance/i }),
+    ).toBeInTheDocument();
+    expect(mocked.getAuditLog).toHaveBeenCalledWith({ limit: 20 });
+    expect(
+      await screen.findByRole('link', { name: /did:hedera:testnet:billing/ }),
     ).toHaveAttribute(
       'href',
       `/agents?subjectDid=${encodeURIComponent('did:hedera:testnet:billing')}`,
     );
-    // Entries without a subjectDid render as plain text.
-    expect(within(rail).getByText('jwt_issued')).toBeInTheDocument();
-    expect(within(rail).getByText('service orders-api · success')).toBeInTheDocument();
-
-    // Navigation keeps the rail visible.
-    await userEvent.click(screen.getByRole('link', { name: 'Services' }));
-    expect(await screen.findByRole('heading', { name: 'Services' })).toBeInTheDocument();
-    expect(screen.getByRole('complementary', { name: /audit log/i })).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('link', { name: 'Enroll' }));
-    expect(
-      await screen.findByRole('heading', { name: /enroll an agent/i }),
-    ).toBeInTheDocument();
   });
 
-  it('shows an audit rail error without breaking the page', async () => {
-    mocked.getAuditLog.mockRejectedValue(new Error('audit log unavailable'));
-    renderApp();
+  it('signs out back to the login page', async () => {
+    sessionStorage.setItem(AUTH_KEY, 'true');
+    renderApp('/');
+    await screen.findByRole('heading', { name: 'Agents' });
 
-    expect(await screen.findByRole('heading', { name: 'Agents' })).toBeInTheDocument();
-    const rail = screen.getByRole('complementary', { name: /audit log/i });
-    expect(await within(rail).findByRole('alert')).toHaveTextContent('audit log unavailable');
+    await userEvent.click(screen.getByRole('button', { name: /sign out/i }));
+
+    expect(
+      await screen.findByRole('heading', { name: /operator sign in/i }),
+    ).toBeInTheDocument();
   });
 });
