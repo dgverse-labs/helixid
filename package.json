@@ -28,6 +28,7 @@
     "example:middleware:mcp": "pnpm --filter @helixid/example-framework-middleware run mcp",
     "dev": "turbo run dev",
     "dev:api": "turbo run dev --filter=@helixid/api",
+    "dev:console": "turbo run dev --filter=@helixid/console",
     "cli:dev": "pnpm --filter @helixid/cli exec tsx src/bin/helix.ts"
   },
   "packageManager": "pnpm@9.15.2",

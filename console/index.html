@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <title>HelixID Console</title>
+    <!--
+      env-config.js is generated at container start from the container's
+      environment (see docker/40-env-config.sh) and must load before the
+      app bundle so window.__HELIXID_CONFIG__ exists when api/client.ts
+      reads it. In local dev the file in public/ is an empty stub and the
+      app falls back to import.meta.env.VITE_* values.
+    -->
+    <script src="/env-config.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

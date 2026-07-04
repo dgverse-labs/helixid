@@ -11,8 +11,11 @@
 // limitations under the License.
 
 import { FastifyPluginAsync } from 'fastify';
-import { AdminAuthRequiredError } from '@helixid/core';
+import { AdminAuthRequiredError, ErrorCode, HelixError } from '@helixid/core';
 import type { IVCService, IssueVCParams, RenewVCOptions } from '../../services/vc/vc.service.js';
+
+const VC_STATUSES = ['active', 'revoked', 'expired'] as const;
+type VCStatus = (typeof VC_STATUSES)[number];
 
 export interface VcRouteOptions {
   vcService: IVCService;
@@ -43,24 +46,35 @@ const vcRoutes: FastifyPluginAsync<VcRouteOptions> = async (fastify, options) =>
     }
   }
 
+  // GET /v1/vcs - List VC summaries
+  fastify.get('', async (request, reply) => {
+    requireAdmin(request);
+    const query = request.query as { subjectDid?: string; status?: string; limit?: string };
+    if (query.status && !(VC_STATUSES as readonly string[]).includes(query.status)) {
+      throw new HelixError(
+        ErrorCode.VALIDATION_ERROR,
+        `Invalid status filter: ${query.status}`,
+        400,
+      );
+    }
+    const limit = query.limit === undefined ? undefined : Number.parseInt(query.limit, 10);
+    if (limit !== undefined && (Number.isNaN(limit) || limit < 1)) {
+      throw new HelixError(ErrorCode.VALIDATION_ERROR, `Invalid limit: ${query.limit}`, 400);
+    }
+    const result = await vcService.listVCs({
+      subjectDid: query.subjectDid,
+      status: query.status as VCStatus | undefined,
+      limit,
+    });
+    return reply.send(result);
+  });
+
   // POST /v1/vcs - Issue a VC
   fastify.post('', async (request, reply) => {
     requireAdmin(request);
     const params = request.body as IssueVCParams;
     const result = await vcService.issueVC(params, request.id);
     return reply.status(201).send(result);
-  });
-
-  // GET /v1/vcs - List VC summaries
-  fastify.get('', async (request, reply) => {
-    requireAdmin(request);
-    const query = request.query as ListVCQuery;
-    const result = await vcService.listVCs({
-      subjectDid: query.subjectDid,
-      status: query.status,
-      limit: query.limit === undefined ? undefined : Number(query.limit),
-    });
-    return reply.send(result);
   });
 
   // GET /v1/vcs/:vcId - Get VC details

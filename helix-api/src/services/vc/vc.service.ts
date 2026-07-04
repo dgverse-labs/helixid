@@ -384,6 +384,45 @@ export class VCService implements IVCService {
     };
   }
 
+  async listVCs(filters: ListVCsFilters): Promise<VCSummary[]> {
+    const records = await this.vcRepo.findMany({ subjectDid: filters.subjectDid });
+    const limit = filters.limit ?? 50;
+    const now = Date.now();
+
+    const summaries = records.map((record): VCSummary => {
+      let status: 'active' | 'revoked' | 'expired' = 'active';
+      if (record.revokedAt) status = 'revoked';
+      else if (record.expiresAt.getTime() <= now) status = 'expired';
+
+      const vcJson =
+        typeof record.vcJson === 'string' ? JSON.parse(record.vcJson) : record.vcJson;
+      const subject = getCredentialSubject(vcJson);
+      const scopes = Array.isArray(record.privilegeScopes)
+        ? (record.privilegeScopes as string[])
+        : typeof record.privilegeScopes === 'string'
+          ? (JSON.parse(record.privilegeScopes) as string[])
+          : [];
+      const validFrom = (asRecord(vcJson).validFrom as string | undefined) ?? '';
+      const parentVcId = record.parentVcId ?? subject.parentVcId;
+
+      return {
+        vcId: record.vcId,
+        subjectDid: record.subjectDid,
+        ...(subject.agentName ? { agentName: subject.agentName } : {}),
+        scopes,
+        status,
+        issuedAt: record.createdAt?.toISOString() ?? validFrom,
+        expiresAt: record.expiresAt.toISOString(),
+        ...(parentVcId ? { parentVcId } : {}),
+      };
+    });
+
+    const filtered = filters.status
+      ? summaries.filter((summary) => summary.status === filters.status)
+      : summaries;
+    return filtered.slice(0, limit);
+  }
+
   async getVC(vcId: string, requestId: string): Promise<VCDetails> {
     void requestId;
     const record = await this.vcRepo.findByVcId(vcId);
