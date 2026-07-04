@@ -8,6 +8,7 @@ import {
   publicKeyToMultibase,
   selfIssueVC,
   signData,
+  type KeyPair,
   type SelfIssueOptions,
   type ServiceEndpoint,
   type SignedVC,
@@ -338,6 +339,35 @@ export class AgentWallet {
     if (typeof parsed['issuer'] === 'string') credential.issuer = parsed['issuer'];
     if (typeof subject['id'] === 'string') credential.subjectDid = subject['id'];
     return credential;
+  }
+
+  static generateKeypair(): KeyPair {
+    return generateKeyPair();
+  }
+
+  static fromKeypairAndCredential(
+    keypair: KeyPair,
+    vc: SignedVC | string | Record<string, unknown>,
+  ): AgentWallet {
+    const parsed =
+      typeof vc === 'string' ? (JSON.parse(vc) as Record<string, unknown>) : vc;
+    const vcId = typeof parsed['id'] === 'string' ? parsed['id'] : null;
+    const subject =
+      typeof parsed['credentialSubject'] === 'object' && parsed['credentialSubject'] !== null
+        ? (parsed['credentialSubject'] as Record<string, unknown>)
+        : {};
+    const did = `did:key:${publicKeyToMultibase(keypair.publicKey)}`;
+    if (!vcId) {
+      throw new Error('VC has no id');
+    }
+    if (subject['id'] !== did) {
+      throw new CredentialNotForThisAgentError();
+    }
+    return new AgentWallet({
+      did,
+      privateKeyHex: keypair.privateKey,
+      credentials: [AgentWallet.credentialFromVC(vcId, vc)],
+    });
   }
 
   static async create(walletPath: string, passphrase: string): Promise<AgentWallet> {

@@ -1,4 +1,4 @@
-import { type SelfIssueOptions, type ServiceEndpoint, type SignedVC } from '@helixid/core';
+import { type KeyPair, type SelfIssueOptions, type ServiceEndpoint, type SignedVC } from '@helixid/core';
 import type { HelixClient } from '../client/HelixClient.js';
 export interface WalletData {
     did: string;
@@ -65,6 +65,8 @@ export declare class AgentWallet {
         vcType?: string;
     } | undefined, passphrase: string, filePath: string): Promise<WalletCredential | null>;
     static credentialFromVC(vcId: string, vc: string | Record<string, unknown>): WalletCredential;
+    static generateKeypair(): KeyPair;
+    static fromKeypairAndCredential(keypair: KeyPair, vc: SignedVC | string | Record<string, unknown>): AgentWallet;
     static create(walletPath: string, passphrase: string): Promise<AgentWallet>;
     static load(walletPath: string, passphrase: string): Promise<AgentWallet>;
     private static fromWalletData;

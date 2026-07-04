@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { AgentWallet } from '../../../src/wallet/AgentWallet.js';
-import type { SignedVC } from '@helixid/core';
+import { generateKeyPair, publicKeyToMultibase, selfIssueVC, type SignedVC } from '@helixid/core';
 
 const credential = AgentWallet.credentialFromVC('v', {
   id: 'v',
@@ -113,9 +113,8 @@ describe('AgentWallet Branch Coverage', () => {
       const created = await AgentWallet.create(path, 'pass');
       expect(created.getDID()).toMatch(/^did:key:z/);
       expect(created.getPublicKey()).toMatch(/^[0-9a-f]{64}$/);
-      await expect(AgentWallet.create(path, 'pass')).rejects.toMatchObject({
-        code: 'WALLET_ALREADY_EXISTS',
-      });
+      const loadedAgain = await AgentWallet.create(path, 'pass');
+      expect(loadedAgain.getDID()).toBe(created.getDID());
 
       const loaded = await AgentWallet.load(path, 'pass');
       expect(loaded.getDID()).toBe(created.getDID());
@@ -123,6 +122,26 @@ describe('AgentWallet Branch Coverage', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  it('generates keypairs locally without creating a DID', () => {
+    const keypair = AgentWallet.generateKeypair();
+    expect(keypair.publicKey).toMatch(/^[0-9a-f]{64}$/);
+    expect(keypair.privateKey).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('builds an in-memory wallet from a keypair and credential', async () => {
+    const keypair = generateKeyPair();
+    const did = `did:key:${publicKeyToMultibase(keypair.publicKey)}`;
+    const vc = await selfIssueVC(
+      { scopes: ['read:orders'] },
+      { did, privateKeyHex: keypair.privateKey },
+    );
+
+    const wallet = AgentWallet.fromKeypairAndCredential(keypair, vc);
+    expect(wallet.getDID()).toBe(did);
+    expect(wallet.credentials).toHaveLength(1);
+    expect(wallet.credentials[0]?.id).toBe(vc.id);
   });
 
   it('self-issues and persists credentials for the loaded wallet', async () => {

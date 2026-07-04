@@ -7,6 +7,7 @@ export declare class HttpAdapter {
     get<T>(path: string): Promise<T>;
     post<T>(path: string, body?: unknown): Promise<T>;
     delete<T>(path: string): Promise<T>;
+    hasAdminApiKey(): boolean;
     private request;
     private mapErrorResponse;
 }

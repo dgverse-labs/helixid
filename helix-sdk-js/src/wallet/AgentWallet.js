@@ -224,6 +224,28 @@ export class AgentWallet {
             credential.subjectDid = subject['id'];
         return credential;
     }
+    static generateKeypair() {
+        return generateKeyPair();
+    }
+    static fromKeypairAndCredential(keypair, vc) {
+        const parsed = typeof vc === 'string' ? JSON.parse(vc) : vc;
+        const vcId = typeof parsed['id'] === 'string' ? parsed['id'] : null;
+        const subject = typeof parsed['credentialSubject'] === 'object' && parsed['credentialSubject'] !== null
+            ? parsed['credentialSubject']
+            : {};
+        const did = `did:key:${publicKeyToMultibase(keypair.publicKey)}`;
+        if (!vcId) {
+            throw new Error('VC has no id');
+        }
+        if (subject['id'] !== did) {
+            throw new CredentialNotForThisAgentError();
+        }
+        return new AgentWallet({
+            did,
+            privateKeyHex: keypair.privateKey,
+            credentials: [AgentWallet.credentialFromVC(vcId, vc)],
+        });
+    }
     static async create(walletPath, passphrase) {
         try {
             await access(walletPath);

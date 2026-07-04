@@ -1,7 +1,7 @@
 // Copyright 2026 DgVerse LLP
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { HelixClient } from '../../../src/client/HelixClient.js';
-import { createStatusList, generateKeyPair, issueJWT } from '@helixid/core';
+import { createStatusList, generateKeyPair, issueJWT, publicKeyToMultibase, selfIssueVC, VPBuilder } from '@helixid/core';
 
 describe('HelixClient Full Unit Tests', () => {
   let mockHttp: any;
@@ -12,6 +12,7 @@ describe('HelixClient Full Unit Tests', () => {
       get: vi.fn(),
       post: vi.fn(),
       delete: vi.fn(),
+      hasAdminApiKey: vi.fn(() => false),
     };
     client = new HelixClient(mockHttp, 'http://api');
   });
@@ -47,6 +48,12 @@ describe('HelixClient Full Unit Tests', () => {
     mockHttp.post.mockResolvedValue({ vcId: 'vc1' });
     await client.issueVC({ subjectDid: 'did:1', subjectType: 'user' });
     expect(mockHttp.post).toHaveBeenCalledWith('/v1/vcs', expect.objectContaining({ subjectDid: 'did:1' }));
+  });
+
+  it('lists VCs with filters', async () => {
+    mockHttp.get.mockResolvedValue([]);
+    await client.listVCs({ subjectDid: 'did:1', status: 'active', limit: 25 });
+    expect(mockHttp.get).toHaveBeenCalledWith('/v1/vcs?subjectDid=did%3A1&status=active&limit=25');
   });
 
   it('revokes and renews VC', async () => {
@@ -94,10 +101,105 @@ describe('HelixClient Full Unit Tests', () => {
     expect(mockHttp.get).toHaveBeenCalledWith('/v1/services/s1');
   });
 
-  it('does not expose local VP/delegation helpers on HelixClient', () => {
-    expect('verifyVP' in client).toBe(false);
+  it('registers services and creates status lists through the API', async () => {
+    mockHttp.post.mockResolvedValue({ serviceName: 'amazon' });
+    await client.registerService({
+      serviceName: 'amazon',
+      displayName: 'Amazon Retail',
+      verifiedDomain: 'https://amazon.com',
+      publicKeyMultibase: 'zabc',
+      apiEndpoint: 'https://api.amazon.com/helix-verify',
+      metadata: {},
+    });
+    expect(mockHttp.post).toHaveBeenCalledWith('/v1/services', expect.objectContaining({
+      serviceName: 'amazon',
+    }));
+
+    mockHttp.post.mockResolvedValue({
+      '@context': ['https://www.w3.org/ns/credentials/v2'],
+      id: 'http://api/v1/status-list/helix-status-list-1',
+      type: ['VerifiableCredential', 'BitstringStatusListCredential'],
+      issuer: 'did:web:localhost',
+      validFrom: new Date().toISOString(),
+      credentialSubject: {
+        id: 'http://api/v1/status-list/helix-status-list-1#list',
+        type: 'BitstringStatusList',
+        statusPurpose: 'revocation',
+        encodedList: createStatusList(),
+      },
+    });
+    const statusList = await client.createStatusList({ length: 64 });
+    expect(mockHttp.post).toHaveBeenCalledWith('/v1/status-list', { length: 64 });
+    expect(statusList.type).toContain('BitstringStatusListCredential');
+  });
+
+  it('exposes API-backed VP verification but not delegation helpers', () => {
+    expect(typeof client.verifyVP).toBe('function');
     expect('createVPTemplate' in client).toBe(false);
     expect('delegate' in client).toBe(false);
+  });
+
+  it('audits successful VP verification when the client can write audit logs', async () => {
+    const wallet = generateKeyPair();
+    const did = `did:key:${publicKeyToMultibase(wallet.publicKey)}`;
+    const vc = await selfIssueVC({ scopes: ['read:orders'] }, { did, privateKeyHex: wallet.privateKey });
+    const vp = await new VPBuilder({
+      vc,
+      holderDid: did,
+      targetService: 'orders',
+      userDid: did,
+    }).sign(wallet.privateKey, `${did}#key-1`);
+
+    const auditHttp = {
+      get: vi.fn(),
+      post: vi.fn().mockResolvedValue({ recorded: true }),
+      delete: vi.fn(),
+      hasAdminApiKey: vi.fn(() => true),
+    };
+    const auditClient = new HelixClient(auditHttp as any, 'http://api');
+
+    const result = await auditClient.verifyVP(vp, { allowSelfSigned: true });
+
+    expect(result).toMatchObject({
+      valid: true,
+      agentDid: did,
+      vpId: vp.id,
+    });
+    expect(auditHttp.post).toHaveBeenCalledWith(
+      '/v1/audit-log/vp-verification',
+      expect.objectContaining({
+        vpId: vp.id,
+        agentDid: did,
+        subjectDid: did,
+        targetService: 'orders',
+        result: 'success',
+        source: 'sdk',
+        eventType: 'VP_VERIFIED',
+      }),
+    );
+  });
+
+  it('audits rejected VP verification when verification fails', async () => {
+    const auditHttp = {
+      get: vi.fn(),
+      post: vi.fn().mockResolvedValue({ recorded: true }),
+      delete: vi.fn(),
+      hasAdminApiKey: vi.fn(() => true),
+    };
+    const auditClient = new HelixClient(auditHttp as any, 'http://api');
+
+    await expect(auditClient.verifyVP({ id: 'vp:test', holder: 'did:key:abc' } as any)).rejects.toThrow();
+
+    expect(auditHttp.post).toHaveBeenCalledWith(
+      '/v1/audit-log/vp-verification',
+      expect.objectContaining({
+        vpId: 'vp:test',
+        agentDid: 'did:key:abc',
+        result: 'rejected',
+        source: 'sdk',
+        eventType: 'VP_REJECTED',
+      }),
+    );
   });
 
   it('fetches and locally verifies JWT session tokens', async () => {
@@ -128,6 +230,14 @@ describe('HelixClient Full Unit Tests', () => {
       sub: 'did:hedera:testnet:agent',
       targetService: 'amazon',
     });
+  });
+
+  it('gets audit log with filters', async () => {
+    mockHttp.get.mockResolvedValue([]);
+    await client.getAuditLog({ eventType: 'VC_ISSUED', since: '2026-07-03T00:00:00.000Z', limit: 10 });
+    expect(mockHttp.get).toHaveBeenCalledWith(
+      '/v1/audit-log?eventType=VC_ISSUED&since=2026-07-03T00%3A00%3A00.000Z&limit=10',
+    );
   });
 
   it('throws SDK_ONLY_MODE_NO_API for enrollment calls without an API URL', async () => {
