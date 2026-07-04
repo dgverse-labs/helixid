@@ -63,7 +63,11 @@ describe('AgentsPage', () => {
       }
       return [billing, delegated];
     });
-    revokeAgent.mockResolvedValue({ vcId: billing.vcId, revoked: true });
+    revokeAgent.mockResolvedValue({
+      vcId: billing.vcId,
+      revoked: true,
+      revokedAt: '2026-07-04T00:00:00.000Z',
+    });
     getAgent.mockImplementation(async () => ({
       vcId: billing.vcId,
       vc: { id: billing.vcId },

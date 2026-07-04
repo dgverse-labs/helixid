@@ -4,35 +4,100 @@
 // You may obtain a copy of the License at
 //    http://www.apache.org/licenses/LICENSE-2.0
 
-import { HelixClient } from '@helixid/sdk-js';
 import { getApiConfig } from '../runtimeConfig';
 import type {
   AuditFilters,
+  AuditLogEntry,
   EnrollmentTokenInput,
+  EnrollmentTokenResult,
   ServiceInput,
+  ServiceRecord,
   VcFilters,
+  VCSummary,
+  VCResponse,
 } from './types';
 
-// Runtime config comes from the single seam in runtimeConfig.ts (dev
-// spec §6): window.__HELIXID_CONFIG__ in containers, VITE_* only for local
-// dev. This module owns the HelixClient wiring; components import `api`.
 const { apiBaseUrl, adminApiKey } = getApiConfig();
 
-// The admin key is attached here, once, for every call the client makes.
-// OPEN ITEM (dev spec §5.3): whether POST /v1/services requires
-// x-admin-api-key is undecided (service registry Option A). Because the
-// key travels with every request from this one seam, resolving that
-// decision needs no component changes — at most an adjustment here.
-const client = new HelixClient(apiBaseUrl, { adminApiKey });
+function buildUrl(path: string, query?: Record<string, string | number | undefined>): string {
+  const url = new URL(path, apiBaseUrl || window.location.origin);
+  if (query) {
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined) url.searchParams.set(key, String(value));
+    }
+  }
+  return url.toString();
+}
+
+async function requestJson<T>(
+  path: string,
+  options: {
+    method?: string;
+    body?: unknown;
+    query?: Record<string, string | number | undefined>;
+    expectJsonArray?: boolean;
+  } = {},
+): Promise<T> {
+  const headers = new Headers();
+  if (options.body !== undefined) headers.set('content-type', 'application/json');
+  if (adminApiKey) headers.set('x-admin-api-key', adminApiKey);
+
+  const requestInit: RequestInit = {
+    method: options.method ?? 'GET',
+    headers,
+  };
+  if (options.body !== undefined) {
+    requestInit.body = JSON.stringify(options.body);
+  }
+
+  const response = await fetch(buildUrl(path, options.query), requestInit);
+
+  if (!response.ok) {
+    let message = `Request failed with status ${response.status}`;
+    try {
+      const payload = (await response.json()) as { error?: { message?: string } };
+      message = payload.error?.message ?? message;
+    } catch {
+      // Ignore non-JSON error payloads.
+    }
+    throw new Error(message);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const payload = (await response.json()) as T;
+  if (options.expectJsonArray && !Array.isArray(payload)) {
+    throw new Error('Unexpected response shape');
+  }
+  return payload;
+}
 
 export const api = {
-  listAgents: (filters?: VcFilters) => client.listVCs(filters),
-  getAgent: (vcId: string) => client.getVC(vcId),
-  revokeAgent: (vcId: string) => client.revokeVC(vcId),
-  listServices: () => client.listServices(),
-  registerService: (input: ServiceInput) => client.registerService(input),
-  createEnrollmentToken: (input: EnrollmentTokenInput) => client.createEnrollmentToken(input),
-  getAuditLog: (filters?: AuditFilters) => client.getAuditLog(filters),
+  listAgents: async (filters?: VcFilters): Promise<VCSummary[]> =>
+    filters
+      ? requestJson<VCSummary[]>('/v1/vcs', { query: { ...filters } })
+      : requestJson<VCSummary[]>('/v1/vcs'),
+  getAgent: async (vcId: string): Promise<VCResponse> =>
+    requestJson<VCResponse>(`/v1/vcs/${encodeURIComponent(vcId)}`),
+  revokeAgent: async (vcId: string): Promise<{ vcId: string; revoked: true; revokedAt: string }> =>
+    requestJson(`/v1/vcs/${encodeURIComponent(vcId)}/revoke`, { method: 'POST' }),
+  listServices: async (): Promise<ServiceRecord[]> => {
+    const result = await requestJson<{ services: ServiceRecord[] }>('/v1/services');
+    return result.services;
+  },
+  registerService: async (input: ServiceInput): Promise<ServiceRecord> =>
+    requestJson<ServiceRecord>('/v1/services', { method: 'POST', body: input }),
+  createEnrollmentToken: async (input: EnrollmentTokenInput): Promise<EnrollmentTokenResult> =>
+    requestJson<EnrollmentTokenResult>('/v1/enrollment-tokens', {
+      method: 'POST',
+      body: input,
+    }),
+  getAuditLog: async (filters?: AuditFilters): Promise<AuditLogEntry[]> =>
+    filters
+      ? requestJson<AuditLogEntry[]>('/v1/audit-log', { query: { ...filters } })
+      : requestJson<AuditLogEntry[]>('/v1/audit-log'),
 };
 
 export type Api = typeof api;

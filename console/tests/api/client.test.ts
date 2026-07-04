@@ -1,31 +1,19 @@
 // Copyright 2026 DgVerse LLP
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mocks = vi.hoisted(() => ({
-  listVCs: vi.fn(),
-  getVC: vi.fn(),
-  revokeVC: vi.fn(),
-  listServices: vi.fn(),
-  registerService: vi.fn(),
-  createEnrollmentToken: vi.fn(),
-  getAuditLog: vi.fn(),
-  constructorCalls: [] as unknown[][],
-}));
+const fetchMock = vi.hoisted(() => vi.fn());
 
-vi.mock('@helixid/sdk-js', () => ({
-  HelixClient: class {
-    listVCs = mocks.listVCs;
-    getVC = mocks.getVC;
-    revokeVC = mocks.revokeVC;
-    listServices = mocks.listServices;
-    registerService = mocks.registerService;
-    createEnrollmentToken = mocks.createEnrollmentToken;
-    getAuditLog = mocks.getAuditLog;
-    constructor(...args: unknown[]) {
-      mocks.constructorCalls.push(args);
-    }
-  },
-}));
+function jsonResponse(body: unknown, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  } as Response;
+}
+
+function headersOf(init: RequestInit | undefined): Headers {
+  return new Headers(init?.headers);
+}
 
 async function importApi() {
   vi.resetModules();
@@ -35,9 +23,9 @@ async function importApi() {
 describe('api/client', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.constructorCalls.length = 0;
     delete window.__HELIXID_CONFIG__;
     vi.unstubAllEnvs();
+    vi.stubGlobal('fetch', fetchMock);
   });
 
   describe('configuration', () => {
@@ -46,66 +34,111 @@ describe('api/client', () => {
         API_BASE_URL: 'http://runtime:4000',
         ADMIN_API_KEY: 'runtime-key',
       };
-      await importApi();
-      expect(mocks.constructorCalls[0]).toEqual([
-        'http://runtime:4000',
-        { adminApiKey: 'runtime-key' },
-      ]);
+      fetchMock.mockResolvedValueOnce(jsonResponse([]));
+      const { api } = await importApi();
+
+      await api.listAgents({ status: 'active' });
+
+      const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+      expect(fetchMock).toHaveBeenCalledWith(
+        'http://runtime:4000/v1/vcs?status=active',
+        expect.objectContaining({ method: 'GET' }),
+      );
+      expect(headersOf(init).get('x-admin-api-key')).toBe('runtime-key');
     });
 
     it('falls back to VITE_* env vars for local dev', async () => {
       vi.stubEnv('VITE_API_BASE_URL', 'http://localhost:4000');
       vi.stubEnv('VITE_ADMIN_API_KEY', 'dev-key');
-      await importApi();
-      expect(mocks.constructorCalls[0]).toEqual([
-        'http://localhost:4000',
-        { adminApiKey: 'dev-key' },
-      ]);
+      fetchMock.mockResolvedValueOnce(jsonResponse([]));
+      const { api } = await importApi();
+
+      await api.listAgents();
+
+      const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+      expect(fetchMock).toHaveBeenCalledWith(
+        'http://localhost:4000/v1/vcs',
+        expect.objectContaining({ method: 'GET' }),
+      );
+      expect(headersOf(init).get('x-admin-api-key')).toBe('dev-key');
     });
   });
 
   describe('api surface', () => {
-    it('listAgents delegates to client.listVCs', async () => {
+    it('listAgents calls GET /v1/vcs', async () => {
       const { api } = await importApi();
-      mocks.listVCs.mockResolvedValue([{ vcId: 'vc:1' }]);
-      await expect(api.listAgents({ status: 'active' })).resolves.toEqual([{ vcId: 'vc:1' }]);
-      expect(mocks.listVCs).toHaveBeenCalledWith({ status: 'active' });
+      const origin = window.location.origin;
+      fetchMock.mockResolvedValueOnce(jsonResponse([{ vcId: 'vc:1' }]));
 
-      mocks.listVCs.mockRejectedValue(new Error('list failed'));
+      await expect(api.listAgents({ status: 'active' })).resolves.toEqual([{ vcId: 'vc:1' }]);
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${origin}/v1/vcs?status=active`,
+        expect.objectContaining({ method: 'GET' }),
+      );
+
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: { message: 'list failed' } }),
+      } as Response);
       await expect(api.listAgents()).rejects.toThrow('list failed');
     });
 
-    it('getAgent delegates to client.getVC', async () => {
+    it('getAgent calls GET /v1/vcs/:vcId', async () => {
       const { api } = await importApi();
-      mocks.getVC.mockResolvedValue({ vcId: 'vc:1' });
-      await expect(api.getAgent('vc:1')).resolves.toEqual({ vcId: 'vc:1' });
-      expect(mocks.getVC).toHaveBeenCalledWith('vc:1');
+      const origin = window.location.origin;
+      fetchMock.mockResolvedValueOnce(jsonResponse({ vcId: 'vc:1' }));
 
-      mocks.getVC.mockRejectedValue(new Error('not found'));
+      await expect(api.getAgent('vc:1')).resolves.toEqual({ vcId: 'vc:1' });
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${origin}/v1/vcs/vc%3A1`,
+        expect.objectContaining({ method: 'GET' }),
+      );
+
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        json: async () => ({ error: { message: 'not found' } }),
+      } as Response);
       await expect(api.getAgent('vc:x')).rejects.toThrow('not found');
     });
 
-    it('revokeAgent delegates to client.revokeVC', async () => {
+    it('revokeAgent calls POST /v1/vcs/:vcId/revoke', async () => {
       const { api } = await importApi();
-      mocks.revokeVC.mockResolvedValue({ vcId: 'vc:1', revoked: true });
-      await expect(api.revokeAgent('vc:1')).resolves.toEqual({ vcId: 'vc:1', revoked: true });
-      expect(mocks.revokeVC).toHaveBeenCalledWith('vc:1');
+      const origin = window.location.origin;
+      fetchMock.mockResolvedValueOnce(jsonResponse({ vcId: 'vc:1', revoked: true }));
 
-      mocks.revokeVC.mockRejectedValue(new Error('already revoked'));
+      await expect(api.revokeAgent('vc:1')).resolves.toEqual({ vcId: 'vc:1', revoked: true });
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${origin}/v1/vcs/vc%3A1/revoke`,
+        expect.objectContaining({ method: 'POST' }),
+      );
+
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: async () => ({ error: { message: 'already revoked' } }),
+      } as Response);
       await expect(api.revokeAgent('vc:1')).rejects.toThrow('already revoked');
     });
 
-    it('listServices delegates to client.listServices', async () => {
+    it('listServices unwraps the services array', async () => {
       const { api } = await importApi();
-      mocks.listServices.mockResolvedValue([{ serviceName: 'orders' }]);
+      fetchMock.mockResolvedValueOnce(jsonResponse({ services: [{ serviceName: 'orders' }] }));
+
       await expect(api.listServices()).resolves.toEqual([{ serviceName: 'orders' }]);
 
-      mocks.listServices.mockRejectedValue(new Error('down'));
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: { message: 'down' } }),
+      } as Response);
       await expect(api.listServices()).rejects.toThrow('down');
     });
 
-    it('registerService delegates to client.registerService', async () => {
+    it('registerService calls POST /v1/services', async () => {
       const { api } = await importApi();
+      const origin = window.location.origin;
       const input = {
         serviceName: 'orders',
         displayName: 'Orders',
@@ -113,35 +146,67 @@ describe('api/client', () => {
         publicKeyMultibase: 'z6Mk',
         apiEndpoint: 'https://orders.example.com',
       };
-      mocks.registerService.mockResolvedValue({ serviceName: 'orders' });
-      await expect(api.registerService(input)).resolves.toEqual({ serviceName: 'orders' });
-      expect(mocks.registerService).toHaveBeenCalledWith(input);
+      fetchMock.mockResolvedValueOnce(jsonResponse({ serviceName: 'orders' }));
 
-      mocks.registerService.mockRejectedValue(new Error('conflict'));
+      await expect(api.registerService(input)).resolves.toEqual({ serviceName: 'orders' });
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${origin}/v1/services`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify(input),
+        }),
+      );
+
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: async () => ({ error: { message: 'conflict' } }),
+      } as Response);
       await expect(api.registerService(input)).rejects.toThrow('conflict');
     });
 
-    it('createEnrollmentToken delegates to client.createEnrollmentToken', async () => {
+    it('createEnrollmentToken calls POST /v1/enrollment-tokens', async () => {
       const { api } = await importApi();
+      const origin = window.location.origin;
       const input = { agentName: 'billing', requestedScopes: ['read:orders'] };
-      mocks.createEnrollmentToken.mockResolvedValue({ token: 'enroll:abc', expiresAt: 'later' });
+      fetchMock.mockResolvedValueOnce(jsonResponse({ token: 'enroll:abc', expiresAt: 'later' }));
+
       await expect(api.createEnrollmentToken(input)).resolves.toEqual({
         token: 'enroll:abc',
         expiresAt: 'later',
       });
-      expect(mocks.createEnrollmentToken).toHaveBeenCalledWith(input);
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${origin}/v1/enrollment-tokens`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify(input),
+        }),
+      );
 
-      mocks.createEnrollmentToken.mockRejectedValue(new Error('bad scopes'));
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({ error: { message: 'bad scopes' } }),
+      } as Response);
       await expect(api.createEnrollmentToken(input)).rejects.toThrow('bad scopes');
     });
 
-    it('getAuditLog delegates to client.getAuditLog', async () => {
+    it('getAuditLog calls GET /v1/audit-log', async () => {
       const { api } = await importApi();
-      mocks.getAuditLog.mockResolvedValue([{ id: '1' }]);
-      await expect(api.getAuditLog({ limit: 20 })).resolves.toEqual([{ id: '1' }]);
-      expect(mocks.getAuditLog).toHaveBeenCalledWith({ limit: 20 });
+      const origin = window.location.origin;
+      fetchMock.mockResolvedValueOnce(jsonResponse([{ id: '1' }]));
 
-      mocks.getAuditLog.mockRejectedValue(new Error('audit down'));
+      await expect(api.getAuditLog({ limit: 20 })).resolves.toEqual([{ id: '1' }]);
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${origin}/v1/audit-log?limit=20`,
+        expect.objectContaining({ method: 'GET' }),
+      );
+
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: { message: 'audit down' } }),
+      } as Response);
       await expect(api.getAuditLog()).rejects.toThrow('audit down');
     });
   });
