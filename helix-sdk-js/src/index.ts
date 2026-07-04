@@ -10,16 +10,7 @@ export { SessionManager } from './session/index.js';
 
 // Enrollment only / issuer API operations
 export { HelixClient } from './client/HelixClient.js';
-export type {
-  AuditFilters,
-  AuditLogEntry,
-  EnrollmentTokenInput,
-  EnrollmentTokenResult,
-  ServiceInput,
-  VcFilters,
-  VCResponse,
-  VCSummary,
-} from './client/HelixClient.js';
+export type { CreateStatusListOptions, RegisterServiceOptions } from './client/HelixClient.js';
 
 export * from './errors/index.js';
 export * from './resolver/IDidResolver.js';
