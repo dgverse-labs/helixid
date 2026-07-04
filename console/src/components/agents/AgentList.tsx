@@ -4,7 +4,9 @@
 // You may obtain a copy of the License at
 //    http://www.apache.org/licenses/LICENSE-2.0
 
+import { useRef, useState } from 'react';
 import type { VCSummary } from '../../api/types';
+import { BotIcon } from '../layout/icons';
 
 function truncateDid(did: string): string {
   return did.length <= 24 ? did : `${did.slice(0, 16)}…${did.slice(-6)}`;
@@ -13,12 +15,24 @@ function truncateDid(did: string): string {
 export interface AgentListProps {
   agents: VCSummary[];
   onSelect: (agent: VCSummary) => void;
+  selectedVcId?: string | undefined;
 }
 
-export function AgentList({ agents, onSelect }: AgentListProps) {
+export function AgentList({ agents, onSelect, selectedVcId }: AgentListProps) {
+  const [copiedDid, setCopiedDid] = useState<string | null>(null);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
   if (agents.length === 0) {
-    return <p>No agents found.</p>;
+    return <p className="empty-state">No agents found.</p>;
   }
+
+  const copyDid = (did: string) => {
+    void navigator.clipboard.writeText(did);
+    setCopiedDid(did);
+    if (copyTimer.current !== undefined) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopiedDid(null), 1500);
+  };
+
   return (
     <table className="agent-list">
       <thead>
@@ -32,19 +46,30 @@ export function AgentList({ agents, onSelect }: AgentListProps) {
       </thead>
       <tbody>
         {agents.map((agent) => (
-          <tr key={agent.vcId} onClick={() => onSelect(agent)} className="agent-row">
-            <td>{agent.agentName ?? '—'}</td>
+          <tr
+            key={agent.vcId}
+            onClick={() => onSelect(agent)}
+            className={`agent-row${agent.vcId === selectedVcId ? ' selected' : ''}`}
+          >
+            <td>
+              <span className="agent-name">
+                <span className="agent-avatar">
+                  <BotIcon />
+                </span>
+                {agent.agentName ?? '—'}
+              </span>
+            </td>
             <td>
               <button
                 type="button"
-                className="did-copy"
+                className={`did-copy unstyled${agent.subjectDid === copiedDid ? ' copied' : ''}`}
                 title={agent.subjectDid}
                 onClick={(event) => {
                   event.stopPropagation();
-                  void navigator.clipboard.writeText(agent.subjectDid);
+                  copyDid(agent.subjectDid);
                 }}
               >
-                {truncateDid(agent.subjectDid)}
+                {agent.subjectDid === copiedDid ? 'Copied ✓' : truncateDid(agent.subjectDid)}
               </button>
             </td>
             <td>
@@ -57,7 +82,13 @@ export function AgentList({ agents, onSelect }: AgentListProps) {
             <td>
               <span className={`status-badge status-${agent.status}`}>{agent.status}</span>
             </td>
-            <td>{agent.parentVcId ? `delegated from ${agent.parentVcId}` : ''}</td>
+            <td>
+              {agent.parentVcId ? (
+                <span className="delegation-note">delegated from {agent.parentVcId}</span>
+              ) : (
+                ''
+              )}
+            </td>
           </tr>
         ))}
       </tbody>

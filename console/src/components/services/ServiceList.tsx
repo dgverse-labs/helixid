@@ -12,7 +12,7 @@ export interface ServiceListProps {
 
 export function ServiceList({ services }: ServiceListProps) {
   if (services.length === 0) {
-    return <p>No services registered.</p>;
+    return <p className="empty-state">No services registered.</p>;
   }
   return (
     <table className="service-list">

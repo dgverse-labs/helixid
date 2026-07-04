@@ -35,19 +35,25 @@ export function EnrollPage() {
 
   return (
     <div className="enroll-page">
-      <h1>Enroll an agent</h1>
+      <div className="page-header">
+        <div>
+          <h1>Enroll an agent</h1>
+          <p className="page-subtitle">
+            Mint a one-time enrollment token and watch it get consumed as the agent onboards.
+          </p>
+        </div>
+      </div>
 
       {minted === null ? (
-        <>
+        <div className="card form-card">
+          <h2>Agent details</h2>
           {error && <p role="alert">{error}</p>}
           <EnrollForm onSubmit={handleSubmit} submitting={submitting} />
-        </>
+        </div>
       ) : (
-        <div className="minted-token">
+        <div className="card minted-token">
           <h2>Enrollment token</h2>
-          <p>
-            Hand this to the agent; it expires at {minted.expiresAt}.
-          </p>
+          <p className="token-hint">Hand this to the agent; it expires at {minted.expiresAt}.</p>
           <code className="token-value">{minted.token}</code>
           <EnrollmentStatus tokenCreatedAt={minted.createdAt} />
           <button type="button" onClick={() => setMinted(null)}>

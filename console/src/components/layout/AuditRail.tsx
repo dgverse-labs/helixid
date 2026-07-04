@@ -19,6 +19,25 @@ function describe(entry: AuditLogEntry): string {
   return parts.join(' · ');
 }
 
+/** Color tone for the timeline dot + event label. */
+function tone(eventType: string): 'success' | 'danger' | 'accent' | 'neutral' {
+  if (/revoked|rejected|failed/.test(eventType)) return 'danger';
+  if (/complete|verified|onboarded/.test(eventType)) return 'success';
+  if (/issued|created|generated|consumed/.test(eventType)) return 'accent';
+  return 'neutral';
+}
+
+function relativeTime(timestamp: string): string {
+  const delta = Date.now() - new Date(timestamp).getTime();
+  if (Number.isNaN(delta)) return timestamp;
+  const minutes = Math.floor(delta / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return new Date(timestamp).toLocaleDateString();
+}
+
 export function AuditRail() {
   const { refreshKey } = useAuditRefresh();
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
@@ -43,15 +62,19 @@ export function AuditRail() {
   }, [refreshKey]);
 
   return (
-    <aside className="audit-rail" aria-label="Audit log">
+    <aside className="audit-rail card" aria-label="Audit log">
       <h2>Audit log</h2>
       {error && <p role="alert">{error}</p>}
-      {!error && entries.length === 0 && <p>No audit events yet.</p>}
+      {!error && entries.length === 0 && <p className="audit-empty">No audit events yet.</p>}
       <ul>
         {entries.map((entry) => (
-          <li key={entry.id} className="audit-entry">
-            <span className="audit-event-type">{entry.eventType}</span>{' '}
-            <time dateTime={entry.timestamp}>{new Date(entry.timestamp).toLocaleString()}</time>
+          <li key={entry.id} className={`audit-entry tone-${tone(entry.eventType)}`}>
+            <div className="audit-entry-top">
+              <span className="audit-event-type">{entry.eventType}</span>{' '}
+              <time dateTime={entry.timestamp} title={new Date(entry.timestamp).toLocaleString()}>
+                {relativeTime(entry.timestamp)}
+              </time>
+            </div>
             <div className="audit-description">
               {entry.subjectDid ? (
                 <Link to={`/agents?subjectDid=${encodeURIComponent(entry.subjectDid)}`}>

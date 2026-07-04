@@ -10,6 +10,7 @@ import { api } from '../api/client';
 import type { VCResponse, VCSummary } from '../api/types';
 import { AgentList } from '../components/agents/AgentList';
 import { AgentDetailPanel } from '../components/agents/AgentDetailPanel';
+import { ActivityIcon, BotIcon, KeyIcon, ShieldIcon } from '../components/layout/icons';
 import { useAuditRefresh } from '../hooks/useAuditRefresh';
 
 /** One row per DID: the API returns newest first, so keep first occurrence. */
@@ -89,13 +90,73 @@ export function AgentsPage() {
     }
   }, [selected, loadDetail, refreshAudit]);
 
+  const activeCount = agents.filter((a) => a.status === 'active').length;
+  const revokedCount = agents.filter((a) => a.status === 'revoked').length;
+  const delegatedCount = agents.filter((a) => a.parentVcId).length;
+
   return (
     <div className="agents-page">
       <div className="page-header">
-        <h1>Agents</h1>
+        <div>
+          <h1>Agents</h1>
+          <p className="page-subtitle">
+            Browse every agent&apos;s identity, scopes, status and delegation lineage.
+          </p>
+        </div>
         <button type="button" onClick={() => void loadAgents()}>
           Refresh
         </button>
+      </div>
+
+      <div className="stat-grid">
+        <div className="stat-card card">
+          <div className="stat-top">
+            <span className="stat-icon">
+              <BotIcon />
+            </span>
+            <span className="stat-hint">↗ {activeCount} active</span>
+          </div>
+          <div>
+            <div className="stat-value">{agents.length}</div>
+            <div className="stat-label">Total Agents</div>
+          </div>
+        </div>
+        <div className="stat-card card">
+          <div className="stat-top">
+            <span className="stat-icon">
+              <ShieldIcon />
+            </span>
+            <span className="stat-hint">↗ based on issued VCs</span>
+          </div>
+          <div>
+            <div className="stat-value">{activeCount}</div>
+            <div className="stat-label">Active Credentials</div>
+          </div>
+        </div>
+        <div className="stat-card card">
+          <div className="stat-top">
+            <span className="stat-icon">
+              <KeyIcon />
+            </span>
+            <span className="stat-hint">↘ revoked VCs</span>
+          </div>
+          <div>
+            <div className="stat-value">{revokedCount}</div>
+            <div className="stat-label">Revoked</div>
+          </div>
+        </div>
+        <div className="stat-card card">
+          <div className="stat-top">
+            <span className="stat-icon">
+              <ActivityIcon />
+            </span>
+            <span className="stat-hint">↗ delegation chains</span>
+          </div>
+          <div>
+            <div className="stat-value">{delegatedCount}</div>
+            <div className="stat-label">Delegated</div>
+          </div>
+        </div>
       </div>
 
       {subjectDidFilter && (
@@ -109,13 +170,24 @@ export function AgentsPage() {
 
       {toast && (
         <p role="status" className="toast">
-          {toast} <button type="button" onClick={() => setToast(null)}>Dismiss</button>
+          {toast}{' '}
+          <button type="button" onClick={() => setToast(null)}>
+            Dismiss
+          </button>
         </p>
       )}
 
-      {loading && <p>Loading agents…</p>}
+      {loading && <p className="loading-note">Loading agents…</p>}
       {error && <p role="alert">{error}</p>}
-      {!loading && !error && <AgentList agents={agents} onSelect={handleSelect} />}
+      {!loading && !error && (
+        <div className="card table-card">
+          <AgentList
+            agents={agents}
+            onSelect={handleSelect}
+            selectedVcId={selected?.vcId}
+          />
+        </div>
+      )}
 
       {selected && (
         <AgentDetailPanel

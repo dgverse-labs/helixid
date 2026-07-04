@@ -27,7 +27,10 @@ export function AgentDetailPanel({
   const otherVCs = history.filter((vc) => vc.vcId !== summary.vcId);
 
   return (
-    <section className="agent-detail" aria-label={`Agent ${summary.agentName ?? summary.vcId}`}>
+    <section
+      className="agent-detail card"
+      aria-label={`Agent ${summary.agentName ?? summary.vcId}`}
+    >
       <header className="agent-detail-header">
         <h2>{summary.agentName ?? summary.subjectDid}</h2>
         <button type="button" onClick={onClose}>
@@ -36,31 +39,43 @@ export function AgentDetailPanel({
       </header>
 
       <dl>
-        <dt>DID</dt>
-        <dd>{summary.subjectDid}</dd>
-        <dt>VC ID</dt>
-        <dd>{summary.vcId}</dd>
-        <dt>Status</dt>
-        <dd>
-          <span className={`status-badge status-${status}`}>{status}</span>
-        </dd>
-        <dt>Scopes</dt>
-        <dd>
-          {summary.scopes.map((scope) => (
-            <span key={scope} className="scope-chip">
-              {scope}
-            </span>
-          ))}
-        </dd>
-        <dt>Issued</dt>
-        <dd>{summary.issuedAt}</dd>
-        <dt>Expires</dt>
-        <dd>{summary.expiresAt}</dd>
+        <div className="detail-pair">
+          <dt>DID</dt>
+          <dd>{summary.subjectDid}</dd>
+        </div>
+        <div className="detail-pair">
+          <dt>VC ID</dt>
+          <dd>{summary.vcId}</dd>
+        </div>
+        <div className="detail-pair">
+          <dt>Status</dt>
+          <dd>
+            <span className={`status-badge status-${status}`}>{status}</span>
+          </dd>
+        </div>
+        <div className="detail-pair">
+          <dt>Scopes</dt>
+          <dd>
+            {summary.scopes.map((scope) => (
+              <span key={scope} className="scope-chip">
+                {scope}
+              </span>
+            ))}
+          </dd>
+        </div>
+        <div className="detail-pair">
+          <dt>Issued</dt>
+          <dd>{summary.issuedAt}</dd>
+        </div>
+        <div className="detail-pair">
+          <dt>Expires</dt>
+          <dd>{summary.expiresAt}</dd>
+        </div>
         {summary.parentVcId && (
-          <>
+          <div className="detail-pair">
             <dt>Delegated from</dt>
             <dd>{summary.parentVcId}</dd>
-          </>
+          </div>
         )}
       </dl>
 
@@ -75,13 +90,14 @@ export function AgentDetailPanel({
 
       <h3>Credential history</h3>
       {otherVCs.length === 0 ? (
-        <p>No prior credentials for this DID.</p>
+        <p className="audit-empty">No prior credentials for this DID.</p>
       ) : (
-        <ul>
+        <ul className="history-list">
           {otherVCs.map((vc) => (
             <li key={vc.vcId}>
-              {vc.vcId} — <span className={`status-badge status-${vc.status}`}>{vc.status}</span>{' '}
-              (issued {vc.issuedAt})
+              {vc.vcId} —{' '}
+              <span className={`status-badge status-${vc.status}`}>{vc.status}</span>{' '}
+              <span className="history-date">issued {vc.issuedAt}</span>
             </li>
           ))}
         </ul>

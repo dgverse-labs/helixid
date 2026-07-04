@@ -57,7 +57,12 @@ export function ServicesPage() {
   return (
     <div className="services-page">
       <div className="page-header">
-        <h1>Services</h1>
+        <div>
+          <h1>Services</h1>
+          <p className="page-subtitle">
+            Registered verifier services that accept presentations from your agents.
+          </p>
+        </div>
         <button type="button" onClick={() => void loadServices()}>
           Refresh
         </button>
@@ -65,16 +70,25 @@ export function ServicesPage() {
 
       {toast && (
         <p role="status" className="toast">
-          {toast} <button type="button" onClick={() => setToast(null)}>Dismiss</button>
+          {toast}{' '}
+          <button type="button" onClick={() => setToast(null)}>
+            Dismiss
+          </button>
         </p>
       )}
 
-      {loading && <p>Loading services…</p>}
+      {loading && <p className="loading-note">Loading services…</p>}
       {error && <p role="alert">{error}</p>}
-      {!loading && !error && <ServiceList services={services} />}
+      {!loading && !error && (
+        <div className="card table-card">
+          <ServiceList services={services} />
+        </div>
+      )}
 
-      <h2>Register a service</h2>
-      <ServiceForm onSubmit={handleRegister} submitting={submitting} />
+      <div className="card form-card" style={{ marginTop: 22 }}>
+        <h2>Register a service</h2>
+        <ServiceForm onSubmit={handleRegister} submitting={submitting} />
+      </div>
     </div>
   );
 }
