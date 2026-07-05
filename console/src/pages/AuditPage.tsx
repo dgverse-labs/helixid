@@ -84,7 +84,7 @@ export function AuditPage() {
             {entries.map((entry) => (
               <li key={entry.id} className={`audit-entry tone-${tone(entry.eventType)}`}>
                 <div className="audit-entry-top">
-                  <span className="audit-event-type">{entry.eventType}</span>{' '}
+                  <span className="audit-event-type">{entry.eventType.replaceAll('_', ' ')}</span>{' '}
                   <time
                     dateTime={entry.timestamp}
                     title={new Date(entry.timestamp).toLocaleString()}

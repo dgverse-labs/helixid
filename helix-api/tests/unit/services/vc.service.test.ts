@@ -153,6 +153,33 @@ describe('VCService Branch Coverage', () => {
       ).rejects.toMatchObject({ code: ErrorCode.VALIDATION_ERROR });
     });
 
+    it('accepts any well-formed privilege scope', async () => {
+      repository.findStatusListById.mockResolvedValue({
+        id: 'l1',
+        nextIndex: 0,
+        encodedList: validStatusList,
+      });
+      repository.claimNextIndex.mockResolvedValue({ list: { id: 'l1' }, claimedIndex: 0 });
+      repository.createVc.mockResolvedValue({ vcId: 'v1', vcJson: {} });
+
+      await expect(
+        service.issueVC(
+          {
+            subjectDid: 'did:1',
+            subjectType: 'agent',
+            agentName: 'Agent One',
+            privilegeScopes: ['read:flights'],
+          },
+          'req-1',
+        ),
+      ).resolves.toMatchObject({ vcId: expect.stringMatching(/^vc:helix:/) });
+      expect(repository.createVc).toHaveBeenCalledWith(
+        expect.objectContaining({
+          privilegeScopes: ['read:flights'],
+        }),
+      );
+    });
+
     it('throws ISSUER_SIGNING_KEY_MISMATCH before claiming an index if issuer DID key differs', async () => {
       const mismatchedIssuerDocument = buildDIDDocument(issuerDid, derivePublicKey('b'.repeat(64)));
       didService.resolveDID.mockImplementation((did: string) => {

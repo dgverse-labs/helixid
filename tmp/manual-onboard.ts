@@ -3,7 +3,7 @@ import { AgentWallet } from '../helix-sdk-js/src/wallet/AgentWallet.js';
 
 const API_BASE_URL = process.env.HELIX_API_URL ?? 'http://localhost:3000';
 const BOOTSTRAP_TOKEN =
-  process.env.HELIX_BOOTSTRAP_TOKEN ?? 'enroll:8b37ab734afdc283255143f7';
+  process.env.HELIX_BOOTSTRAP_TOKEN ?? 'enroll:712f7abaeeb9e385ed52bcb9';
 const WALLET_PASSPHRASE = process.env.WALLET_PASSPHRASE ?? 'manual-passphrase';
 const WALLET_FILE_PATH = process.argv[2] ?? './wallet.enc';
 
