@@ -5,38 +5,36 @@ import userEvent from '@testing-library/user-event';
 import { EnrollForm } from '../../../src/components/enroll/EnrollForm';
 
 describe('EnrollForm', () => {
-  it('submits the parsed input', async () => {
+  it('submits a selected scope', async () => {
     const onSubmit = vi.fn();
     render(<EnrollForm onSubmit={onSubmit} submitting={false} />);
 
     await userEvent.type(screen.getByLabelText(/agent name/i), 'billing-agent');
-    await userEvent.type(
-      screen.getByLabelText(/requested scopes/i),
-      'read:orders, write:invoices',
-    );
+    await userEvent.type(screen.getByLabelText(/requested scopes/i), 'read');
+    await userEvent.click(await screen.findByRole('button', { name: 'read:orders' }));
     await userEvent.type(screen.getByLabelText(/domains/i), 'example.com');
     await userEvent.type(screen.getByLabelText(/max delegation depth/i), '2');
     await userEvent.click(screen.getByRole('button', { name: /mint enrollment token/i }));
 
     expect(onSubmit).toHaveBeenCalledWith({
       agentName: 'billing-agent',
-      requestedScopes: ['read:orders', 'write:invoices'],
+      requestedScopes: ['read:orders'],
       requestedDomains: ['example.com'],
       maxDelegationDepth: 2,
     });
   });
 
-  it('omits optional fields left blank', async () => {
+  it('submits a custom scope that is not in the suggestions', async () => {
     const onSubmit = vi.fn();
     render(<EnrollForm onSubmit={onSubmit} submitting={false} />);
 
     await userEvent.type(screen.getByLabelText(/agent name/i), 'simple-agent');
-    await userEvent.type(screen.getByLabelText(/requested scopes/i), 'read:orders');
+    await userEvent.type(screen.getByLabelText(/requested scopes/i), 'custom:billing');
     await userEvent.click(screen.getByRole('button', { name: /mint enrollment token/i }));
 
     expect(onSubmit).toHaveBeenCalledWith({
       agentName: 'simple-agent',
-      requestedScopes: ['read:orders'],
+      requestedScopes: ['custom:billing'],
     });
   });
 

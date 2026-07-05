@@ -16,7 +16,6 @@ import {
   createStatusList,
   setBit,
   buildStatusListCredential,
-  ALLOWED_PRIVILEGE_SCOPES,
   SCOPE_PATTERN,
   base58btcEncode,
   derivePublicKey,
@@ -257,10 +256,7 @@ export class VCService implements IVCService {
       );
     }
     for (const scope of params.privilegeScopes ?? []) {
-      if (
-        !SCOPE_PATTERN.test(scope) ||
-        !(ALLOWED_PRIVILEGE_SCOPES as readonly string[]).includes(scope)
-      ) {
+      if (!SCOPE_PATTERN.test(scope)) {
         throw new HelixError(
           ErrorCode.VC_INVALID_PRIVILEGE_SCOPE,
           `Invalid scope format: ${scope}`,

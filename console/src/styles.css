@@ -768,6 +768,102 @@ tbody tr:last-child td {
   color: var(--ink-muted);
 }
 
+.scope-picker {
+  display: grid;
+  gap: 8px;
+}
+
+.scope-picker-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 7px 9px;
+  background: var(--surface);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.scope-picker-field:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.scope-picker-field input {
+  flex: 1 1 180px;
+  min-width: 120px;
+  border: 0;
+  padding: 4px 2px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.scope-picker-field input:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.scope-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.scope-chip-remove {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  line-height: 1;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.scope-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.scope-suggestion {
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface-2);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 7px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.scope-suggestion:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.field-help {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-faint);
+  font-weight: 400;
+}
+
+.field-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--danger);
+  font-weight: 600;
+}
+
 input,
 textarea,
 select {
