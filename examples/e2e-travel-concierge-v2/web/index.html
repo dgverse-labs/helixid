@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Travel Concierge — HelixID demo</title>
+    <style>
+      :root { color-scheme: light dark; }
+      * { box-sizing: border-box; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        margin: 0; background: #0f1216; color: #e8eaed; display: flex;
+        min-height: 100vh; align-items: center; justify-content: center;
+      }
+      .card {
+        width: min(680px, 92vw); background: #171b21; border: 1px solid #262c36;
+        border-radius: 14px; padding: 22px 22px 18px; box-shadow: 0 8px 40px rgba(0,0,0,.4);
+      }
+      h1 { font-size: 18px; margin: 0 0 2px; }
+      .sub { color: #9aa4b2; font-size: 13px; margin: 0 0 16px; }
+      #log { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; max-height: 46vh; overflow-y: auto; }
+      .msg { padding: 10px 12px; border-radius: 10px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; }
+      .user { background: #1f6feb22; border: 1px solid #1f6feb55; align-self: flex-end; max-width: 85%; }
+      .bot  { background: #21262d; border: 1px solid #30363d; align-self: flex-start; max-width: 90%; }
+      .meta { color: #9aa4b2; font-size: 12px; align-self: center; }
+      form { display: flex; gap: 8px; }
+      input {
+        flex: 1; padding: 11px 12px; border-radius: 10px; border: 1px solid #30363d;
+        background: #0f1216; color: #e8eaed; font-size: 14px;
+      }
+      button {
+        padding: 11px 16px; border-radius: 10px; border: 0; background: #1f6feb;
+        color: #fff; font-weight: 600; cursor: pointer; font-size: 14px;
+      }
+      button:disabled { opacity: .5; cursor: default; }
+      .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
+      .chip {
+        font-size: 12px; padding: 6px 10px; border-radius: 999px; cursor: pointer;
+        background: #0f1216; border: 1px solid #30363d; color: #c9d1d9;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Travel Concierge</h1>
+      <p class="sub">
+        An LLM agent that books flights only after HelixID verifies its credential.
+        Watch <a href="http://localhost:8080" target="_blank" rel="noreferrer" style="color:#58a6ff">Console → Audit</a> as you go.
+      </p>
+      <div id="log">
+        <div class="msg bot">Hi! Try: “Book the 6:40pm flight BA249 to London for Ada Lovelace.”</div>
+      </div>
+      <div class="chips">
+        <span class="chip" data-p="Book flight BA249 for Ada Lovelace">Book BA249 for Ada Lovelace</span>
+        <span class="chip" data-p="Book flight AI302 for Grace Hopper">Book AI302 for Grace Hopper</span>
+      </div>
+      <form id="f">
+        <input id="m" autocomplete="off" placeholder="Ask the concierge to book a flight…" />
+        <button id="s" type="submit">Send</button>
+      </form>
+    </div>
+    <script>
+      const log = document.getElementById('log');
+      const form = document.getElementById('f');
+      const input = document.getElementById('m');
+      const sendBtn = document.getElementById('s');
+      const conversationId = 'web-' + Math.random().toString(36).slice(2, 10);
+
+      function add(cls, text) {
+        const d = document.createElement('div');
+        d.className = 'msg ' + cls;
+        d.textContent = text;
+        log.appendChild(d);
+        log.scrollTop = log.scrollHeight;
+        return d;
+      }
+
+      async function send(message) {
+        add('user', message);
+        input.value = '';
+        sendBtn.disabled = true;
+        const thinking = add('meta', 'agent is thinking…');
+        try {
+          const res = await fetch('/chat', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ message, conversationId }),
+          });
+          const data = await res.json();
+          thinking.remove();
+          add('bot', data.reply || data.error || '(no reply)');
+        } catch (e) {
+          thinking.remove();
+          add('bot', 'Request failed: ' + e.message);
+        } finally {
+          sendBtn.disabled = false;
+          input.focus();
+        }
+      }
+
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const v = input.value.trim();
+        if (v) send(v);
+      });
+      document.querySelectorAll('.chip').forEach((c) =>
+        c.addEventListener('click', () => send(c.dataset.p)),
+      );
+    </script>
+  </body>
+</html>
