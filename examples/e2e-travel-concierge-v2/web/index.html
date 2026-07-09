@@ -17,12 +17,19 @@
         border-radius: 14px; padding: 22px 22px 18px; box-shadow: 0 8px 40px rgba(0,0,0,.4);
       }
       h1 { font-size: 18px; margin: 0 0 2px; }
-      .sub { color: #9aa4b2; font-size: 13px; margin: 0 0 16px; }
-      #log { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; max-height: 46vh; overflow-y: auto; }
+      .sub { color: #9aa4b2; font-size: 13px; margin: 0 0 14px; }
+      .persona-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+      .persona-bar label { font-size: 12px; color: #9aa4b2; }
+      select {
+        padding: 8px 10px; border-radius: 8px; border: 1px solid #30363d;
+        background: #0f1216; color: #e8eaed; font-size: 13px;
+      }
+      .scopes { font-size: 11px; color: #7d8795; }
+      #log { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; max-height: 44vh; overflow-y: auto; }
       .msg { padding: 10px 12px; border-radius: 10px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; }
       .user { background: #1f6feb22; border: 1px solid #1f6feb55; align-self: flex-end; max-width: 85%; }
       .bot  { background: #21262d; border: 1px solid #30363d; align-self: flex-start; max-width: 90%; }
-      .meta { color: #9aa4b2; font-size: 12px; align-self: center; }
+      .meta { color: #9aa4b2; font-size: 12px; align-self: center; font-style: italic; }
       form { display: flex; gap: 8px; }
       input {
         flex: 1; padding: 11px 12px; border-radius: 10px; border: 1px solid #30363d;
@@ -44,18 +51,24 @@
     <div class="card">
       <h1>Travel Concierge</h1>
       <p class="sub">
-        An LLM agent that books flights only after HelixID verifies its credential.
-        Watch <a href="http://localhost:8080" target="_blank" rel="noreferrer" style="color:#58a6ff">Console → Audit</a> as you go.
+        LLM agents that act only after HelixID verifies their credentials. Switch
+        the acting agent below and watch
+        <a href="http://localhost:8080" target="_blank" rel="noreferrer" style="color:#58a6ff">Console → Audit</a>.
       </p>
+      <div class="persona-bar">
+        <label for="persona">Acting agent</label>
+        <select id="persona"></select>
+        <span class="scopes" id="scopes"></span>
+      </div>
       <div id="log">
-        <div class="msg bot">Hi! Try: “Book the 6:40pm flight BA249 to London for Ada Lovelace.”</div>
+        <div class="msg bot">Hi! Try “Book flight BA249 for Ada Lovelace.” Then enroll a Search Agent (see the README) and try booking as it — HelixID will refuse.</div>
       </div>
       <div class="chips">
         <span class="chip" data-p="Book flight BA249 for Ada Lovelace">Book BA249 for Ada Lovelace</span>
-        <span class="chip" data-p="Book flight AI302 for Grace Hopper">Book AI302 for Grace Hopper</span>
+        <span class="chip" data-p="Search flights from Mumbai to London">Search MUM → LON</span>
       </div>
       <form id="f">
-        <input id="m" autocomplete="off" placeholder="Ask the concierge to book a flight…" />
+        <input id="m" autocomplete="off" placeholder="Ask the agent to search or book a flight…" />
         <button id="s" type="submit">Send</button>
       </form>
     </div>
@@ -64,7 +77,11 @@
       const form = document.getElementById('f');
       const input = document.getElementById('m');
       const sendBtn = document.getElementById('s');
+      const personaSel = document.getElementById('persona');
+      const scopesEl = document.getElementById('scopes');
       const conversationId = 'web-' + Math.random().toString(36).slice(2, 10);
+
+      let personas = [];
 
       function add(cls, text) {
         const d = document.createElement('div');
@@ -75,16 +92,61 @@
         return d;
       }
 
+      function activePersona() {
+        return personas.find((p) => p.id === personaSel.value);
+      }
+
+      function renderScopes() {
+        const p = activePersona();
+        scopesEl.textContent = p ? 'scopes: ' + (p.scopes || []).join(', ') : '';
+      }
+
+      let loadErrorShown = false;
+      async function loadPersonas() {
+        try {
+          const res = await fetch('/personas', { headers: { accept: 'application/json' } });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const data = await res.json();
+          const next = data.personas || [];
+          // Only re-render options if the set changed (avoid clobbering selection).
+          const changed = JSON.stringify(next.map((p) => p.id)) !== JSON.stringify(personas.map((p) => p.id));
+          personas = next;
+          if (changed) {
+            const current = personaSel.value;
+            personaSel.innerHTML = '';
+            for (const p of personas) {
+              const o = document.createElement('option');
+              o.value = p.id;
+              o.textContent = p.displayName;
+              personaSel.appendChild(o);
+            }
+            if (personas.some((p) => p.id === current)) personaSel.value = current;
+          }
+          renderScopes();
+          sendBtn.disabled = personas.length === 0;
+          loadErrorShown = false;
+        } catch (e) {
+          // Surface the failure instead of leaving a silently-dead UI.
+          sendBtn.disabled = true;
+          if (!loadErrorShown) {
+            add('bot', 'Could not load agents from the backend (GET /personas failed: ' + e.message + '). Is the agent service up?');
+            loadErrorShown = true;
+          }
+        }
+      }
+
       async function send(message) {
+        const persona = activePersona();
+        if (!persona) return;
         add('user', message);
         input.value = '';
         sendBtn.disabled = true;
-        const thinking = add('meta', 'agent is thinking…');
+        const thinking = add('meta', persona.displayName + ' is thinking…');
         try {
           const res = await fetch('/chat', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ message, conversationId }),
+            body: JSON.stringify({ personaId: persona.id, message, conversationId }),
           });
           const data = await res.json();
           thinking.remove();
@@ -98,6 +160,11 @@
         }
       }
 
+      personaSel.addEventListener('change', () => {
+        renderScopes();
+        const p = activePersona();
+        if (p) add('meta', '— now acting as ' + p.displayName + ' —');
+      });
       form.addEventListener('submit', (e) => {
         e.preventDefault();
         const v = input.value.trim();
@@ -106,6 +173,9 @@
       document.querySelectorAll('.chip').forEach((c) =>
         c.addEventListener('click', () => send(c.dataset.p)),
       );
+
+      loadPersonas();
+      setInterval(loadPersonas, 4000);
     </script>
   </body>
 </html>

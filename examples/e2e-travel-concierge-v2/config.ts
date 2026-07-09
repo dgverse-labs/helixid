@@ -2,23 +2,28 @@
 // single-responsibility file: the seeder enrolls, the MCP server verifies, the
 // agent presents. If you find yourself hardcoding a scope or a service name in
 // one of those, put it here instead.
+import { join } from 'node:path';
 
 /**
- * The demo maps one travel action onto one already-shipped HelixID scope.
- * HelixID's current privilege-scope allow-list is commerce-oriented, so — like
- * v1 — "book a flight" is expressed as `write:orders`. The agent is *also*
- * granted `read:catalog` (flight search) so the credential is realistic, but
- * only `write:orders` gates the protected tool.
+ * The demo maps travel actions onto already-shipped HelixID scopes. HelixID's
+ * current privilege-scope allow-list is commerce-oriented, so — like v1 —
+ * "search flights" is `read:catalog` and "book a flight" is `write:orders`.
  */
 export const SCOPES = {
-  /** Flight search — granted but not required by the one protected tool. */
+  /** Flight search — required by the search_flights tool. */
   FLIGHTS_READ: 'read:catalog',
-  /** Flight booking — the scope the MCP server enforces on `book_flight`. */
+  /** Flight booking — required by the book_flight tool. */
   FLIGHTS_BOOK: 'write:orders',
 } as const;
 
-/** Scopes the agent enrolls with (what its VC will carry). */
-export const AGENT_REQUESTED_SCOPES: string[] = [SCOPES.FLIGHTS_READ, SCOPES.FLIGHTS_BOOK];
+/** The two protected MCP tools, each gated by one scope. */
+export const TOOLS = {
+  BOOK: 'book_flight',
+  SEARCH: 'search_flights',
+} as const;
+
+/** Back-compat alias — the primary protected tool. */
+export const PROTECTED_TOOL = TOOLS.BOOK;
 
 /**
  * The service the VP is bound to. The agent stamps this into every presentation
@@ -28,11 +33,6 @@ export const AGENT_REQUESTED_SCOPES: string[] = [SCOPES.FLIGHTS_READ, SCOPES.FLI
  */
 export const TARGET_SERVICE = 'travel-booking-mcp';
 
-/** The single protected MCP tool this demo exposes. */
-export const PROTECTED_TOOL = 'book_flight';
-
-export const AGENT_NAME = 'travel-concierge-v2';
-
 /**
  * A demo user DID the agent claims to act on behalf of. In production this
  * comes from a real user-DID verification flow before the agent acts; here it
@@ -40,20 +40,41 @@ export const AGENT_NAME = 'travel-concierge-v2';
  */
 export const USER_DID = 'did:web:demo-traveler';
 
+/**
+ * The one persona enrolled at setup time, so the demo works immediately. It can
+ * both search and book. A second, booking-restricted persona ("Search Agent")
+ * is enrolled *at runtime* through the agent's admin onboarding route — that's
+ * what proves live enrollment and produces the scope-denial contrast.
+ */
+export const INITIAL_PERSONA = {
+  id: 'concierge',
+  displayName: 'Concierge Agent',
+  scopes: [SCOPES.FLIGHTS_READ, SCOPES.FLIGHTS_BOOK],
+} as const;
+
 function required(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`Missing required env var: ${name}`);
   return value;
 }
 
+const walletsDir = process.env.WALLETS_DIR ?? '/wallets';
+
+/** Encrypted wallet file for a given persona, on the shared volume. */
+export function walletPathFor(personaId: string): string {
+  return join(walletsDir, `${personaId}.enc`);
+}
+
 /** Config resolved from the environment, with container-friendly defaults. */
 export const env = {
   /** Internal HelixID API URL (compose service DNS name inside the network). */
   helixApiUrl: process.env.HELIX_API_URL ?? 'http://helix-api:3000',
-  /** Admin key — only the seeder needs it, to mint an enrollment token. */
+  /** Admin key — the seeder mints tokens; the agent guards its onboard route with it. */
   adminApiKey: process.env.HELIX_ADMIN_API_KEY ?? 'dev-admin-key-change-in-production',
-  /** Encrypted wallet file, on a volume shared between the seeder and the agent. */
-  walletPath: process.env.WALLET_PATH ?? '/wallets/agent.enc',
+  /** Directory holding per-persona wallets + the persona manifest. */
+  walletsDir,
+  /** Manifest listing every enrolled persona (survives restarts on the volume). */
+  personaManifestPath: join(walletsDir, 'personas.json'),
   walletPassphrase: process.env.WALLET_PASSPHRASE ?? 'demo-passphrase',
   /** MCP server URL the agent connects to. */
   mcpServerUrl: process.env.MCP_SERVER_URL ?? 'http://mcp-server:7100/mcp',

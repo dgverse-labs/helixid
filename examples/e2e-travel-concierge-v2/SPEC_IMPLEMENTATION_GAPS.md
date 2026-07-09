@@ -26,6 +26,50 @@ The desired behavior should preserve initial enrollment while also supporting
 runtime enrollment of another agent. A newly enrolled agent must become a
 selectable chat persona without restarting or editing configuration.
 
+## Implementation status (this document has now been actioned)
+
+The persona/runtime-enrollment gaps described below are **implemented**. Summary
+of what changed, keeping the MCP architecture (decision 1) and the recommended
+target flow:
+
+- **Persona registry** — `personas/store.ts`, a manifest-backed (`/wallets/personas.json`)
+  in-memory registry with stable ids, display names, scopes, and per-persona wallet
+  references. Shared enroll logic in `personas/enroll.ts`.
+- **Initial enrollment** — `helixid-setup/seed.ts` enrolls one persona (`concierge`,
+  `read:catalog` + `write:orders`) into its own wallet and records it in the manifest.
+- **Later enrollment** — `POST /admin/onboard` on the agent (guarded by the admin
+  key) mints a token server-side, enrolls a distinct `did:key` wallet, registers the
+  persona, and returns safe metadata. The token/wallet never reach the browser.
+- **Discover / select** — `GET /personas` returns safe metadata; the web UI renders a
+  selector and polls every 4s so runtime-enrolled agents appear without a restart.
+- **Chat contract** — `POST /chat` now requires `{ personaId, message, conversationId }`
+  and returns `404` for an unknown persona. `runChatTurn` threads the persona; the
+  selected persona's wallet signs every protected tool call.
+- **Conversation state** — history is keyed by `(conversationId, personaId)`.
+- **Search + book** — the MCP server exposes `search_flights` (`read:catalog`) and
+  `book_flight` (`write:orders`), each guarded by `@helixid/mcp`.
+- **Scope-rejection demo** — the booking-restricted Search Agent is still offered the
+  booking tool; HelixID (not UI filtering) produces the denial, and the real result
+  returns to the LLM.
+- **Verification/audit** — the MCP server calls the live `/v1/vp/verify` first, so
+  both `VP_VERIFIED` (valid) and `VP_REJECTED` (invalid/revoked) land in Console;
+  scope denials of an otherwise-valid VP are enforced by `@helixid/mcp` and logged
+  (the shipped API has no scope-aware audit event — documented, not faked).
+- **Providers** — Anthropic, OpenAI, and Azure OpenAI all preserved.
+
+**Verified on host (no LLM key needed for the trust path):** setup enrolled
+Concierge; `POST /admin/onboard` enrolled Search Agent at runtime (401 without the
+admin key, 201 with it, 409 on duplicate); `GET /personas` listed both without a
+restart; Concierge `book_flight` → CONFIRMED; Search Agent `book_flight` → refused
+("verified but lacks the write:orders scope", with a **different** signing DID);
+Search Agent `search_flights` → success; Console audit showed `VP_VERIFIED`,
+`AGENT_ONBOARDED`, `VC_ISSUED`, `ENROLLMENT_TOKEN_*` for the right subjects.
+
+**Intentionally deferred** (the gap matrix marks these optional / out of scope for
+v2): runtime **delegation** (sub-agent with reduced scope), the spec's **separate
+HTTP backend** (superseded by the MCP server per decision 1), and a persona-oriented
+**revocation walkthrough**. **Automated tests** are not yet added.
+
 ## Requirement clarification to carry into implementation
 
 Treat a "persona" as a selectable enrolled-agent context, not merely a visual

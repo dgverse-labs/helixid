@@ -82,7 +82,7 @@ services:
     environment:
       HELIX_API_URL: http://helix-api:3000
       HELIX_ADMIN_API_KEY: ${HELIX_ADMIN_API_KEY:-dev-admin-key-change-in-production}
-      WALLET_PATH: /wallets/agent.enc
+      WALLETS_DIR: /wallets
       WALLET_PASSPHRASE: ${WALLET_PASSPHRASE:-demo-passphrase}
     volumes:
       - wallets:/wallets
@@ -125,9 +125,12 @@ services:
       AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-}
       AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-10-21}
       HELIX_API_URL: http://helix-api:3000
+      # The agent guards its /admin/onboard route with this key and uses it as
+      # the operator credential; enrollment tokens are minted server-side.
+      HELIX_ADMIN_API_KEY: ${HELIX_ADMIN_API_KEY:-dev-admin-key-change-in-production}
       MCP_SERVER_URL: http://mcp-server:7100/mcp
       AGENT_PORT: "4000"
-      WALLET_PATH: /wallets/agent.enc
+      WALLETS_DIR: /wallets
       WALLET_PASSPHRASE: ${WALLET_PASSPHRASE:-demo-passphrase}
     volumes:
       - wallets:/wallets

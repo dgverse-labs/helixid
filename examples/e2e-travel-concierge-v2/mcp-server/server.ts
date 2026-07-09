@@ -1,128 +1,180 @@
-// mcp-server — a real Model Context Protocol server exposing exactly one
-// protected tool: book_flight.
+// mcp-server — a real Model Context Protocol server exposing two protected tools:
+// search_flights (needs read:catalog) and book_flight (needs write:orders).
 //
-// The only thing standing between an inbound tool call and the booking is
-// @helixid/mcp's middleware. It verifies the presented VP against the live
-// HelixID API (issuer DID resolution + status-list revocation check, all real)
-// and enforces the required scope. No VP, or the wrong scope, and the tool never
-// runs. That is the whole point: this is not "the server trusts the caller
-// because it sent a request" — it is a cryptographically enforced decision.
+// The only thing standing between an inbound tool call and the action is HelixID.
+// For every call the server:
+//   1. submits the presented VP to the live API's /v1/vp/verify — this is the
+//      authoritative identity/revocation check AND what writes the audit event
+//      (VP_VERIFIED on success, VP_REJECTED on an invalid/revoked/forged VP), so
+//      both accepted and rejected verifications show up in Console; then
+//   2. runs @helixid/mcp's middleware to enforce the tool's required scope.
+// No VP, an invalid VP, or the wrong scope, and the tool never runs. This is not
+// "the server trusts the caller because it sent a request" — it is a
+// cryptographically enforced, audited decision.
 import 'dotenv/config';
 import express from 'express';
 import { randomUUID } from 'node:crypto';
-import { z } from 'zod';
+import { z, type ZodRawShape } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { helixidMCPMiddleware } from '@helixid/mcp';
-import type { SignedVP } from '@helixid/core';
-import { PROTECTED_TOOL, SCOPES, TARGET_SERVICE, env } from '../config.js';
+import { InsufficientScopeError, type SignedVP } from '@helixid/core';
+import { SCOPES, TARGET_SERVICE, TOOLS, env } from '../config.js';
 
 function log(message: string): void {
   console.log(`[${new Date().toISOString()}] [MCP] ${message}`);
 }
 
-// The @helixid/mcp gate: verify the VP against the live API and require the
-// booking scope. This is the enforcement decision — it throws on any failure.
-const requireBookingScope = helixidMCPMiddleware({
-  requiredScopes: [SCOPES.FLIGHTS_BOOK],
-  allowSelfSigned: false,
-});
+type CallResult = {
+  isError?: boolean;
+  content: { type: 'text'; text: string }[];
+  structuredContent?: Record<string, unknown>;
+};
+
+function deny(tool: string, reason: string): CallResult {
+  log(`DENIED  ${tool}  ${reason}`);
+  return {
+    isError: true,
+    content: [{ type: 'text', text: `Refused by HelixID: ${reason}.` }],
+  };
+}
+
+function isScopeError(err: unknown): boolean {
+  return (
+    err instanceof InsufficientScopeError ||
+    (err instanceof Error && err.constructor.name === 'InsufficientScopeError') ||
+    (typeof err === 'object' && err !== null && (err as { code?: string }).code === 'INSUFFICIENT_SCOPE')
+  );
+}
 
 /**
- * After the gate passes, submit the same presentation to the live API's
- * (unauthenticated) /v1/vp/verify. The API re-verifies it authoritatively and
- * writes a VP_VERIFIED audit event — which is what makes this exact step show up
- * in Console's audit view. (The @helixid/mcp middleware verifies locally and
- * does not itself emit an audit event — see the README "shipped-capability
- * gaps" note.)
+ * Submit the presentation to the live API's /v1/vp/verify. On success the API
+ * writes a VP_VERIFIED audit event and returns the agent DID; on failure it
+ * writes VP_REJECTED and this throws. Either way the verification is real and
+ * lands in Console.
  */
-async function recordVerificationInConsole(
-  signedVP: SignedVP,
-): Promise<{ agentDid: string; verifiedAt: string }> {
+async function verifyWithApi(signedVP: SignedVP): Promise<{ agentDid: string; verifiedAt: string }> {
   const res = await fetch(`${env.helixApiUrl}/v1/vp/verify`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ signedVP }),
   });
-  const body = (await res.json()) as {
-    valid?: boolean;
-    agentDid?: string;
-    verifiedAt?: string;
-    error?: unknown;
-  };
+  const body = (await res.json()) as { valid?: boolean; agentDid?: string; verifiedAt?: string; error?: unknown };
   if (!res.ok || body.valid !== true) {
-    throw new Error(`API /v1/vp/verify rejected the presentation: HTTP ${res.status} ${JSON.stringify(body)}`);
+    const reason =
+      typeof body.error === 'object' && body.error !== null
+        ? JSON.stringify(body.error)
+        : `HTTP ${res.status}`;
+    throw new Error(reason);
   }
   return { agentDid: body.agentDid ?? 'unknown', verifiedAt: body.verifiedAt ?? new Date().toISOString() };
 }
 
-// Build a fresh MCP server per request (stateless mode). The single tool's
-// handler runs the HelixID gate before doing any work.
-function buildServer(): McpServer {
-  const server = new McpServer({ name: 'travel-booking-mcp', version: '0.1.0' });
+interface GuardedTool {
+  name: string;
+  requiredScope: string;
+  title: string;
+  description: string;
+  inputSchema: ZodRawShape;
+  run: (args: Record<string, unknown>, agentDid: string) => { text: string; structured: Record<string, unknown> };
+}
+
+function registerGuardedTool(server: McpServer, tool: GuardedTool): void {
+  const gate = helixidMCPMiddleware({ requiredScopes: [tool.requiredScope], allowSelfSigned: false });
 
   server.registerTool(
-    PROTECTED_TOOL,
+    tool.name,
     {
-      title: 'Book a flight',
-      description:
-        'Book a specific flight for a named passenger. Requires a HelixID verifiable presentation carrying the write:orders scope.',
-      inputSchema: {
-        flightId: z.string().describe('The flight identifier to book, e.g. BA249'),
-        passengerName: z.string().describe('Full name of the passenger'),
-        // Attached programmatically by the calling agent via attachHelixVP.
-        // Optional in the schema so the HelixID layer — not JSON-schema
-        // validation — is what reports a missing presentation.
-        _helixVP: z.any().optional(),
-      },
+      title: tool.title,
+      description: tool.description,
+      // _helixVP is attached programmatically by the agent (optional in the
+      // schema so the HelixID layer — not JSON-schema validation — reports a
+      // missing presentation).
+      inputSchema: { ...tool.inputSchema, _helixVP: z.any().optional() },
     },
-    async (args) => {
-      const { flightId, passengerName, _helixVP } = args as {
-        flightId: string;
-        passengerName: string;
-        _helixVP?: SignedVP;
-      };
-
-      // 1) The enforcement gate. Verifies signature, issuer, revocation, expiry,
-      //    and requires write:orders — all against the live API. Throws on any
-      //    failure.
-      const toolCall = { name: PROTECTED_TOOL, input: { flightId, passengerName, _helixVP } };
-      try {
-        await requireBookingScope(toolCall);
-      } catch (err) {
-        const reason = err instanceof Error ? `${err.constructor.name}: ${err.message}` : String(err);
-        log(`DENIED  ${PROTECTED_TOOL}(${flightId})  ${reason}`);
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Booking refused by HelixID: ${reason}. The presentation is missing, invalid, revoked, or lacks the write:orders scope.`,
-            },
-          ],
-        };
+    async (args: Record<string, unknown>) => {
+      const vp = args._helixVP as SignedVP | undefined;
+      if (!vp) {
+        return deny(tool.name, 'no verifiable presentation was supplied');
       }
 
-      // 2) Persist the authoritative verification so it appears in Console audit.
-      const { agentDid, verifiedAt } = await recordVerificationInConsole(_helixVP as SignedVP);
-      log(`GRANTED ${PROTECTED_TOOL}(${flightId}) for "${passengerName}"  agent=${agentDid}  verifiedAt=${verifiedAt}`);
+      // 1) Authoritative verification via the live API (writes the audit event).
+      let verified: { agentDid: string; verifiedAt: string };
+      try {
+        verified = await verifyWithApi(vp);
+      } catch (err) {
+        return deny(tool.name, `presentation did not verify (${err instanceof Error ? err.message : String(err)})`);
+      }
 
-      // 3) Do the protected thing.
-      const bookingId = `BKG-${randomUUID().slice(0, 8).toUpperCase()}`;
+      // 2) Scope authorization via @helixid/mcp.
+      try {
+        await gate({ name: tool.name, input: args });
+      } catch (err) {
+        if (isScopeError(err)) {
+          return deny(
+            tool.name,
+            `agent ${verified.agentDid} is verified but lacks the ${tool.requiredScope} scope`,
+          );
+        }
+        return deny(tool.name, `authorization failed (${err instanceof Error ? err.message : String(err)})`);
+      }
+
+      // 3) Authorized → do the protected thing.
+      log(`GRANTED ${tool.name}  agent=${verified.agentDid}  verifiedAt=${verified.verifiedAt}`);
+      const out = tool.run(args, verified.agentDid);
+      return { content: [{ type: 'text', text: out.text }], structuredContent: out.structured };
+    },
+  );
+}
+
+function buildServer(): McpServer {
+  const server = new McpServer({ name: 'travel-booking-mcp', version: '0.2.0' });
+
+  registerGuardedTool(server, {
+    name: TOOLS.SEARCH,
+    requiredScope: SCOPES.FLIGHTS_READ,
+    title: 'Search flights',
+    description: 'Search available flights. Requires a HelixID presentation carrying read:catalog.',
+    inputSchema: {
+      origin: z.string().describe('Origin city or airport code'),
+      destination: z.string().describe('Destination city or airport code'),
+      date: z.string().optional().describe('Optional travel date, YYYY-MM-DD'),
+    },
+    run: (args, agentDid) => {
+      const origin = String(args.origin ?? '');
+      const destination = String(args.destination ?? '');
+      const flights = [
+        { flightId: 'BA249', carrier: 'British Airways', origin, destination, departs: '18:40' },
+        { flightId: 'AI302', carrier: 'Air India', origin, destination, departs: '09:15' },
+      ];
+      return {
+        text: JSON.stringify({ flights, searchedBy: agentDid }),
+        structured: { flights, searchedBy: agentDid },
+      };
+    },
+  });
+
+  registerGuardedTool(server, {
+    name: TOOLS.BOOK,
+    requiredScope: SCOPES.FLIGHTS_BOOK,
+    title: 'Book a flight',
+    description: 'Book a specific flight for a passenger. Requires a HelixID presentation carrying write:orders.',
+    inputSchema: {
+      flightId: z.string().describe('The flight identifier to book, e.g. BA249'),
+      passengerName: z.string().describe('Full name of the passenger'),
+    },
+    run: (args, agentDid) => {
       const booking = {
-        bookingId,
-        flightId,
-        passengerName,
+        bookingId: `BKG-${randomUUID().slice(0, 8).toUpperCase()}`,
+        flightId: String(args.flightId ?? ''),
+        passengerName: String(args.passengerName ?? ''),
         status: 'CONFIRMED',
         verifiedAgent: agentDid,
         targetService: TARGET_SERVICE,
       };
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify(booking) }],
-        structuredContent: booking,
-      };
+      return { text: JSON.stringify(booking), structured: booking };
     },
-  );
+  });
 
   return server;
 }
@@ -130,7 +182,7 @@ function buildServer(): McpServer {
 const app = express();
 app.use(express.json({ limit: '2mb' }));
 
-app.get('/health', (_req, res) => res.json({ status: 'ok', tool: PROTECTED_TOOL }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', tools: [TOOLS.SEARCH, TOOLS.BOOK] }));
 
 // Stateless Streamable HTTP: one server + transport per POST, closed on response.
 app.post('/mcp', async (req, res) => {
@@ -162,5 +214,5 @@ app.delete('/mcp', methodNotAllowed);
 
 app.listen(env.mcpPort, '0.0.0.0', () => {
   log(`travel-booking MCP server listening on :${env.mcpPort}/mcp`);
-  log(`Guarding tool "${PROTECTED_TOOL}" with @helixid/mcp (requires ${SCOPES.FLIGHTS_BOOK}).`);
+  log(`Guarding ${TOOLS.SEARCH} (needs ${SCOPES.FLIGHTS_READ}) and ${TOOLS.BOOK} (needs ${SCOPES.FLIGHTS_BOOK}) with @helixid/mcp.`);
 });

@@ -10,5 +10,11 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["config.ts", "helixid-setup/**/*.ts", "mcp-server/**/*.ts", "agent/**/*.ts"]
+  "include": [
+    "config.ts",
+    "personas/**/*.ts",
+    "helixid-setup/**/*.ts",
+    "mcp-server/**/*.ts",
+    "agent/**/*.ts"
+  ]
 }
