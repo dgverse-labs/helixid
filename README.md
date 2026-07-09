@@ -257,65 +257,88 @@ Full round trip. No issuer, no API call, no Hedera. When ready for production, s
 
 ### Full Demo (self-hosted, Travel Concierge)
 
-See HelixID enforce scoped access, delegation, and revocation against a real
-AI travel-booking agent — with a live audit trail of every trust decision.
+See a real LLM travel agent enroll with HelixID, receive a scoped credential,
+and call a protected MCP booking tool. The booking runs only after
+`@helixid/mcp` verifies the agent's presentation against the live HelixID API.
 
-Prefer a guided walkthrough? **[Try it on our website →](https://dgverse.in/helixid/try-it-out)**
-Same demo, no local setup.
-
-To run it yourself:
+<!-- Prefer a guided walkthrough? **[Try it on our website →](https://dgverse.in/helixid/try-it-out)**
+Same demo, no local setup. -->
 
 **Step 1 — Get an LLM API key**
 
-The concierge agent needs access to an LLM. Grab a free key from one of:
+The concierge uses a real LLM to decide when to call the booking tool. Obtain a
+key from Anthropic, OpenAI, or Azure OpenAI:
 
 - [Anthropic Console](https://console.anthropic.com/settings/keys)
 - [OpenAI Platform](https://platform.openai.com/api-keys)
 
 **Step 2 — Get the demo**
 
-Download the demo package:
+```bash
+git clone https://github.com/dgverse-labs/helixid.git
+cd helixid
+cd examples/e2e-travel-concierge-v2
+cp .env.example .env
+```
 
-[helixid-travel-concierge-demo.zip](#) — pre-filled `.env` with working demo defaults (LLM key still manual).
-
-Unzip it, then set your key:
+Edit `.env` and add your provider and API key:
 
 ```bash
-# --- LLM Provider ---
-# Which LLM to use: "anthropic" (default) or "openai".
-LLM_PROVIDER=anthropic
-
-# LLM API key obtained from your LLM provider.
-LLM_API_KEY=your-llm-api-key
+LLM_PROVIDER=anthropic # anthropic (default) | openai | azure
+LLM_API_KEY=your-provider-key
 ```
 
 **Step 3 — Run it**
 
 ```bash
-docker-compose up
+docker compose up --build
 ```
 
-This starts the issuer API (sqlite + in-memory cache + `did:web`), the
-**HelixID Console**, the travel-concierge web app, and two pre-provisioned
-agent wallets. A one-shot setup service pre-registers the booking backend as
-a known service, seeds scopes, pre-onboards the demo agents, and seeds a
-status list — fully wired, nothing else to configure.
+This starts the real issuer API with SQLite and local `did:key` identities,
+HelixID Console, a protected MCP server, the LLM agent, and the web chat. A
+one-shot setup service enrolls one agent, issues its credential, saves its
+encrypted wallet to the shared volume, and exits.
 
-Open **http://localhost:5173** for the demo. The terminal will also print a
-URL for the **Console** — the operator view where you'll revoke credentials
-and watch enrollment happen live in Step 4.
+Open:
 
-**Step 4 — Try the security patterns**
+| URL | What |
+| --- | --- |
+| **http://localhost:8090** | Travel Concierge chat |
+| **http://localhost:8080** | HelixID Console — sign in with `admin` / `admin`, then open **Audit** |
 
-| Scenario | What it shows |
-|---|---|
-| **Search vs. Book** | The Search Agent can look up flights but its VP is rejected when it tries to book — scope enforcement, not a role flag in a database. |
-| **Delegate to a Sub-Agent** | The Concierge Agent delegates a reduced, time-boxed credential to a search sub-agent. The sub-agent can search, but can't book — even though it inherited from an agent that could. |
-| **Revoke Mid-Flight** | An operator revokes the Concierge Agent's credential while it's active. Its very next request is rejected — no key rotation, anywhere. |
-| **Onboard a New Agent, Live** | From the Console, mint a bootstrap token and watch a brand-new agent enroll and receive its VC in real time — the only scenario that isn't pre-seeded. |
+**Step 4 — Book a flight**
 
-Every action above appears in real time in the **Console's audit panel**, so
-you can watch exactly which credential authorized which action, and when.
+In the chat, select a suggestion or type:
+
+> **Book flight BA249 for Ada Lovelace**
+
+The LLM calls `book_flight`, the agent signs a fresh VP locally, and the MCP
+server verifies the credential and its `write:orders` scope before creating the
+booking. Refresh **Console → Audit** to see the enrollment, credential issuance,
+and successful `VP_VERIFIED` event.
+
+To exercise the denial path, call the MCP tool without a presentation:
+
+```bash
+curl -s http://localhost:7100/mcp \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call",
+       "params":{"name":"book_flight","arguments":{"flightId":"BA249","passengerName":"Mallory"}}}'
+```
+
+The protected tool refuses the booking because HelixID did not receive a valid
+presentation.
+
+> The current v2 demo intentionally has one pre-enrolled agent and one booking
+> tool. Persona switching, enrolling a different agent at runtime, delegation,
+> and the guided revocation scenario are planned but are not implemented yet.
+
+Reset all demo state with:
+
+```bash
+docker compose down -v
+```
 
 ---
 
