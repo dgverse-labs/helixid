@@ -21,17 +21,21 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      # setup-node's pnpm cache integration calls `pnpm store path`, so pnpm
+      # must already be available on PATH before setup-node runs.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.2
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
           cache: "pnpm"
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Update npm for trusted publishing
         run: npm install --global npm@latest
@@ -104,12 +108,22 @@ jobs:
             --filter "./${{ steps.release.outputs.directory }}..." \
             build
 
-      - name: Inspect package
+      - name: Pack package
+        id: pack
         if: steps.npm-check.outputs.exists == 'false'
         working-directory: ${{ steps.release.outputs.directory }}
-        run: npm pack --dry-run
+        shell: bash
+        run: |
+          pnpm pack --pack-destination "$RUNNER_TEMP"
+
+          PACKAGE_FILE="${{ steps.release.outputs.name }}"
+          PACKAGE_FILE="${PACKAGE_FILE#@}"
+          PACKAGE_FILE="${PACKAGE_FILE/\//-}-${{ steps.release.outputs.version }}.tgz"
+          TARBALL="$RUNNER_TEMP/$PACKAGE_FILE"
+
+          test -f "$TARBALL"
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
 
       - name: Publish package
         if: steps.npm-check.outputs.exists == 'false'
-        working-directory: ${{ steps.release.outputs.directory }}
-        run: npm publish --access public --no-git-checks
+        run: npm publish "${{ steps.pack.outputs.tarball }}" --access public
