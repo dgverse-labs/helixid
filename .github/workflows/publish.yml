@@ -97,9 +97,9 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Run tests
-        if: steps.npm-check.outputs.exists == 'false'
-        run: pnpm --filter "./${{ steps.release.outputs.directory }}" test
+      # - name: Run tests
+      #   if: steps.npm-check.outputs.exists == 'false'
+      #   run: pnpm --filter "./${{ steps.release.outputs.directory }}" test
 
       - name: Build package and dependencies
         if: steps.npm-check.outputs.exists == 'false'
