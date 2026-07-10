@@ -141,14 +141,14 @@ importers:
         specifier: ^0.68.0
         version: 0.68.0(zod@3.25.76)
       '@helixid/core':
-        specifier: workspace:*
-        version: link:../../helix-core
+        specifier: ^0.1.5
+        version: 0.1.5
       '@helixid/mcp':
-        specifier: workspace:*
-        version: link:../../packages/mcp
+        specifier: ^0.1.0
+        version: 0.1.0(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76))
       '@helixid/sdk-js':
-        specifier: workspace:*
-        version: link:../../helix-sdk-js
+        specifier: ^0.1.1
+        version: 0.1.1
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
@@ -958,6 +958,9 @@ packages:
 
   '@helixid/core@0.1.0':
     resolution: {integrity: sha512-HAD5LAL1NsmtEE5qAK7bBKmwOq0x72u6m9E7ZG9Ac+L/sTwIavd9gz6G4XqNifkW1QBdOs8A8XvuxesYQVt13w==}
+
+  '@helixid/core@0.1.5':
+    resolution: {integrity: sha512-mdqBzfe1katc0BbcWU0jKTWkSWxvizryknFQiiPEnSYI+xsbCa5SLLIAH0CUgdIH0C1EITnqCpzE1KfX/mcLvQ==}
 
   '@helixid/did-hedera@0.1.0':
     resolution: {integrity: sha512-Gp1nEIGpXN9Dyak4aft525skH0yPRaf2DmlsA2VOIhKDffwlTJJLVhw4s9tGx4GkiRMgaVqmzgYl8Wac/8qZSg==}
@@ -4904,10 +4907,17 @@ snapshots:
       '@noble/hashes': 1.8.0
       zod: 3.25.76
 
+  '@helixid/core@0.1.5':
+    dependencies:
+      '@noble/curves': 1.9.7
+      '@noble/ed25519': 2.3.0
+      '@noble/hashes': 1.8.0
+      zod: 3.25.76
+
   '@helixid/did-hedera@0.1.0(bn.js@5.2.3)':
     dependencies:
       '@hashgraph/sdk': 2.81.0(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
-      '@helixid/core': 0.1.0
+      '@helixid/core': 0.1.5
       '@hiero-did-sdk/hcs': 0.1.8(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
       '@hiero-did-sdk/registrar': 0.1.8(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
       '@hiero-did-sdk/resolver': 0.1.8(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
@@ -4919,14 +4929,14 @@ snapshots:
 
   '@helixid/langchain@0.1.0(@langchain/core@1.1.48(openai@4.104.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))':
     dependencies:
-      '@helixid/core': 0.1.0
+      '@helixid/core': 0.1.5
       '@helixid/sdk-js': 0.1.1
     optionalDependencies:
       '@langchain/core': 1.1.48(openai@4.104.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0)
 
   '@helixid/mcp@0.1.0(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76))':
     dependencies:
-      '@helixid/core': 0.1.0
+      '@helixid/core': 0.1.5
       '@helixid/sdk-js': 0.1.1
     optionalDependencies:
       '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
