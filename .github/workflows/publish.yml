@@ -5,6 +5,10 @@ on:
     tags:
       - "core-v*"
       - "sdk-js-v*"
+      - "mcp-v*"
+      - "langchain-v*"
+      - "did-hedera-v*"
+      - "cli-v*"
 
 permissions:
   contents: read
@@ -60,6 +64,30 @@ jobs:
               PACKAGE_DIR="helix-sdk-js"
               PACKAGE_NAME="@helixid/sdk-js"
               TAG_VERSION="${TAG#sdk-js-v}"
+              ;;
+
+            mcp-v*)
+              PACKAGE_DIR="packages/mcp"
+              PACKAGE_NAME="@helixid/mcp"
+              TAG_VERSION="${TAG#mcp-v}"
+              ;;
+
+            langchain-v*)
+              PACKAGE_DIR="packages/langchain"
+              PACKAGE_NAME="@helixid/langchain"
+              TAG_VERSION="${TAG#langchain-v}"
+              ;;
+
+            did-hedera-v*)
+              PACKAGE_DIR="packages/did-hedera"
+              PACKAGE_NAME="@helixid/did-hedera"
+              TAG_VERSION="${TAG#did-hedera-v}"
+              ;;
+
+            cli-v*)
+              PACKAGE_DIR="packages/cli"
+              PACKAGE_NAME="@helixid/cli"
+              TAG_VERSION="${TAG#cli-v}"
               ;;
 
             *)
