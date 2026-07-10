@@ -10,6 +10,10 @@ restart, no config edit), switch to it in the UI, and watch HelixID **refuse** i
 booking because its credential lacks the required scope. Same request, different
 credential, different real outcome.
 
+And then you revoke the original Concierge credential while everything is still
+running. The next booking attempt is refused because the live status list now
+marks that credential revoked — no restart, no config edit, no app-side denylist.
+
 There are no mocks anywhere. If a credential is missing, invalid, revoked, or
 lacks the right scope, the action does not happen — and you can prove it.
 
@@ -35,6 +39,8 @@ Browser ◀── "Booked, BKG-…"  or  "refused: lacks write:orders" ── Ag
   it can search *and* book.
 - **Search Agent** (enrolled later, at runtime) holds only `read:catalog` → it can
   search, but HelixID refuses its bookings.
+- **Revoked Concierge Agent** still has the same local wallet, but its credential
+  status-list bit is flipped → HelixID rejects its next VP.
 
 ## Prerequisites
 
@@ -72,21 +78,20 @@ With **Concierge Agent** selected, type (or click a suggestion):
 You get a confirmation with a booking id. Refresh Console → Audit: a fresh
 **`VP_VERIFIED`** event (plus the enrollment/issuance events from setup).
 
-### 2) Enroll a second agent at runtime, then watch it get refused
+### 2) Onboard a second agent at runtime, then watch it get refused
 
-Enroll a booking-restricted **Search Agent** through the agent's admin route (the
-enrollment token is minted server-side; it never touches the browser):
+In **Console**, generate an onboard/enrollment token for a booking-restricted
+agent, for example **Search Agent** with only `read:catalog`.
 
-```sh
-curl -s -X POST http://localhost:4000/admin/onboard \
-  -H 'content-type: application/json' \
-  -H 'x-admin-api-key: dev-admin-key-change-in-production' \
-  -d '{"personaId":"search","displayName":"Search Agent"}'
-# → {"persona":{"id":"search","displayName":"Search Agent","scopes":["read:catalog"]}}
-```
+Back in the Travel Concierge web chat, click **Onboard new agent**, paste that
+Console-generated token, give it a display name such as `Search Agent`, and
+submit. The agent service consumes the token, creates an encrypted local wallet,
+and writes only local persona metadata to the manifest on the shared `wallets`
+volume. The Console/HelixID database remains the source of truth for the real
+agent credential, scopes, revocation state, and audit events.
 
-The web UI polls `/personas`, so **Search Agent** appears in the dropdown within a
-few seconds — no restart. Select it and try:
+The UI refreshes `/personas`, so **Search Agent** appears in the dropdown within
+a few seconds — no restart. Select it and try:
 
 > **Search flights from Mumbai to London** → succeeds (it has `read:catalog`).
 >
@@ -96,6 +101,26 @@ few seconds — no restart. Select it and try:
 Switch back to **Concierge Agent** and the same booking succeeds. That difference
 is produced by HelixID, not by UI filtering — the booking tool is offered to both
 agents; only the credential decides.
+
+### 3) Revoke Concierge, then retry the same booking
+
+With **Concierge Agent** selected, first run the happy-path booking so you have a
+known-good baseline. Then open **Use case 3 — Revoked credential** in the web UI
+and click **Revoke selected agent**.
+
+The Travel Concierge agent service loads the selected persona's encrypted wallet,
+reads the credential id, and calls the live HelixID admin endpoint
+`POST /v1/vcs/:vcId/revoke`. The browser never sees the wallet, VC, VP, private
+key, or admin API key.
+
+Now ask Concierge to book again:
+
+> **Book flight BA249 for Ada Lovelace**
+
+The agent still signs a fresh VP with the same local wallet, but HelixID now sees
+the revoked status-list bit and refuses the presentation. Refresh Console →
+Audit: you should see the revocation event and a rejected VP verification for the
+retry.
 
 ### Prove the enforcement is real (no LLM in the loop)
 
@@ -113,7 +138,7 @@ curl -s http://localhost:7100/mcp \
 ### Reset
 
 ```sh
-docker compose down -v      # wipes the SQLite DB, wallets, and persona manifest
+docker compose down -v      # wipes HelixID SQLite state, wallets, and persona manifest
 ```
 
 ## Configuration
@@ -125,7 +150,7 @@ docker compose down -v      # wipes the SQLite DB, wallets, and persona manifest
 | `AZURE_OPENAI_ENDPOINT` | agent | — | `azure` only, e.g. `https://<resource>.openai.azure.com` |
 | `AZURE_OPENAI_DEPLOYMENT` | agent | — | `azure` only — chat deployment name (used as the model) |
 | `AZURE_OPENAI_API_VERSION` | agent | `2024-10-21` | `azure` only |
-| `HELIX_ADMIN_API_KEY` | setup, agent, console | `dev-admin-key-change-in-production` | Mint token / guard onboard / read audit |
+| `HELIX_ADMIN_API_KEY` | setup, console | `dev-admin-key-change-in-production` | Demo admin key for Console/API admin surfaces |
 | `WALLET_PASSPHRASE` | setup, agent | `demo-passphrase` | Encrypts every persona wallet |
 
 For Azure OpenAI, set `LLM_PROVIDER=azure`, put the resource key in `LLM_API_KEY`,
@@ -140,12 +165,20 @@ they're dev values and clearly marked.
 
 - A **persona** is a selectable enrolled-agent context: its own wallet, credential,
   and scopes. The active persona's wallet signs the next protected tool call.
-- The persona registry is backed by a manifest on the shared `wallets` volume, so
+- The persona registry is app-local convenience state for this demo: it lets the
+  Travel Concierge UI list/select agents and locate each encrypted wallet file.
+  It is deliberately separate from the Console/HelixID database.
+- The Console/HelixID database remains the source of truth for real trust state:
+  enrollment, issued credentials, scopes, revocation, status lists, and audit
+  events. In a real deployment, the agent app and the organization Console would
+  be hosted separately and would not share a database.
+- The local persona registry is backed by the shared `wallets` volume today, so
   runtime-enrolled agents survive restarts and a freshly-booted agent sees them.
-- The **browser is HelixID-unaware**: it only ever sends `{ personaId, message,
-  conversationId }` and receives `{ reply }`. It never receives a wallet, VC, VP,
-  private key, or enrollment token. Runtime onboarding is an operator action
-  (admin-key-guarded), never a browser action.
+- The **browser never handles wallet material**: chat only sends `{ personaId,
+  message, conversationId }` and receives `{ reply }`. During onboarding, the
+  browser carries the one-time Console-generated token to the agent service, but
+  it never receives a wallet, VC, VP, private key, or persisted credential
+  material.
 - Conversation history is keyed by `(conversationId, personaId)`, so one agent's
   context never leaks into another's.
 
@@ -155,11 +188,11 @@ they're dev values and clearly marked.
 config.ts                 shared constants (scopes, tools, target service, wallets dir)
 personas/                 the runtime persona model
   store.ts                manifest-backed registry (list / get / add), on the shared volume
-  enroll.ts               shared enroll (mint token → did:key wallet → POST /v1/enroll)
+  enroll.ts               shared enroll (Console/setup token → did:key wallet → POST /v1/enroll)
 helixid-setup/seed.ts     run-once: enroll the Concierge persona → manifest → exit 0
 mcp-server/server.ts      real MCP server; search_flights + book_flight, each guarded by @helixid/mcp
 agent/
-  server.ts               GET /personas, POST /chat (needs personaId), POST /admin/onboard (guarded)
+  server.ts               GET /personas, POST /chat, POST /onboard-agent, POST /revoke-agent
   chat/providers/         anthropic (default) | openai | azure adapter (v1 SPEC §5.7 pattern)
   chat/runChatTurn.ts     LLM tool-loop; runs every tool call as the selected persona
   tools/protectedCall.ts  the only place a VP is created (attachHelixVP, per-persona wallet)
@@ -189,6 +222,9 @@ exists.
   upstream, that second call can be dropped.
 - **Authorization is the shipped scope/expiry/revocation check**, not OPA/Rego
   (which isn't live) — the same `verifyVP` + `requireScope` path v1 uses.
+- **Guided revocation is intentionally destructive for that demo run.** Once you
+  revoke Concierge, its existing credential will keep failing until you reset the
+  demo state with `docker compose down -v` and start again.
 - **A working API image.** Two pre-existing problems in `helix-api` make its
   shipped Docker path unusable, so this demo ships its own `docker/api.Dockerfile`
   (and does **not** modify `helix-api`):

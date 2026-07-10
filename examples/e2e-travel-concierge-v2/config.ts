@@ -42,9 +42,8 @@ export const USER_DID = 'did:web:demo-traveler';
 
 /**
  * The one persona enrolled at setup time, so the demo works immediately. It can
- * both search and book. A second, booking-restricted persona ("Search Agent")
- * is enrolled *at runtime* through the agent's admin onboarding route — that's
- * what proves live enrollment and produces the scope-denial contrast.
+ * both search and book. Additional agents are enrolled at runtime from the web
+ * UI by pasting a Console-generated onboarding token.
  */
 export const INITIAL_PERSONA = {
   id: 'concierge',
@@ -69,7 +68,7 @@ export function walletPathFor(personaId: string): string {
 export const env = {
   /** Internal HelixID API URL (compose service DNS name inside the network). */
   helixApiUrl: process.env.HELIX_API_URL ?? 'http://helix-api:3000',
-  /** Admin key — the seeder mints tokens; the agent guards its onboard route with it. */
+  /** Admin key used by Console and admin API surfaces; runtime onboarding consumes Console tokens. */
   adminApiKey: process.env.HELIX_ADMIN_API_KEY ?? 'dev-admin-key-change-in-production',
   /** Directory holding per-persona wallets + the persona manifest. */
   walletsDir,

@@ -1,16 +1,18 @@
 // agent — the HTTP surface the web app talks to.
 //
-// Public surface (browser): GET /personas and POST /chat. Neither ever exposes a
-// wallet, VC, VP, private key, or enrollment token — the browser only ever sees
-// persona ids and display names.
+// Public surface (browser): GET /personas, POST /chat, POST /onboard-agent, and
+// POST /revoke-agent for the guided revocation demo. The browser may carry a
+// one-time Console-generated onboarding token, but it never receives a wallet,
+// VC, VP, private key, admin key, or persisted credential material.
 //
-// Operator surface: POST /admin/onboard, guarded by the admin key. It enrolls a
-// new agent at runtime and makes it appear in /personas — no restart, no config
-// edit. The enrollment token is minted server-side and never leaves this process.
+// Runtime onboarding consumes a token minted by HelixID Console. This app only
+// keeps local persona convenience state (manifest + encrypted wallet); HelixID
+// remains the source of truth for enrollment, scopes, revocation, and audit.
 import 'dotenv/config';
 import express from 'express';
+import { AgentWallet, HelixClient } from '@helixid/sdk-js';
 import { runChatTurn } from './chat/runChatTurn.js';
-import { SCOPES, env } from '../config.js';
+import { env } from '../config.js';
 import { enrollPersona } from '../personas/enroll.js';
 import { addPersona, getPersona, hasPersona, listPersonas, loadPersonas } from '../personas/store.js';
 import { toPublic } from '../personas/types.js';
@@ -57,37 +59,58 @@ app.post('/chat', async (req, res) => {
   }
 });
 
-// ── Operator: enroll another agent at runtime ──────────────────────────────
+// ── Public: consume a Console-generated token and enroll another agent ─────
 interface OnboardBody {
   personaId?: string;
   displayName?: string;
-  scopes?: string[];
   bootstrapToken?: string;
 }
 
-app.post('/admin/onboard', async (req, res) => {
-  const submitted = req.header('x-admin-api-key');
-  if (!submitted || submitted !== env.adminApiKey) {
-    return res.status(401).json({ error: 'admin key required' });
+function slugify(value: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return /^[a-z]/.test(slug) ? slug : `agent-${slug || Date.now()}`;
+}
+
+function uniquePersonaId(base: string): string {
+  if (!hasPersona(base)) return base;
+  for (let i = 2; i < 1000; i += 1) {
+    const candidate = `${base}-${i}`;
+    if (!hasPersona(candidate)) return candidate;
+  }
+  return `${base}-${Date.now()}`;
+}
+
+app.post('/onboard-agent', async (req, res) => {
+  const { personaId, displayName, bootstrapToken } = req.body as OnboardBody;
+  if (!bootstrapToken || typeof bootstrapToken !== 'string') {
+    return res.status(400).json({ error: 'bootstrapToken is required' });
   }
 
-  const { personaId, displayName, scopes, bootstrapToken } = req.body as OnboardBody;
-  if (!personaId || !/^[a-z][a-z0-9-]*$/.test(personaId)) {
+  const resolvedDisplayName =
+    typeof displayName === 'string' && displayName.trim()
+      ? displayName.trim()
+      : `Agent ${new Date().toISOString().slice(11, 19)}`;
+  const resolvedPersonaId =
+    typeof personaId === 'string' && personaId.trim()
+      ? personaId.trim()
+      : uniquePersonaId(slugify(resolvedDisplayName));
+
+  if (!/^[a-z][a-z0-9-]*$/.test(resolvedPersonaId)) {
     return res.status(400).json({ error: 'personaId must match ^[a-z][a-z0-9-]*$' });
   }
-  if (!displayName || typeof displayName !== 'string') {
-    return res.status(400).json({ error: 'displayName is required' });
-  }
-  if (hasPersona(personaId)) {
-    return res.status(409).json({ error: `persona "${personaId}" already exists` });
+  if (hasPersona(resolvedPersonaId)) {
+    return res.status(409).json({ error: `persona "${resolvedPersonaId}" already exists` });
   }
 
   try {
     const { persona, vcId, did } = await enrollPersona({
-      id: personaId,
-      displayName,
-      // Default a runtime-onboarded agent to search-only, so it visibly cannot book.
-      scopes: Array.isArray(scopes) && scopes.length > 0 ? scopes : [SCOPES.FLIGHTS_READ],
+      id: resolvedPersonaId,
+      displayName: resolvedDisplayName,
+      scopes: [],
       bootstrapToken,
     });
     await addPersona(persona);
@@ -96,6 +119,44 @@ app.post('/admin/onboard', async (req, res) => {
   } catch (error) {
     console.error('[Agent] onboard failed:', error);
     return res.status(502).json({ error: error instanceof Error ? error.message : 'onboard_failed' });
+  }
+});
+
+// ── Demo admin action: revoke the selected persona's real credential ───────
+interface RevokeBody {
+  personaId?: string;
+}
+
+app.post('/revoke-agent', async (req, res) => {
+  const { personaId } = req.body as RevokeBody;
+  if (!personaId || typeof personaId !== 'string') {
+    return res.status(400).json({ error: 'personaId is required' });
+  }
+
+  const persona = getPersona(personaId);
+  if (!persona) {
+    return res.status(404).json({ error: `Unknown persona: ${personaId}` });
+  }
+
+  try {
+    const wallet = await AgentWallet.load(persona.walletFile, env.walletPassphrase);
+    const vc = wallet.credentials[0];
+    if (!vc?.id) {
+      return res.status(409).json({ error: `Persona "${personaId}" has no credential to revoke` });
+    }
+
+    const client = new HelixClient(env.helixApiUrl, { adminApiKey: env.adminApiKey });
+    const result = await client.revokeVC(vc.id);
+    console.log(`[Agent] Revoked persona "${persona.id}" credential ${vc.id}.`);
+    return res.json({
+      persona: toPublic(persona),
+      vcId: vc.id,
+      revoked: true,
+      revokedAt: result.revokedAt ?? new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('[Agent] revoke failed:', error);
+    return res.status(502).json({ error: error instanceof Error ? error.message : 'revoke_failed' });
   }
 });
 

@@ -299,6 +299,12 @@ HelixID Console, a protected MCP server, the LLM agent, and the web chat. A
 one-shot setup service enrolls one agent, issues its credential, saves its
 encrypted wallet to the shared volume, and exits.
 
+The Console/HelixID SQLite database is the source of truth for real agent trust
+state: enrollment, issued credentials, scopes, revocation, status lists, and
+audit events. The Travel Concierge app's persona list is only local demo state
+used to show selectable agents in the chat UI; it is not the Console database and
+does not replace HelixID's records.
+
 Open:
 
 | URL | What |
@@ -317,6 +323,22 @@ server verifies the credential and its `write:orders` scope before creating the
 booking. Refresh **Console → Audit** to see the enrollment, credential issuance,
 and successful `VP_VERIFIED` event.
 
+To onboard another agent at runtime, generate an onboard token in Console, then
+click **Onboard new agent** in the Travel Concierge chat and paste the token. The
+agent service consumes the token, creates a local encrypted wallet, adds only
+local persona metadata to the Travel Concierge manifest, and the new agent
+appears in the persona selector. The Console/HelixID database remains the source
+of truth for the real credential, scopes, revocation state, and audit trail.
+
+To exercise revocation, select **Concierge Agent**, open **Use case 3 — Revoked
+credential**, and click **Revoke selected agent**. The agent service loads the
+selected persona's wallet server-side, reads the credential id, and calls
+`POST /v1/vcs/:vcId/revoke` with the demo admin key. The browser never sees the
+wallet, VC, VP, private key, or admin key. Retry the same booking: the wallet
+still signs a VP, but HelixID rejects it because the live status list now marks
+the credential revoked. Reset with `docker compose down -v` to issue a fresh
+Concierge credential.
+
 To exercise the denial path, call the MCP tool without a presentation:
 
 ```bash
@@ -330,9 +352,8 @@ curl -s http://localhost:7100/mcp \
 The protected tool refuses the booking because HelixID did not receive a valid
 presentation.
 
-> The current v2 demo intentionally has one pre-enrolled agent and one booking
-> tool. Persona switching, enrolling a different agent at runtime, delegation,
-> and the guided revocation scenario are planned but are not implemented yet.
+> The current v2 demo includes persona switching, runtime onboarding via a
+> Console-generated token, and guided revocation. Delegation is still planned.
 
 Reset all demo state with:
 

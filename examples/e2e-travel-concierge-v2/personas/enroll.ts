@@ -1,8 +1,8 @@
 // Shared enrollment used by both the seeder (initial Concierge) and the agent's
-// runtime onboarding route (later Search Agent). One real path: mint a one-use
-// enrollment token (if not supplied), create a local did:key wallet, and enroll
-// via POST /v1/enroll — the single-roundtrip bootstrap-proof flow that needs no
-// Hedera. Nothing here is stubbed.
+// runtime onboarding route (later agents). The seeder may mint its own one-use
+// token for the default persona; runtime onboarding consumes the one-use token
+// the user generated in Console. Either way, this creates a local did:key wallet
+// and enrolls via POST /v1/enroll. Nothing here is stubbed.
 import { mkdir } from 'node:fs/promises';
 import { AgentWallet, HelixClient } from '@helixid/sdk-js';
 import { env, walletPathFor } from '../config.js';

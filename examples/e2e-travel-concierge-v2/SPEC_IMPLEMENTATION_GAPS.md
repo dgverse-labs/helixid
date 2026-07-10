@@ -51,6 +51,10 @@ target flow:
 - **Scope-rejection demo** — the booking-restricted Search Agent is still offered the
   booking tool; HelixID (not UI filtering) produces the denial, and the real result
   returns to the LLM.
+- **Revocation walkthrough** — `POST /revoke-agent` loads the selected persona's
+  wallet server-side, revokes its real VC through HelixID, and the web UI exposes
+  Use case 3 so retrying a booking with Concierge is rejected by the live status
+  list.
 - **Verification/audit** — the MCP server calls the live `/v1/vp/verify` first, so
   both `VP_VERIFIED` (valid) and `VP_REJECTED` (invalid/revoked) land in Console;
   scope denials of an otherwise-valid VP are enforced by `@helixid/mcp` and logged
@@ -66,9 +70,9 @@ Search Agent `search_flights` → success; Console audit showed `VP_VERIFIED`,
 `AGENT_ONBOARDED`, `VC_ISSUED`, `ENROLLMENT_TOKEN_*` for the right subjects.
 
 **Intentionally deferred** (the gap matrix marks these optional / out of scope for
-v2): runtime **delegation** (sub-agent with reduced scope), the spec's **separate
-HTTP backend** (superseded by the MCP server per decision 1), and a persona-oriented
-**revocation walkthrough**. **Automated tests** are not yet added.
+v2): runtime **delegation** (sub-agent with reduced scope) and the spec's
+**separate HTTP backend** (superseded by the MCP server per decision 1).
+**Automated tests** are not yet added.
 
 ## Requirement clarification to carry into implementation
 
@@ -201,4 +205,3 @@ should close that final loop.
 8. The LLM attempts `book_flight`; HelixID rejects the Search Agent's real VP
    for insufficient scope; the LLM explains that real result.
 9. Switching back to Concierge makes the same booking succeed.
-
