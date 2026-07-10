@@ -58,3 +58,15 @@ export async function addPersona(persona: Persona): Promise<void> {
   await writeManifest([...merged.values()]);
   personas = merged;
 }
+
+export async function updatePersona(id: string, patch: Partial<Persona>): Promise<Persona> {
+  const onDisk = await readManifest();
+  const merged = new Map(onDisk.map((p) => [p.id, p]));
+  const current = merged.get(id);
+  if (!current) throw new Error(`Unknown persona: ${id}`);
+  const next = { ...current, ...patch };
+  merged.set(id, next);
+  await writeManifest([...merged.values()]);
+  personas = merged;
+  return next;
+}

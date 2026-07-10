@@ -141,14 +141,14 @@ importers:
         specifier: ^0.68.0
         version: 0.68.0(zod@3.25.76)
       '@helixid/core':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: workspace:*
+        version: link:../../helix-core
       '@helixid/mcp':
-        specifier: ^0.1.0
-        version: 0.1.0(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76))
+        specifier: workspace:*
+        version: link:../../packages/mcp
       '@helixid/sdk-js':
-        specifier: ^0.1.1
-        version: 0.1.1
+        specifier: workspace:*
+        version: link:../../helix-sdk-js
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
@@ -343,8 +343,8 @@ importers:
   helix-sdk-js:
     dependencies:
       '@helixid/core':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: workspace:*
+        version: link:../helix-core
       '@noble/ed25519':
         specifier: ^2.3.0
         version: 2.3.0
@@ -456,11 +456,11 @@ importers:
   packages/mcp:
     dependencies:
       '@helixid/core':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: workspace:*
+        version: link:../../helix-core
       '@helixid/sdk-js':
-        specifier: ^0.1.1
-        version: 0.1.1
+        specifier: workspace:*
+        version: link:../../helix-sdk-js
       '@modelcontextprotocol/sdk':
         specifier: '*'
         version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)

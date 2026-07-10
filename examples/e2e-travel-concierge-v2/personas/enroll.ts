@@ -12,6 +12,7 @@ export interface EnrollInput {
   id: string;
   displayName: string;
   scopes: string[];
+  maxDelegationDepth?: number;
   /** If omitted, a one-use token is minted from `scopes`. */
   bootstrapToken?: string;
 }
@@ -22,7 +23,7 @@ export interface EnrollResult {
   did: string;
 }
 
-async function mintToken(displayName: string, scopes: string[]): Promise<string> {
+async function mintToken(displayName: string, scopes: string[], maxDelegationDepth = 0): Promise<string> {
   const res = await fetch(`${env.helixApiUrl}/v1/enrollment-tokens`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -30,7 +31,7 @@ async function mintToken(displayName: string, scopes: string[]): Promise<string>
       agentName: displayName,
       requestedScopes: scopes,
       requestedDomains: [],
-      maxDelegationDepth: 0,
+      maxDelegationDepth,
     }),
   });
   const body = (await res.json()) as { token?: string; error?: unknown };
@@ -43,7 +44,7 @@ async function mintToken(displayName: string, scopes: string[]): Promise<string>
 export async function enrollPersona(input: EnrollInput): Promise<EnrollResult> {
   await mkdir(env.walletsDir, { recursive: true });
   const walletFile = walletPathFor(input.id);
-  const token = input.bootstrapToken ?? (await mintToken(input.displayName, input.scopes));
+  const token = input.bootstrapToken ?? (await mintToken(input.displayName, input.scopes, input.maxDelegationDepth));
 
   const wallet = await AgentWallet.create(walletFile, env.walletPassphrase);
   const client = new HelixClient(env.helixApiUrl);

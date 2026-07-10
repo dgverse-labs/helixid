@@ -55,10 +55,17 @@ target flow:
   wallet server-side, revokes its real VC through HelixID, and the web UI exposes
   Use case 3 so retrying a booking with Concierge is rejected by the live status
   list.
+- **Delegation walkthrough** — Use case 4 creates Planner Agent
+  (`read:catalog`, `write:orders`, `maxDelegationDepth: 1`) and Research Agent
+  with no tool scopes, delegates only `read:catalog` to Research, and makes
+  Research present that child VC for search/book attempts.
 - **Verification/audit** — the MCP server calls the live `/v1/vp/verify` first, so
   both `VP_VERIFIED` (valid) and `VP_REJECTED` (invalid/revoked) land in Console;
   scope denials of an otherwise-valid VP are enforced by `@helixid/mcp` and logged
-  (the shipped API has no scope-aware audit event — documented, not faked).
+  (the shipped API has no scope-aware audit event — documented, not faked). For
+  local delegated child VCs, the shipped API verifier cannot yet audit the child
+  chain, so the MCP server logs that API limitation and continues with local
+  SDK/MCP chain and scope enforcement.
 - **Providers** — Anthropic, OpenAI, and Azure OpenAI all preserved.
 
 **Verified on host (no LLM key needed for the trust path):** setup enrolled
@@ -69,9 +76,9 @@ restart; Concierge `book_flight` → CONFIRMED; Search Agent `book_flight` → r
 Search Agent `search_flights` → success; Console audit showed `VP_VERIFIED`,
 `AGENT_ONBOARDED`, `VC_ISSUED`, `ENROLLMENT_TOKEN_*` for the right subjects.
 
-**Intentionally deferred** (the gap matrix marks these optional / out of scope for
-v2): runtime **delegation** (sub-agent with reduced scope) and the spec's
-**separate HTTP backend** (superseded by the MCP server per decision 1).
+**Intentionally deferred** (the gap matrix marks this optional / out of scope for
+v2): the spec's **separate HTTP backend** (superseded by the MCP server per
+decision 1).
 **Automated tests** are not yet added.
 
 ## Requirement clarification to carry into implementation
@@ -113,8 +120,8 @@ should close that final loop.
 | Conversation state | Tool loop receives persona explicitly | History keyed only by `conversationId` | Bind history to persona, e.g. `(conversationId, personaId)`, or define/reset behavior on switching so identities cannot share accidental context. |
 | Search capability | `searchFlights` and `bookFlights` tools | Only `book_flight` exists | Add search tool/path if the full spec scenarios remain required. |
 | Scope rejection demo | Search persona can attempt booking and is rejected by scope enforcement | Only fully privileged agent exists; rejection shown only through direct curl with missing VP | Enroll/select an agent without booking scope while still exposing the booking tool to the LLM. Surface the real denial result back to the model. |
-| Delegation | Runtime delegated sub-agent with reduced scope and ephemeral wallet | Not implemented | Add only if the full spec remains authoritative; current v2 explicitly excludes it. |
-| Revocation scenario | Revoke concierge VC and retry live | Enforcement can check revocation, but no persona-oriented walkthrough | Add scenario documentation/testing; switching must continue to select the revoked agent's actual credential. |
+| Delegation | Runtime delegated sub-agent with reduced scope and ephemeral wallet | SDK/MCP delegation walkthrough implemented; API-side delegation issuance remains absent | Keep docs explicit that local child-chain enforcement is real, but Console/API chain audit is not yet shipped. |
+| Revocation scenario | Revoke concierge VC and retry live | Implemented as Use case 3 | Switching continues to select the revoked agent's actual credential. |
 | Service boundary | Separate HTTP backend with search/book routes | MCP server owns the protected booking tool | This is a major architectural divergence. Decide whether MCP is the accepted v2 evolution or whether the spec's backend service must be restored. Do not implement both accidentally. |
 | Verification/audit | Backend verifies locally; spec expects accepted and rejected audit events | MCP middleware verifies locally; API is called for audit only after successful verification | Denials currently do not call the audit-writing API, so rejected verification events may not appear in Console as required by the spec. |
 | Service/status setup | Register backend service and seed status list | Neither is explicitly done; current shipped API path is used | Confirm whether these setup steps are obsolete for the MCP-based v2 path or add equivalents. |
@@ -124,7 +131,7 @@ should close that final loop.
 | Tool-call history | Spec sketch omits an explicit assistant tool-call history entry | Implementation records it | Current implementation is stronger here; preserve this provider-correct behavior. |
 | Automated tests | Manual end-to-end scenarios are specified | No tests in the example package | Add focused API/unit coverage plus a repeatable manual scenario script when implementing the gaps. |
 
-## Concrete evidence in the current code
+## Original evidence before this document was actioned
 
 - `config.ts` exports singular constants: `AGENT_NAME`,
   `AGENT_REQUESTED_SCOPES`, and one `env.walletPath`.

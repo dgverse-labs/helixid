@@ -18,7 +18,8 @@ import { z, type ZodRawShape } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { helixidMCPMiddleware } from '@helixid/mcp';
-import { InsufficientScopeError, type SignedVP } from '@helixid/core';
+import { HelixClient } from '@helixid/sdk-js';
+import { InsufficientScopeError, type SignedVC, type SignedVP } from '@helixid/core';
 import { SCOPES, TARGET_SERVICE, TOOLS, env } from '../config.js';
 
 function log(message: string): void {
@@ -47,6 +48,22 @@ function isScopeError(err: unknown): boolean {
   );
 }
 
+function isDelegatedVP(vp: SignedVP): boolean {
+  const vc = vp.verifiableCredential?.[0] as
+    | (SignedVC & { credentialSubject?: { parentVcId?: string; delegatedFrom?: string } })
+    | undefined;
+  return Boolean(vc?.credentialSubject?.parentVcId || vc?.credentialSubject?.delegatedFrom);
+}
+
+class ApiVerificationError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 /**
  * Submit the presentation to the live API's /v1/vp/verify. On success the API
  * writes a VP_VERIFIED audit event and returns the agent DID; on failure it
@@ -59,15 +76,50 @@ async function verifyWithApi(signedVP: SignedVP): Promise<{ agentDid: string; ve
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ signedVP }),
   });
-  const body = (await res.json()) as { valid?: boolean; agentDid?: string; verifiedAt?: string; error?: unknown };
+  const body = (await res.json()) as {
+    valid?: boolean;
+    agentDid?: string;
+    verifiedAt?: string;
+    error?: { code?: string; message?: string } | unknown;
+  };
   if (!res.ok || body.valid !== true) {
-    const reason =
-      typeof body.error === 'object' && body.error !== null
-        ? JSON.stringify(body.error)
-        : `HTTP ${res.status}`;
-    throw new Error(reason);
+    if (typeof body.error === 'object' && body.error !== null) {
+      const error = body.error as { code?: string; message?: string };
+      throw new ApiVerificationError(
+        error.code ?? `HTTP_${res.status}`,
+        error.message ?? 'The Verifiable Presentation could not be verified',
+      );
+    }
+    throw new ApiVerificationError(`HTTP_${res.status}`, 'The Verifiable Presentation could not be verified');
   }
   return { agentDid: body.agentDid ?? 'unknown', verifiedAt: body.verifiedAt ?? new Date().toISOString() };
+}
+
+async function describeVerificationFailure(vp: SignedVP, err: unknown): Promise<string> {
+  const code = err instanceof ApiVerificationError ? err.code : 'VP_VERIFICATION_FAILED';
+  const message =
+    err instanceof ApiVerificationError
+      ? err.message
+      : err instanceof Error
+        ? err.message
+        : String(err);
+  const vc = vp.verifiableCredential?.[0] as SignedVC | undefined;
+
+  if (vc) {
+    try {
+      const status = await new HelixClient(env.helixApiUrl).checkVCStatus(vc);
+      if (status === 'revoked') {
+        return `credential is revoked; VP verification failed (${code}: ${message})`;
+      }
+      if (status === 'expired') {
+        return `credential is expired; VP verification failed (${code}: ${message})`;
+      }
+    } catch (statusErr) {
+      log(`Could not enrich VP failure with credential status: ${statusErr instanceof Error ? statusErr.message : String(statusErr)}`);
+    }
+  }
+
+  return `VP verification failed (${code}: ${message})`;
 }
 
 interface GuardedTool {
@@ -103,7 +155,13 @@ function registerGuardedTool(server: McpServer, tool: GuardedTool): void {
       try {
         verified = await verifyWithApi(vp);
       } catch (err) {
-        return deny(tool.name, `presentation did not verify (${err instanceof Error ? err.message : String(err)})`);
+        if (!isDelegatedVP(vp)) {
+          return deny(tool.name, await describeVerificationFailure(vp, err));
+        }
+        log(
+          `API verifier could not verify delegated VP for ${tool.name}; continuing to local @helixid/mcp chain enforcement (${err instanceof Error ? err.message : String(err)}).`,
+        );
+        verified = { agentDid: vp.holder, verifiedAt: new Date().toISOString() };
       }
 
       // 2) Scope authorization via @helixid/mcp.

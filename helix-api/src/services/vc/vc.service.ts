@@ -241,7 +241,7 @@ export class VCService implements IVCService {
     }
 
     // 2. Validate scopes (simplification for this story — real app would check a registry)
-    if (params.subjectType === 'agent' && (!params.privilegeScopes?.length || !params.agentName)) {
+    if (params.subjectType === 'agent' && (!Array.isArray(params.privilegeScopes) || !params.agentName)) {
       throw new HelixError(
         ErrorCode.VALIDATION_ERROR,
         'Agent VCs require privilegeScopes and agentName',

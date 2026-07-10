@@ -10,15 +10,66 @@
 // remains the source of truth for enrollment, scopes, revocation, and audit.
 import 'dotenv/config';
 import express from 'express';
-import { AgentWallet, HelixClient } from '@helixid/sdk-js';
+import { AgentWallet, HelixClient, delegate } from '@helixid/sdk-js';
+import type { SignedVC } from '@helixid/core';
 import { runChatTurn } from './chat/runChatTurn.js';
-import { env } from '../config.js';
+import { SCOPES, env } from '../config.js';
 import { enrollPersona } from '../personas/enroll.js';
-import { addPersona, getPersona, hasPersona, listPersonas, loadPersonas } from '../personas/store.js';
+import { addPersona, getPersona, hasPersona, listPersonas, loadPersonas, updatePersona } from '../personas/store.js';
 import { toPublic } from '../personas/types.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
+
+const DELEGATION_SOURCE_ID = 'delegation-planner';
+const DELEGATION_TARGET_ID = 'delegation-research';
+
+function vcScopes(vc: SignedVC): string[] {
+  const subject = vc.credentialSubject as { privilegeScopes?: unknown };
+  return Array.isArray(subject.privilegeScopes)
+    ? subject.privilegeScopes.filter((scope): scope is string => typeof scope === 'string')
+    : [];
+}
+
+function vcMaxDelegationDepth(vc: SignedVC): number {
+  const subject = vc.credentialSubject as { maxDelegationDepth?: unknown };
+  return typeof subject.maxDelegationDepth === 'number' ? subject.maxDelegationDepth : 0;
+}
+
+function vcDelegationDepth(vc: SignedVC): number {
+  const subject = vc.credentialSubject as { delegationDepth?: unknown };
+  return typeof subject.delegationDepth === 'number' ? subject.delegationDepth : 0;
+}
+
+function credentialMatches(vc: SignedVC, scopes: string[], maxDelegationDepth: number): boolean {
+  const availableScopes = vcScopes(vc);
+  const expectedScopes = new Set(scopes);
+  return (
+    availableScopes.length === scopes.length &&
+    availableScopes.every((scope) => expectedScopes.has(scope)) &&
+    vcMaxDelegationDepth(vc) >= maxDelegationDepth
+  );
+}
+
+function isIssuerBackedRootCredential(vc: SignedVC): boolean {
+  return vc.issuer !== vc.credentialSubject.id && vcDelegationDepth(vc) === 0;
+}
+
+function canSatisfyDelegationPersona(vc: SignedVC, scopes: string[], maxDelegationDepth: number): boolean {
+  if (!credentialMatches(vc, scopes, maxDelegationDepth)) return false;
+  return maxDelegationDepth <= 0 || isIssuerBackedRootCredential(vc);
+}
+
+function findDelegationSourceCredential(wallet: AgentWallet, scopes: string[]): SignedVC | undefined {
+  const candidates = wallet.credentials.filter((vc) => {
+    const availableScopes = new Set(vcScopes(vc));
+    return (
+      scopes.every((scope) => availableScopes.has(scope)) &&
+      vcDelegationDepth(vc) + 1 <= vcMaxDelegationDepth(vc)
+    );
+  });
+  return candidates.find(isIssuerBackedRootCredential) ?? candidates[0];
+}
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', provider: env.llmProvider }));
 
@@ -157,6 +208,135 @@ app.post('/revoke-agent', async (req, res) => {
   } catch (error) {
     console.error('[Agent] revoke failed:', error);
     return res.status(502).json({ error: error instanceof Error ? error.message : 'revoke_failed' });
+  }
+});
+
+// ── Use case 4: create two agents and delegate narrowed authority ──────────
+async function ensureDelegationPersona(input: {
+  id: string;
+  displayName: string;
+  scopes: string[];
+  maxDelegationDepth: number;
+}) {
+  const existing = getPersona(input.id);
+  if (existing) {
+    const wallet = await AgentWallet.load(existing.walletFile, env.walletPassphrase);
+    const matchingCredential = wallet.credentials.find((vc) =>
+      canSatisfyDelegationPersona(vc, input.scopes, input.maxDelegationDepth),
+    );
+    if (matchingCredential) {
+      if (
+        existing.activeCredentialId !== matchingCredential.id ||
+        existing.delegatedFromPersonaId ||
+        existing.delegatedScopes?.length
+      ) {
+        return updatePersona(existing.id, {
+          scopes: input.scopes,
+          activeCredentialId: matchingCredential.id,
+          delegatedFromPersonaId: undefined,
+          delegatedScopes: undefined,
+        });
+      }
+      return existing;
+    }
+    const { persona, vcId, did } = await enrollPersona(input);
+    const updated = await updatePersona(existing.id, {
+      scopes: persona.scopes,
+      activeCredentialId: vcId,
+      delegatedFromPersonaId: undefined,
+      delegatedScopes: undefined,
+    });
+    console.log(`[Agent] Refreshed delegation demo persona "${updated.id}" DID ${did}, VC ${vcId}.`);
+    return updated;
+  }
+
+  const { persona, vcId, did } = await enrollPersona(input);
+  await addPersona(persona);
+  console.log(`[Agent] Created delegation demo persona "${persona.id}" DID ${did}, VC ${vcId}.`);
+  return persona;
+}
+
+app.post('/delegation-demo-agents', async (_req, res) => {
+  try {
+    const source = await ensureDelegationPersona({
+      id: DELEGATION_SOURCE_ID,
+      displayName: 'Planner Agent',
+      scopes: [SCOPES.FLIGHTS_READ, SCOPES.FLIGHTS_BOOK],
+      maxDelegationDepth: 1,
+    });
+    const target = await ensureDelegationPersona({
+      id: DELEGATION_TARGET_ID,
+      displayName: 'Research Agent',
+      scopes: [],
+      maxDelegationDepth: 0,
+    });
+
+    return res.status(201).json({ source: toPublic(source), target: toPublic(target) });
+  } catch (error) {
+    console.error('[Agent] delegation demo setup failed:', error);
+    return res.status(502).json({ error: error instanceof Error ? error.message : 'delegation_setup_failed' });
+  }
+});
+
+interface DelegateBody {
+  fromPersonaId?: string;
+  toPersonaId?: string;
+  scopes?: string[];
+}
+
+app.post('/delegate-agent', async (req, res) => {
+  const body = req.body as DelegateBody;
+  const fromPersonaId = body.fromPersonaId || DELEGATION_SOURCE_ID;
+  const toPersonaId = body.toPersonaId || DELEGATION_TARGET_ID;
+  const scopes = Array.isArray(body.scopes) && body.scopes.length > 0 ? body.scopes : [SCOPES.FLIGHTS_READ];
+
+  const fromPersona = getPersona(fromPersonaId);
+  const toPersona = getPersona(toPersonaId);
+  if (!fromPersona) return res.status(404).json({ error: `Unknown source persona: ${fromPersonaId}` });
+  if (!toPersona) return res.status(404).json({ error: `Unknown target persona: ${toPersonaId}` });
+
+  try {
+    const fromWallet = await AgentWallet.load(fromPersona.walletFile, env.walletPassphrase);
+    const toWallet = await AgentWallet.load(toPersona.walletFile, env.walletPassphrase);
+    const fromVC = findDelegationSourceCredential(fromWallet, scopes);
+    if (!fromVC) {
+      return res.status(409).json({
+        error:
+          `${fromPersona.displayName} does not have a credential that can delegate ${scopes.join(', ')}. ` +
+          'Click "Create demo agents" to refresh the demo credentials, then delegate again.',
+      });
+    }
+    const childVC = await delegate(
+      {
+        to: toWallet.getDID(),
+        scopes,
+        expiresIn: 60 * 60,
+        fromVC,
+      },
+      fromWallet,
+    );
+
+    const existing = toWallet.credentials.find((vc) => vc.id === childVC.id);
+    if (!existing) await toWallet.addCredential(childVC);
+
+    const updatedTarget = await updatePersona(toPersona.id, {
+      activeCredentialId: childVC.id,
+      delegatedFromPersonaId: fromPersona.id,
+      delegatedScopes: scopes,
+    });
+
+    console.log(
+      `[Agent] Delegated ${scopes.join(', ')} from "${fromPersona.id}" to "${toPersona.id}" via ${childVC.id}.`,
+    );
+    return res.json({
+      from: toPublic(fromPersona),
+      to: toPublic(updatedTarget),
+      delegatedCredentialId: childVC.id,
+      scopes,
+    });
+  } catch (error) {
+    console.error('[Agent] delegation failed:', error);
+    return res.status(502).json({ error: error instanceof Error ? error.message : 'delegation_failed' });
   }
 });
 

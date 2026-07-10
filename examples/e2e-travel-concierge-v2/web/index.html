@@ -28,7 +28,7 @@
         letter-spacing: .08em; margin: 0 0 10px;
       }
       .tabs {
-        display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+        display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
         margin: 0 0 12px;
       }
       .tab {
@@ -110,6 +110,10 @@
             <strong>Use case 3 — Revoked credential</strong>
             <span>Revoke Concierge, then retry booking.</span>
           </button>
+          <button class="tab" id="tab-delegated" type="button" role="tab" aria-selected="false" aria-controls="panel-delegated" data-tab="delegated">
+            <strong>Use case 4 — Delegated agent</strong>
+            <span>Planner delegates read-only authority.</span>
+          </button>
         </div>
         <div class="tab-panel" id="panel-full" role="tabpanel" aria-labelledby="tab-full">
           <p>Select Concierge Agent and ask it to book. Its credential has both
@@ -140,6 +144,18 @@
           </div>
           <div class="expected">Expected: retry is refused and Console shows a revoked/failed VP verification.</div>
         </div>
+        <div class="tab-panel" id="panel-delegated" role="tabpanel" aria-labelledby="tab-delegated" hidden>
+          <p>Create a full-access Planner Agent and no-access Research Agent, then
+            delegate only <code>read:catalog</code> from Planner to Research.</p>
+          <div class="tab-actions">
+            <button class="mini" id="scenario-delegation-setup" type="button">Create demo agents</button>
+            <button class="mini" id="scenario-delegate" type="button">Delegate read access</button>
+            <button class="mini" id="scenario-select-research" type="button">Select Research</button>
+            <button class="mini" type="button" data-fill="Search flights from Mumbai to London">Fill search prompt</button>
+            <button class="mini" type="button" data-fill="Book flight BA249 for Ada Lovelace">Fill booking prompt</button>
+          </div>
+          <div class="expected">Expected: delegated search succeeds; delegated booking is refused for missing <code>write:orders</code>.</div>
+        </div>
       </section>
       <section class="section">
         <h1>Travel Concierge</h1>
@@ -169,7 +185,7 @@
           </form>
         </div>
         <div id="log">
-          <div class="msg bot">Hi! Try “Book flight BA249 for Ada Lovelace.” Then enroll a Search Agent or revoke Concierge (see the guided use cases) and try booking again — HelixID will refuse.</div>
+          <div class="msg bot">Hi! Try “Book flight BA249 for Ada Lovelace.” Then try read-only, revocation, or delegation from the guided use cases and watch HelixID enforce the credential.</div>
         </div>
         <div class="chips">
           <span class="chip" data-p="Book flight BA249 for Ada Lovelace">Book BA249 for Ada Lovelace</span>
@@ -197,6 +213,9 @@
       const scenarioOnboard = document.getElementById('scenario-onboard');
       const scenarioSelectConcierge = document.getElementById('scenario-select-concierge');
       const scenarioRevoke = document.getElementById('scenario-revoke');
+      const scenarioDelegationSetup = document.getElementById('scenario-delegation-setup');
+      const scenarioDelegate = document.getElementById('scenario-delegate');
+      const scenarioSelectResearch = document.getElementById('scenario-select-research');
       const conversationId = 'web-' + Math.random().toString(36).slice(2, 10);
 
       let personas = [];
@@ -216,7 +235,14 @@
 
       function renderScopes() {
         const p = activePersona();
-        scopesEl.textContent = p ? 'scopes: ' + (p.scopes || []).join(', ') : '';
+        if (!p) {
+          scopesEl.textContent = '';
+          return;
+        }
+        const delegated = p.delegatedScopes?.length
+          ? ' | delegated: ' + p.delegatedScopes.join(', ')
+          : '';
+        scopesEl.textContent = 'scopes: ' + ((p.scopes || []).join(', ') || 'none') + delegated;
       }
 
       function selectTab(tabName) {
@@ -328,6 +354,55 @@
         }
       }
 
+      async function setupDelegationAgents() {
+        scenarioDelegationSetup.disabled = true;
+        const status = add('meta', 'Creating Planner Agent and Research Agent…');
+        try {
+          const res = await fetch('/delegation-demo-agents', {
+            method: 'POST',
+            headers: { accept: 'application/json' },
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+          await loadPersonas();
+          status.remove();
+          add('bot', 'Created delegation demo agents: Planner Agent has read:catalog + write:orders; Research Agent starts with no tool scopes.');
+        } catch (e) {
+          status.remove();
+          add('bot', 'Delegation setup failed: ' + e.message);
+        } finally {
+          scenarioDelegationSetup.disabled = false;
+        }
+      }
+
+      async function delegateToResearchAgent() {
+        scenarioDelegate.disabled = true;
+        const status = add('meta', 'Delegating read access from Planner Agent to Research Agent…');
+        try {
+          const res = await fetch('/delegate-agent', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'application/json' },
+            body: JSON.stringify({
+              fromPersonaId: 'delegation-planner',
+              toPersonaId: 'delegation-research',
+              scopes: ['read:catalog'],
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+          await loadPersonas();
+          personaSel.value = 'delegation-research';
+          renderScopes();
+          status.remove();
+          add('bot', 'Delegated read:catalog from Planner Agent to Research Agent. Research Agent is selected and will present the delegated credential.');
+        } catch (e) {
+          status.remove();
+          add('bot', 'Delegation failed: ' + e.message);
+        } finally {
+          scenarioDelegate.disabled = false;
+        }
+      }
+
       async function send(message) {
         const persona = activePersona();
         if (!persona) return;
@@ -377,6 +452,17 @@
         }
       });
       scenarioRevoke.addEventListener('click', revokeActiveAgent);
+      scenarioDelegationSetup.addEventListener('click', setupDelegationAgents);
+      scenarioDelegate.addEventListener('click', delegateToResearchAgent);
+      scenarioSelectResearch.addEventListener('click', () => {
+        if (personas.some((p) => p.id === 'delegation-research')) {
+          personaSel.value = 'delegation-research';
+          renderScopes();
+          add('meta', '— now acting as Research Agent —');
+        } else {
+          add('bot', 'Research Agent is not loaded yet. Click “Create demo agents” first.');
+        }
+      });
       onboardForm.addEventListener('submit', (e) => {
         e.preventDefault();
         onboardAgent();

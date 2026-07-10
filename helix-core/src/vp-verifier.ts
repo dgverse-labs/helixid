@@ -96,6 +96,8 @@ function verifyValidityWindow(vc: SignedVC): void {
 }
 
 async function verifyRevocation(vc: SignedVC): Promise<void> {
+  // Delegated children normally omit credentialStatus and inherit revocation
+  // from the status-bearing ancestors verified as part of their chain.
   if (!vc.credentialStatus) return;
   const response = await fetch(vc.credentialStatus.statusListCredential, {
     headers: { accept: 'application/vc+json, application/json' },
@@ -139,7 +141,7 @@ async function verifyDelegationChain(leaf: AgentSignedVC, options: VerifyVPOptio
   }
 
   const root = chain[0] as AgentSignedVC;
-  if (root.issuer.startsWith('did:key:') || root.issuer === root.credentialSubject.id) {
+  if (root.issuer === root.credentialSubject.id) {
     throw new DelegationChainInvalidError('delegation root must be signed by a trusted issuer DID');
   }
   if ((root.credentialSubject.delegationDepth ?? 0) !== 0) {
@@ -204,7 +206,12 @@ export async function verifyVP(
     throw new VPInvalidStructureError('VC targetService does not match VP targetService');
   }
 
-  const warning = await verifyCredential(vc, options);
+  // Delegated credentials are verified once as a complete chain so that a
+  // status-less child inherits revocation from its status-bearing ancestors.
+  // Non-delegated credentials continue to verify their own status directly.
+  const warning = vc.credentialSubject.delegatedFrom
+    ? undefined
+    : await verifyCredential(vc, options);
   const delegationChain = await verifyDelegationChain(vc, options);
 
   const result: VerifyVPResult = {

@@ -14,8 +14,15 @@ And then you revoke the original Concierge credential while everything is still
 running. The next booking attempt is refused because the live status list now
 marks that credential revoked — no restart, no config edit, no app-side denylist.
 
-There are no mocks anywhere. If a credential is missing, invalid, revoked, or
-lacks the right scope, the action does not happen — and you can prove it.
+Finally, you create two demo agents and delegate only `read:catalog` from the
+full-access Planner Agent to a no-access Research Agent. Research can search only
+after it receives the delegated credential, and still cannot book because the
+delegated authority does not include `write:orders`.
+
+There are no mocks in the HelixID trust and enforcement path. Flight inventory
+and booking responses are intentionally synthetic, but if a credential is
+missing, invalid, revoked, or lacks the right scope, the action does not happen —
+and you can prove it.
 
 ---
 
@@ -24,8 +31,8 @@ lacks the right scope, the action does not happen — and you can prove it.
 ```
 Browser ──{personaId, "book BA249 for Ada"}──▶ Agent (LLM + MCP client)
                                                    │  1. LLM picks book_flight
-                                                   │  2. attachHelixVP() signs a VP with the
-                                                   │     SELECTED persona's wallet
+                                                   │  2. agent signs a VP with the selected
+                                                   │     persona's active credential
                                                    ▼
                                               MCP server ── @helixid/mcp ──▶ HelixID API
                                                    │   POST /v1/vp/verify → VP_VERIFIED / VP_REJECTED (audit)
@@ -41,6 +48,9 @@ Browser ◀── "Booked, BKG-…"  or  "refused: lacks write:orders" ── Ag
   search, but HelixID refuses its bookings.
 - **Revoked Concierge Agent** still has the same local wallet, but its credential
   status-list bit is flipped → HelixID rejects its next VP.
+- **Delegated Research Agent** starts with no tool scopes, then presents a child
+  credential delegated by Planner Agent with only `read:catalog` → search works,
+  booking is refused.
 
 ## Prerequisites
 
@@ -69,9 +79,22 @@ Wait for `helixid-setup` to print `Seed complete` and exit. Then open:
 | http://localhost:8090 | **Web chat** — pick the acting agent, talk to it |
 | http://localhost:8080 | **Console** — log in `admin` / `admin`, open **Audit** |
 
+## Guided use cases
+
+The web chat has four guided tabs. Each one exercises a different trust decision
+with the same MCP server and the same `search_flights` / `book_flight` tools.
+
+| Use case | Persona / credential state | What to try | Expected result |
+| --- | --- | --- | --- |
+| **1 — Full-access agent** | Concierge has `read:catalog` + `write:orders` | Book a flight | Booking succeeds |
+| **2 — Read-only agent** | Runtime-onboarded agent has only `read:catalog` | Search, then book | Search succeeds; booking is refused for missing `write:orders` |
+| **3 — Revoked credential** | Concierge's issued VC is revoked through the live API | Retry booking | VP is rejected because the status-list bit is revoked |
+| **4 — Delegated agent** | Research starts with no tool scopes, then receives a Planner-signed child VC with `read:catalog` | Search, then book | Delegated search succeeds; booking is refused because the child VC lacks `write:orders` |
+
 ### 1) Happy path — Concierge books
 
-With **Concierge Agent** selected, type (or click a suggestion):
+Open **Use case 1 — Full-access agent**. With **Concierge Agent** selected, type
+or click **Fill booking prompt**:
 
 > **Book flight BA249 for Ada Lovelace**
 
@@ -83,12 +106,13 @@ You get a confirmation with a booking id. Refresh Console → Audit: a fresh
 In **Console**, generate an onboard/enrollment token for a booking-restricted
 agent, for example **Search Agent** with only `read:catalog`.
 
-Back in the Travel Concierge web chat, click **Onboard new agent**, paste that
-Console-generated token, give it a display name such as `Search Agent`, and
-submit. The agent service consumes the token, creates an encrypted local wallet,
-and writes only local persona metadata to the manifest on the shared `wallets`
-volume. The Console/HelixID database remains the source of truth for the real
-agent credential, scopes, revocation state, and audit events.
+Back in the Travel Concierge web chat, open **Use case 2 — Read-only agent** and
+click **Open onboarding**. Paste that Console-generated token, give it a display
+name such as `Search Agent`, and submit. The agent service consumes the token,
+creates an encrypted local wallet, and writes only local persona metadata to the
+manifest on the shared `wallets` volume. The Console/HelixID database remains the
+source of truth for the real agent credential, scopes, revocation state, and
+audit events.
 
 The UI refreshes `/personas`, so **Search Agent** appears in the dropdown within
 a few seconds — no restart. Select it and try:
@@ -121,6 +145,41 @@ The agent still signs a fresh VP with the same local wallet, but HelixID now see
 the revoked status-list bit and refuses the presentation. Refresh Console →
 Audit: you should see the revocation event and a rejected VP verification for the
 retry.
+
+### 4) Delegate read access to another agent
+
+Open **Use case 4 — Delegated agent** in the web UI.
+
+Click **Create demo agents**. The agent service enrolls:
+
+- **Planner Agent** with `read:catalog` + `write:orders` and
+  `maxDelegationDepth: 1`.
+- **Research Agent** with no tool scopes.
+
+At this point, Research has a real issuer-backed base VC, but it carries an empty
+`privilegeScopes` array. That credential is useful as Research's identity, not as
+tool authority. It cannot search or book.
+
+Click **Delegate read access**. The service loads Planner's wallet server-side,
+uses Planner's HelixID-issued credential as the trusted root, creates a
+Planner-signed child VC for Research with only `read:catalog`, stores that child
+VC in Research's encrypted wallet, and marks Research to present the delegated
+credential on its next tool call. The browser receives only safe persona metadata.
+
+With **Research Agent** selected, try:
+
+> **Search flights from Mumbai to London** → succeeds through delegated
+> `read:catalog`.
+>
+> **Book flight BA249 for Ada Lovelace** → refused because the delegated
+> credential does not contain `write:orders`.
+
+This proves delegation cannot exceed the parent credential: the delegated scope
+may be equal to or narrower than the parent, but it cannot add new authority.
+Research's base credential cannot search or book; the delegated child credential
+adds only `read:catalog`, so Research can search but cannot escalate to booking.
+Self-issued VCs are not used as trusted delegation roots in this scenario; they
+are only for quick-start/local development flows.
 
 ### Prove the enforcement is real (no LLM in the loop)
 
@@ -165,13 +224,22 @@ they're dev values and clearly marked.
 
 - A **persona** is a selectable enrolled-agent context: its own wallet, credential,
   and scopes. The active persona's wallet signs the next protected tool call.
+- A wallet can hold multiple VCs. The demo stores the selected VC id as
+  `activeCredentialId`: normal personas use their issuer-issued base VC, while
+  delegated Research uses the Planner-signed child VC. If `activeCredentialId` is
+  missing, the demo falls back to the first wallet credential; if the wallet is
+  empty or the active VC id is not found, VP creation fails instead of silently
+  using the wrong credential.
 - The persona registry is app-local convenience state for this demo: it lets the
-  Travel Concierge UI list/select agents and locate each encrypted wallet file.
-  It is deliberately separate from the Console/HelixID database.
-- The Console/HelixID database remains the source of truth for real trust state:
-  enrollment, issued credentials, scopes, revocation, status lists, and audit
-  events. In a real deployment, the agent app and the organization Console would
-  be hosted separately and would not share a database.
+  Travel Concierge UI list/select agents and locate each encrypted wallet file. It
+  stores safe credential-selection metadata such as `activeCredentialId`, but not
+  the VC itself, and is deliberately separate from the Console/HelixID database.
+- The Console/HelixID database is the source of truth for enrollment,
+  issuer-backed credentials and their scopes, status lists, revocation, and API
+  audit events. Agent-issued delegated child VCs remain in the receiving agent's
+  encrypted wallet and are verified from their signed delegation chain. In a real
+  deployment, the agent app and the organization Console would be hosted
+  separately and would not share a database.
 - The local persona registry is backed by the shared `wallets` volume today, so
   runtime-enrolled agents survive restarts and a freshly-booted agent sees them.
 - The **browser never handles wallet material**: chat only sends `{ personaId,
@@ -192,17 +260,18 @@ personas/                 the runtime persona model
 helixid-setup/seed.ts     run-once: enroll the Concierge persona → manifest → exit 0
 mcp-server/server.ts      real MCP server; search_flights + book_flight, each guarded by @helixid/mcp
 agent/
-  server.ts               GET /personas, POST /chat, POST /onboard-agent, POST /revoke-agent
+  server.ts               GET /personas, POST /chat, onboarding, revocation, delegation demo routes
   chat/providers/         anthropic (default) | openai | azure adapter (v1 SPEC §5.7 pattern)
   chat/runChatTurn.ts     LLM tool-loop; runs every tool call as the selected persona
-  tools/protectedCall.ts  the only place a VP is created (attachHelixVP, per-persona wallet)
+  tools/protectedCall.ts  the only place a VP is created (per-persona active credential)
 web/                      static chat UI (nginx): persona selector + reverse-proxy to the agent
 docker/                   Dockerfiles + the Console nginx override
 ```
 
-Nothing outside `helixid-setup/`, `personas/`, and `agent/` ever touches a wallet,
-VC, or VP. The MCP server only ever *verifies*; the web app doesn't know HelixID
-exists.
+Within the Travel Concierge application, only `helixid-setup/`, `personas/`, and
+`agent/` create, store, or sign wallet, VC, or VP material. The HelixID API issues
+and stores issuer-backed credentials; the MCP server receives and verifies VPs;
+the web app doesn't know HelixID exists.
 
 ## Shipped-capability notes (honest caveats)
 
@@ -220,14 +289,18 @@ exists.
   visible in Console, `mcp-server` additionally calls the API's authoritative
   `POST /v1/vp/verify`. Both calls are real. If `@helixid/mcp` gains audit emission
   upstream, that second call can be dropped.
+- **Delegated children inherit parent revocation.** Locally agent-signed child VCs
+  do not receive an independent status-list entry. Both the authoritative API
+  `/v1/vp/verify` path and the SDK/MCP verifier resolve and validate the complete
+  delegation chain, then check each status-bearing ancestor. Revoking the root
+  or another status-bearing parent therefore rejects all descendants.
 - **Authorization is the shipped scope/expiry/revocation check**, not OPA/Rego
   (which isn't live) — the same `verifyVP` + `requireScope` path v1 uses.
 - **Guided revocation is intentionally destructive for that demo run.** Once you
   revoke Concierge, its existing credential will keep failing until you reset the
   demo state with `docker compose down -v` and start again.
 - **A working API image.** Two pre-existing problems in `helix-api` make its
-  shipped Docker path unusable, so this demo ships its own `docker/api.Dockerfile`
-  (and does **not** modify `helix-api`):
+  shipped Docker path unusable, so this demo ships its own `docker/api.Dockerfile`:
   1. the repo-root Dockerfile runs `pnpm deploy --prod`, which prunes the generated
      Prisma client, so the API crash-loops on `import { PrismaClient }`;
   2. `pnpm --filter @helixid/api build` (tsc) currently fails to compile on `main`,

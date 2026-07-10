@@ -1,6 +1,5 @@
-// search_flights — requires the read:catalog scope, which both personas carry.
-// It's here so the Search Agent is a real agent that can do something (search)
-// while still being refused booking, sharpening the scope contrast.
+// search_flights — requires read:catalog. In the delegation demo, Research only
+// gets this through the delegated child credential, not its base credential.
 import { TOOLS } from '../../config.js';
 import type { Persona } from '../../personas/types.js';
 import { callProtectedTool, type ProtectedResult } from './protectedCall.js';

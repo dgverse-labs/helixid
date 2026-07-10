@@ -205,7 +205,7 @@ a self-hosted issuer or any other means.
 npm install @helixid/sdk-js
 ```
 
-**Step 2 — Generate an agent identity and load or self-issue a credential**
+**Step 2 — Generate an agent identity and load or self-issue a dev credential**
 
 ```typescript
 import { AgentWallet, selfIssueVC } from '@helixid/sdk-js'
@@ -217,9 +217,10 @@ const wallet = await AgentWallet.create('./wallet.enc', 'dev-passphrase');
 // spec-compliant source, load it directly:
 await wallet.addCredential(existingVC)
 
-// For local dev and testing only, you can self-issue a credential.
-// Self-signed VCs carry no issuer-attested authority and are rejected
-// by verifiers in production (allowSelfSigned defaults to false).
+// Quick-start only: self-issue a credential for local development.
+// Self-issued VCs carry no issuer-attested authority and are not valid for
+// production, demos that prove trust, revocation, or delegation. Verifiers
+// reject them by default because allowSelfSigned defaults to false.
 const vc = await selfIssueVC(
   { scopes: ['read:orders'], expiresIn: 3600 },
   wallet,
@@ -250,8 +251,9 @@ console.log(result.valid, result.agentDid, result.privilegeScopes)
 // true  did:key:z6Mk...  ['read:orders']
 ```
 
-Full round trip. No issuer, no API call, no Hedera. When ready for production, swap
-`selfIssueVC` for a real bootstrap token enrollment — everything else stays identical.
+Full round trip for local development only. No issuer, no API call, no Hedera.
+For any valid HelixID scenario, swap `selfIssueVC` for a real bootstrap token
+enrollment so the root VC is signed by the trusted issuer.
 
 ---
 
@@ -339,6 +341,14 @@ still signs a VP, but HelixID rejects it because the live status list now marks
 the credential revoked. Reset with `docker compose down -v` to issue a fresh
 Concierge credential.
 
+To exercise delegation, open **Use case 4 — Delegated agent**. Create the demo
+Planner Agent (`read:catalog` + `write:orders`, delegation depth 1) and Research
+Agent (`read:catalog`), then delegate only `read:catalog` from Planner to
+Research. Research can search through the delegated child credential, but booking
+is refused because that delegated credential lacks `write:orders`. This path is
+enforced by the SDK/MCP verifier; the shipped API does not yet expose API-side
+delegation issuance or Console audit for local child-chain verification.
+
 To exercise the denial path, call the MCP tool without a presentation:
 
 ```bash
@@ -353,7 +363,8 @@ The protected tool refuses the booking because HelixID did not receive a valid
 presentation.
 
 > The current v2 demo includes persona switching, runtime onboarding via a
-> Console-generated token, and guided revocation. Delegation is still planned.
+> Console-generated token, guided revocation, and SDK/MCP-enforced scoped
+> delegation.
 
 Reset all demo state with:
 
@@ -494,7 +505,7 @@ console.log(result.valid, result.agentDid, result.privilegeScopes);
 
 `verifyVP()` runs locally (no API call): VP signature, VC signature, validity window, revocation (when credentialStatus exists), target-service checks, and delegation-chain integrity. `vpId` is returned for caller-managed replay protection. If you need a session JWT bridge, call `POST /v1/vp/verify` with `session: true`.
 
-#### Delegate Authority (SDK-local, self-signed)
+#### Delegate Authority (SDK-local, agent-signed child)
 
 ```typescript
 import { AgentWallet, delegate } from '@helixid/sdk-js';
@@ -506,7 +517,7 @@ const delegatedCredential = await delegate(
     to: 'did:key:z6Mk...delegatee',
     scopes: ['read:analytics'],
     expiresIn: 3600,
-    // optional: fromVC: specific parent VC from wallet
+    // optional: fromVC: specific issuer-backed parent VC from wallet
   },
   wallet,
 );
@@ -518,7 +529,11 @@ console.log(
 );
 ```
 
-Delegation is **Option A**: Agent A signs the child VC locally, and verifiers enforce chain integrity, scope subset, and max depth from the VC chain itself. There is no API delegation endpoint.
+Delegation is **Option A**: Agent A signs the child VC locally, and verifiers
+enforce chain integrity, scope subset, and max depth from the VC chain itself.
+The parent/root VC must still be issuer-backed; self-issued VCs are only for the
+quick-start path and are not accepted as a trusted delegation root. There is no
+API delegation endpoint.
 
 ## Framework Integrations
 
