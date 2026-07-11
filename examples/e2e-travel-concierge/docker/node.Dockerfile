@@ -2,7 +2,7 @@
 # They live in one workspace package and differ only by which entrypoint runs,
 # so compose overrides the command per service. Build context: repo root.
 #
-#   docker build -f examples/e2e-travel-concierge-v2/docker/node.Dockerfile -t helixid-v2-node .
+#   docker build -f examples/e2e-travel-concierge/docker/node.Dockerfile -t helixid-v2-node .
 FROM node:24.15.0-alpine
 RUN corepack enable
 # Prefer IPv4 for package downloads (some Docker VM networks have flaky IPv6).
@@ -14,7 +14,7 @@ COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json ./
 COPY helix-core helix-core
 COPY helix-sdk-js helix-sdk-js
 COPY packages/mcp packages/mcp
-COPY examples/e2e-travel-concierge-v2 examples/e2e-travel-concierge-v2
+COPY examples/e2e-travel-concierge examples/e2e-travel-concierge
 
 # Select the packages we build explicitly (not just example...) so their
 # devDependencies — notably @types/node for the tsc builds below — are installed.
@@ -24,7 +24,7 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
   --filter @helixid/core \
   --filter @helixid/sdk-js \
   --filter @helixid/mcp \
-  --filter @helixid/example-e2e-travel-concierge-v2
+  --filter @helixid/example-e2e-travel-concierge
 
 # Build the local HelixID packages this example imports (@helixid/mcp pulls in
 # @helixid/core and @helixid/sdk-js).
@@ -32,6 +32,6 @@ RUN pnpm --filter @helixid/core build \
   && pnpm --filter @helixid/sdk-js build \
   && pnpm --filter @helixid/mcp build
 
-WORKDIR /repo/examples/e2e-travel-concierge-v2
+WORKDIR /repo/examples/e2e-travel-concierge
 # Default command; docker-compose overrides it with `pnpm setup|mcp|agent`.
 CMD ["pnpm", "run", "agent"]

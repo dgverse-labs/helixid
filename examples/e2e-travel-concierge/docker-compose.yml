@@ -1,4 +1,4 @@
-# examples/e2e-travel-concierge-v2 — one command, one happy path.
+# examples/e2e-travel-concierge — one command, one happy path.
 #
 #   cp .env.example .env      # then put your LLM_API_KEY in it
 #   docker compose up --build
@@ -11,14 +11,14 @@
 #
 # Startup order is enforced with healthchecks + depends_on:
 #   helix-api → (console, helixid-setup) → mcp-server → agent → web
-name: helixid-travel-concierge-v2
+name: helixid-travel-concierge
 
 # Shared build for the three Node services (they differ only by command).
 x-node-service: &node-service
   build:
     context: ../..
-    dockerfile: examples/e2e-travel-concierge-v2/docker/node.Dockerfile
-  image: helixid-example-v2-node:latest
+    dockerfile: examples/e2e-travel-concierge/docker/node.Dockerfile
+  image: helixid-example-node:latest
   restart: unless-stopped
 
 services:
@@ -29,7 +29,7 @@ services:
   helix-api:
     build:
       context: ../..
-      dockerfile: examples/e2e-travel-concierge-v2/docker/api.Dockerfile
+      dockerfile: examples/e2e-travel-concierge/docker/api.Dockerfile
     ports:
       - "3000:3000"
     environment:
@@ -61,7 +61,7 @@ services:
   console:
     build:
       context: ../..
-      dockerfile: examples/e2e-travel-concierge-v2/docker/console.Dockerfile
+      dockerfile: examples/e2e-travel-concierge/docker/console.Dockerfile
     ports:
       - "8080:80"
     environment:

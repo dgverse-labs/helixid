@@ -1,1 +1,5 @@
-agent/wallet.enc
+node_modules/
+.env
+*.enc
+wallets/
+dist/

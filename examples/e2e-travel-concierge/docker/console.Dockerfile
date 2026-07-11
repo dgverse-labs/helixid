@@ -24,5 +24,5 @@ COPY console/docker/40-env-config.sh /docker-entrypoint.d/40-env-config.sh
 RUN chmod +x /docker-entrypoint.d/40-env-config.sh
 COPY --from=build /repo/console/dist /usr/share/nginx/html
 # This example's server block (serves the SPA + proxies /v1 and /health to helix-api).
-COPY examples/e2e-travel-concierge-v2/docker/console-nginx.conf /etc/nginx/conf.d/default.conf
+COPY examples/e2e-travel-concierge/docker/console-nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80

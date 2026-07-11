@@ -279,7 +279,7 @@ key from Anthropic, OpenAI, or Azure OpenAI:
 ```bash
 git clone https://github.com/dgverse-labs/helixid.git
 cd helixid
-cd examples/e2e-travel-concierge-v2
+cd examples/e2e-travel-concierge
 cp .env.example .env
 ```
 
@@ -672,7 +672,7 @@ helixid/
 │   ├── langchain/        # LangChain/LangGraph integration
 │   └── cli/              # CLI workflows
 ├── examples/
-│   ├── e2e-travel-concierge/   # Live onboarding, wallet, VP fixture flow
+│   ├── e2e-travel-concierge/   # Dockerized travel-concierge demo
 │   ├── framework-middleware/   # Live LangChain and MCP middleware examples
 │   ├── verify-vp.ts
 │   ├── scope-check.ts

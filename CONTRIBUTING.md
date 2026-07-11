@@ -63,11 +63,11 @@ pnpm test:interop      # W3C VC interop vectors
 pnpm bench             # performance benchmarks
 ```
 
-### Run an Example
+### Run E2E demo
 
 ```bash
-pnpm --filter @helixid/example-e2e-travel-concierge enroll
-pnpm --filter @helixid/example-e2e-travel-concierge platform
+cd examples/e2e-travel-concierge
+docker compose up --build
 ```
 
 ### Environment Variables

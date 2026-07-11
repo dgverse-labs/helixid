@@ -9,7 +9,6 @@ COPY helix-core/package.json ./helix-core/
 COPY helix-sdk-js/package.json ./helix-sdk-js/
 COPY e2e/package.json ./e2e/
 COPY examples/package.json ./examples/
-COPY examples/e2e-travel-concierge/package.json ./examples/e2e-travel-concierge/
 COPY examples/framework-middleware/package.json ./examples/framework-middleware/
 COPY packages/cli/package.json ./packages/cli/
 COPY packages/did-hedera/package.json ./packages/did-hedera/

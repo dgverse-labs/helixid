@@ -11,7 +11,7 @@
 # the repo's own `dev` script runs it — after generating the Prisma client in
 # place. helix-api itself is not modified. Build context: repo root.
 #
-#   docker build -f examples/e2e-travel-concierge-v2/docker/api.Dockerfile -t helixid-api-demo .
+#   docker build -f examples/e2e-travel-concierge/docker/api.Dockerfile -t helixid-api-demo .
 FROM node:24.15.0-alpine
 
 # better-sqlite3 (native) and Prisma need these on musl.

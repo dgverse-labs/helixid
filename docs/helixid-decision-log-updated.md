@@ -43,7 +43,7 @@ as Wayfinder had with its identity product: separate codebase, but the
 sample's own `docker-compose.yml` brings it up as one of its services,
 pre-seeded, and prints the Console URL when ready.
 
-`e2e-travel-concierge` stays where it currently is in the repo for now.
+`e2e-travel-concierge-v2` stays where it currently is in the repo for now.
 
 **Decision update — 2026-07-02:** `examples/e2e-travel-concierge` in the
 main repo is the **source of truth** for the demo example. The downloadable
@@ -251,3 +251,5 @@ not regenerate or revisit until explicitly asked. When resumed, it should:
 - Earlier 3-scenario list (Search vs. Book, Delegate, Revoke only) —
   superseded by the 4-scenario list above, which adds "Onboard a New Agent,
   Live."
+
+# examples/e2e-travel-concierge is repalced with examples/e2e-travel-concierge-v2
