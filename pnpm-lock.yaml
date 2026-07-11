@@ -119,11 +119,11 @@ importers:
         specifier: ^0.1.5
         version: 0.1.5
       '@helixid/mcp':
-        specifier: ^0.1.0
-        version: 0.1.0(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76))
+        specifier: ^0.1.2
+        version: 0.1.2(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76))
       '@helixid/sdk-js':
-        specifier: ^0.1.1
-        version: 0.1.1
+        specifier: ^0.1.7
+        version: 0.1.7
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
@@ -956,8 +956,19 @@ packages:
       '@modelcontextprotocol/sdk':
         optional: true
 
+  '@helixid/mcp@0.1.2':
+    resolution: {integrity: sha512-HUD1J6q+bCO1T8l1ubvl9NyH0KrhOl10tKkdnwddoikp02Z7mfaceVFYS/57DbEwAb6QSLSo2vCKw3XlDzOpcA==}
+    peerDependencies:
+      '@modelcontextprotocol/sdk': '*'
+    peerDependenciesMeta:
+      '@modelcontextprotocol/sdk':
+        optional: true
+
   '@helixid/sdk-js@0.1.1':
     resolution: {integrity: sha512-/7zYyjl+5ynUdDfClRXuhoZ3GGodwpmSKW7VXrkS5FOAYiYcOiNV6UPFBNHFAVhuEAf9HsDLcXDPeMALZ2qM8g==}
+
+  '@helixid/sdk-js@0.1.7':
+    resolution: {integrity: sha512-n3Qv8i33rlL5fOkR8AvB7Tlcep0/yTBGwhCjVpMNkCEeB0W/IYy2p/NZQvk5wRZb1L12cBLx1J3JJkfzsRogaA==}
 
   '@hiero-did-sdk/cache@0.1.8':
     resolution: {integrity: sha512-HGC4ckyzK6ollXzwliEcyy9398srz2eSmBbYBFQawc/D3wCqK1Dd2jHhhQoutsUp8s/7+EhpB4urZ3CSOHFjBA==}
@@ -4905,20 +4916,32 @@ snapshots:
   '@helixid/langchain@0.1.0(@langchain/core@1.1.48(openai@4.104.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))':
     dependencies:
       '@helixid/core': 0.1.5
-      '@helixid/sdk-js': 0.1.1
+      '@helixid/sdk-js': 0.1.7
     optionalDependencies:
       '@langchain/core': 1.1.48(openai@4.104.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0)
 
   '@helixid/mcp@0.1.0(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76))':
     dependencies:
       '@helixid/core': 0.1.5
-      '@helixid/sdk-js': 0.1.1
+      '@helixid/sdk-js': 0.1.7
+    optionalDependencies:
+      '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
+
+  '@helixid/mcp@0.1.2(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76))':
+    dependencies:
+      '@helixid/core': 0.1.5
+      '@helixid/sdk-js': 0.1.7
     optionalDependencies:
       '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
 
   '@helixid/sdk-js@0.1.1':
     dependencies:
       '@helixid/core': 0.1.0
+      '@noble/ed25519': 2.3.0
+
+  '@helixid/sdk-js@0.1.7':
+    dependencies:
+      '@helixid/core': 0.1.5
       '@noble/ed25519': 2.3.0
 
   '@hiero-did-sdk/cache@0.1.8(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))':
@@ -5911,7 +5934,7 @@ snapshots:
       obug: 2.1.2
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.8(@types/node@20.19.39)(@vitest/coverage-v8@4.1.8)(jsdom@26.1.0)(vite@7.3.5(@types/node@20.19.39)(jiti@2.6.1)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0))
+      vitest: 4.1.8(@types/node@20.19.42)(@vitest/coverage-v8@4.1.8)(jsdom@26.1.0)(vite@7.3.5(@types/node@20.19.42)(jiti@2.6.1)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0))
 
   '@vitest/expect@4.1.8':
     dependencies:
