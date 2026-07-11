@@ -133,7 +133,7 @@ jobs:
         if: steps.npm-check.outputs.exists == 'false'
         run: |
           pnpm \
-            --filter "./${{ steps.release.outputs.directory }}..." \
+            --filter "${{ steps.release.outputs.name }}..." \
             build
 
       - name: Pack package

@@ -1,6 +1,6 @@
 {
   "name": "@helixid/sdk-js",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Cryptographic identity and authorization SDK for AI agents",
   "type": "module",
   "license": "Apache-2.0",
