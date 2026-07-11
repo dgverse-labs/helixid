@@ -18,7 +18,6 @@ x-node-service: &node-service
   build:
     context: ../..
     dockerfile: examples/e2e-travel-concierge/docker/node.Dockerfile
-  image: helixid-example-node:latest
   restart: unless-stopped
 
 services:

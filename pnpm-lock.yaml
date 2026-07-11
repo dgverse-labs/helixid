@@ -318,7 +318,7 @@ importers:
   helix-sdk-js:
     dependencies:
       '@helixid/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../helix-core
       '@noble/ed25519':
         specifier: ^2.3.0
@@ -349,11 +349,11 @@ importers:
   packages/cli:
     dependencies:
       '@helixid/core':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: workspace:^
+        version: link:../../helix-core
       '@helixid/sdk-js':
-        specifier: ^0.1.1
-        version: 0.1.1
+        specifier: workspace:^
+        version: link:../../helix-sdk-js
       chalk:
         specifier: ^5.4.1
         version: 5.6.2
@@ -384,8 +384,8 @@ importers:
         specifier: ^2.49.0
         version: 2.81.0(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
       '@helixid/core':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: workspace:^
+        version: link:../../helix-core
       '@hiero-did-sdk/hcs':
         specifier: ^0.1.8
         version: 0.1.8(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
@@ -409,11 +409,11 @@ importers:
   packages/langchain:
     dependencies:
       '@helixid/core':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: workspace:^
+        version: link:../../helix-core
       '@helixid/sdk-js':
-        specifier: ^0.1.1
-        version: 0.1.1
+        specifier: workspace:^
+        version: link:../../helix-sdk-js
       '@langchain/core':
         specifier: '*'
         version: 1.1.48(openai@4.104.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0)
@@ -431,10 +431,10 @@ importers:
   packages/mcp:
     dependencies:
       '@helixid/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../helix-core
       '@helixid/sdk-js':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../helix-sdk-js
       '@modelcontextprotocol/sdk':
         specifier: '*'
