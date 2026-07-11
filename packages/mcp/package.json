@@ -1,6 +1,6 @@
 {
   "name": "@helixid/mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "HelixID middleware for Model Context Protocol (MCP) servers — inbound VP verification with scope enforcement and outbound VP attachment for agent-to-tool calls.",
   "type": "module",
   "license": "Apache-2.0",
