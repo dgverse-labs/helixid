@@ -3,6 +3,6 @@
   "private": true,
   "dependencies": {
     "@helixid/core": "^0.1.0",
-    "@helixid/sdk-js": "^0.1.1"
+    "@helixid/sdk-js": "^0.1.4"
   }
 }
