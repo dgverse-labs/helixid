@@ -1,6 +1,6 @@
 {
   "name": "@helixid/did-hedera",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Optional Hedera DID method support for HelixID equipped for next major release only",
   "type": "module",
   "license": "Apache-2.0",
