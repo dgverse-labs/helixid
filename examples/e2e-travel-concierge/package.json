@@ -3,21 +3,27 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "description": "Fastest one-command HelixID demo: an LLM agent enrolls, gets a real credential, calls a real MCP server, and the tool only runs after @helixid/mcp verifies the presentation against the live HelixID API.",
   "scripts": {
-    "enroll": "tsx operator/enroll-agent.ts",
-    "platform": "tsx platform/booking-platform.ts",
-    "agent": "tsx agent/agent.ts",
-    "fixture": "tsx agent/create-vp-fixture.ts",
+    "setup": "tsx helixid-setup/seed.ts",
+    "mcp": "tsx mcp-server/server.ts",
+    "agent": "tsx agent/server.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@helixid/core": "^0.1.0",
-    "@helixid/sdk-js": "^0.1.1",
+    "@anthropic-ai/sdk": "^0.68.0",
+    "@helixid/core": "^0.1.5",
+    "@helixid/sdk-js": "^0.1.7",
+    "@helixid/mcp": "^0.1.2",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^17.4.2",
-    "fastify": "^5.7.2",
-    "tsx": "^4.0.0"
+    "express": "^4.21.2",
+    "openai": "^4.77.0",
+    "tsx": "^4.0.0",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@types/express": "^4.17.21",
     "@types/node": "^20.0.0",
     "typescript": "^5.4.0"
   }

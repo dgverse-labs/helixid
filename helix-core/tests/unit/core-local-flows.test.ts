@@ -518,6 +518,39 @@ describe('VP builder and verifier', () => {
     });
   });
 
+  it('rejects a delegated VP when its parent status bit is revoked', async () => {
+    const issuer = generateKeyPair();
+    const holder = generateKeyPair();
+    const delegate = generateKeyPair();
+    const issuerDid = didKey(issuer.publicKey);
+    const holderDid = didKey(holder.publicKey);
+    const delegateDid = didKey(delegate.publicKey);
+    const parent = await issuerSignedVC(
+      { did: issuerDid, privateKeyHex: issuer.privateKey },
+      holderDid,
+      ['read:orders'],
+    );
+    const child = await buildDelegationVC(
+      { to: delegateDid, scopes: ['read:orders'], expiresIn: 60, fromVC: parent },
+      { did: holderDid, privateKeyHex: holder.privateKey },
+    );
+    expect(child.credentialStatus).toBeUndefined();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockJsonResponse({
+        credentialSubject: { encodedList: setBit(createStatusList(8), 0, 1) },
+      }),
+    );
+
+    const vp = await new VPBuilder({
+      vc: child,
+      holderDid: delegateDid,
+      targetService: 'orders',
+      userDid: 'did:web:user.example',
+    }).sign(delegate.privateKey, `${delegateDid}#key-1`);
+
+    await expect(verifyVP(vp)).rejects.toMatchObject({ code: 'VC_REVOKED' });
+  });
+
   it('rejects delegated VCs with missing or broken chains', async () => {
     const holder = generateKeyPair();
     const delegate = generateKeyPair();
@@ -666,7 +699,7 @@ describe('delegation and self-issued VC helpers', () => {
     ).rejects.toMatchObject({ code: 'MAX_DELEGATION_DEPTH_EXCEEDED' });
   });
 
-  it('rejects non-agent parents and equal-scope delegations', async () => {
+  it('rejects non-agent parents but allows equal-scope delegations', async () => {
     const holder = generateKeyPair();
     const holderDid = didKey(holder.publicKey);
     const userVC = {
@@ -690,17 +723,16 @@ describe('delegation and self-issued VC helpers', () => {
         { did: holderDid, privateKeyHex: holder.privateKey },
       ),
     ).rejects.toMatchObject({ code: 'SCOPE_ESCALATION_DENIED' });
-    await expect(
-      buildDelegationVC(
-        {
-          to: didKey(generateKeyPair().publicKey),
-          scopes: ['read:orders'],
-          expiresIn: 60,
-          fromVC: parent,
-        },
-        { did: holderDid, privateKeyHex: holder.privateKey },
-      ),
-    ).rejects.toMatchObject({ code: 'SCOPE_ESCALATION_DENIED' });
+    const equalScopeChild = await buildDelegationVC(
+      {
+        to: didKey(generateKeyPair().publicKey),
+        scopes: ['read:orders'],
+        expiresIn: 60,
+        fromVC: parent,
+      },
+      { did: holderDid, privateKeyHex: holder.privateKey },
+    );
+    expect(equalScopeChild.credentialSubject.privilegeScopes).toEqual(['read:orders']);
   });
 
   it('builds valid delegation VC structure', async () => {
@@ -728,6 +760,22 @@ describe('delegation and self-issued VC helpers', () => {
       delegatedFrom: holderDid,
       delegationDepth: 1,
       privilegeScopes: ['read:orders'],
+    });
+
+    const vp = await new VPBuilder({
+      vc: child,
+      holderDid: delegateDid,
+      targetService: 'orders',
+      userDid: 'did:web:user.example',
+    }).sign(delegate.privateKey, `${delegateDid}#key-1`);
+
+    await expect(verifyVP(vp)).resolves.toMatchObject({
+      valid: true,
+      agentDid: delegateDid,
+      delegationChain: [
+        expect.objectContaining({ subject: holderDid, delegationDepth: 0 }),
+        expect.objectContaining({ subject: delegateDid, delegationDepth: 1 }),
+      ],
     });
   });
 

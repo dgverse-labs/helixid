@@ -5,7 +5,9 @@ import {
     VPVerificationFailedError, 
     VPAgentDIDNotFoundError,
     createStatusList,
+    setBit,
     generateKeyPair,
+    publicKeyToMultibase,
     type AgentVC,
 } from '@helixid/core';
 import { ServiceNotFoundError } from '../../../src/repositories/service-registry.repository.js';
@@ -24,7 +26,7 @@ vi.mock('@helixid/core', async () => {
   };
 });
 
-import { verifySignature } from '@helixid/core';
+import { hashCanonicalPayload, verifySignature } from '@helixid/core';
 
 describe('VPService Branch Coverage', () => {
   let repository: any;
@@ -98,6 +100,7 @@ describe('VPService Branch Coverage', () => {
   const childVC: AgentVC = {
     ...parentVC,
     id: 'vc-child',
+    credentialStatus: undefined,
     credentialSubject: {
       id: 'did:h:1',
       type: 'HelixAgent',
@@ -325,10 +328,48 @@ describe('VPService Branch Coverage', () => {
 
         expect(res.valid).toBe(true);
         expect(vcService.findRecordByVcId).toHaveBeenCalledWith('vc-parent');
+        expect(vcService.getStatusList).toHaveBeenCalledTimes(1);
         expect(auditLogger.log).toHaveBeenCalledWith('CHAIN_VERIFIED', expect.objectContaining({
           leafVcId: 'vc-child',
           chainDepth: 1,
         }));
+    });
+
+    it('resolves a wallet-local did:key issuer for a delegated child', async () => {
+        const parentAgentDid = `did:key:${publicKeyToMultibase(generateKeyPair().publicKey)}`;
+        const localParent = {
+          ...parentVC,
+          credentialSubject: { ...parentVC.credentialSubject, id: parentAgentDid },
+        };
+        const localChild = {
+          ...childVC,
+          issuer: parentAgentDid,
+          delegationChain: [localParent],
+          credentialSubject: {
+            ...childVC.credentialSubject,
+            delegatedFrom: parentAgentDid,
+          },
+        };
+        const vp = JSON.parse(JSON.stringify({
+          ...validVP,
+          verifiableCredential: [localChild],
+        }));
+        didService.resolveDID.mockImplementation(async (did: string) => {
+          if (did === parentAgentDid) throw new Error('not registered');
+          return { verificationMethod: [{ type: 'Ed25519', publicKeyHex: '00' }] };
+        });
+        vi.mocked(verifySignature).mockResolvedValue(true);
+        vcService.findRecordByVcId.mockResolvedValue({
+          vcId: 'vc-parent',
+          vc: localParent,
+          status: 'active',
+        });
+
+        await expect(service.verifyVP(vp, 'req-1')).resolves.toMatchObject({ valid: true });
+        const signedChildHashCalls = vi.mocked(hashCanonicalPayload).mock.calls.filter(
+          ([payload]) => Array.isArray((payload as { delegationChain?: unknown }).delegationChain),
+        );
+        expect(signedChildHashCalls).toHaveLength(2);
     });
 
     it('rejects delegated chains when parent VC is unavailable', async () => {
@@ -346,6 +387,32 @@ describe('VPService Branch Coverage', () => {
         await expect(service.verifyVP(vp, 'req-1')).rejects.toThrow(VPVerificationFailedError);
         expect(auditLogger.log).toHaveBeenCalledWith('CHAIN_REJECTED', expect.objectContaining({
           internalReason: 'parent_vc_not_found',
+        }));
+    });
+
+    it('rejects a status-less delegated child when its parent is revoked', async () => {
+        const vp = JSON.parse(JSON.stringify({
+          ...validVP,
+          verifiableCredential: [childVC],
+        }));
+        repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
+        didService.resolveDID.mockResolvedValue({
+            verificationMethod: [{ type: 'Ed25519', publicKeyHex: '00' }]
+        });
+        vi.mocked(verifySignature).mockResolvedValue(true);
+        vcService.findRecordByVcId.mockResolvedValue({
+          vcId: 'vc-parent',
+          vc: parentVC,
+          status: 'active',
+        });
+        vcService.getStatusList.mockResolvedValue({
+          credentialSubject: { encodedList: setBit(createStatusList(), 0, 1) },
+        });
+
+        await expect(service.verifyVP(vp, 'req-1')).rejects.toThrow(VPVerificationFailedError);
+        expect(auditLogger.log).toHaveBeenCalledWith('CHAIN_REJECTED', expect.objectContaining({
+          leafVcId: 'vc-child',
+          internalReason: 'vc_revoked',
         }));
     });
 

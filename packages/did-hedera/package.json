@@ -1,6 +1,6 @@
 {
   "name": "@helixid/did-hedera",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Optional Hedera DID method support for HelixID equipped for next major release only",
   "type": "module",
   "license": "Apache-2.0",
@@ -40,7 +40,7 @@
   },
   "dependencies": {
     "@hashgraph/sdk": "^2.49.0",
-    "@helixid/core": "^0.1.0",
+    "@helixid/core": "workspace:^",
     "@hiero-did-sdk/hcs": "^0.1.8",
     "@hiero-did-sdk/registrar": "^0.1.8",
     "@hiero-did-sdk/resolver": "^0.1.8"

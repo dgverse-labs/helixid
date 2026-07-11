@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Travel Concierge — HelixID demo</title>
+    <style>
+      :root { color-scheme: light dark; }
+      * { box-sizing: border-box; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        margin: 0; background: #0f1216; color: #e8eaed; display: flex;
+        min-height: 100vh; align-items: center; justify-content: center;
+      }
+      .card {
+        width: min(680px, 92vw); background: #171b21; border: 1px solid #262c36;
+        border-radius: 14px; padding: 22px 22px 18px; box-shadow: 0 8px 40px rgba(0,0,0,.4);
+      }
+      h1 { font-size: 18px; margin: 0 0 2px; }
+      .sub { color: #9aa4b2; font-size: 13px; margin: 0 0 14px; }
+      .section {
+        padding: 14px; border: 1px solid #262c36; border-radius: 14px;
+        background: #11151b;
+      }
+      .section + .section { margin-top: 18px; }
+      .section-title {
+        color: #7d8795; font-size: 11px; text-transform: uppercase;
+        letter-spacing: .08em; margin: 0 0 10px;
+      }
+      .tabs {
+        display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+        margin: 0 0 12px;
+      }
+      .tab {
+        text-align: left; padding: 12px; border-radius: 12px; border: 1px solid #30363d;
+        background: #0f1216; color: #e8eaed;
+      }
+      .tab.active { border-color: #1f6feb; background: #1f6feb18; }
+      .tab strong { display: block; font-size: 13px; margin-bottom: 3px; }
+      .tab span { display: block; color: #9aa4b2; font-size: 11px; line-height: 1.35; font-weight: 400; }
+      .tab-panel {
+        margin: 0 0 16px; padding: 12px; border: 1px solid #30363d;
+        border-radius: 12px; background: #0f1216;
+      }
+      .tab-panel[hidden] { display: none; }
+      .tab-panel p { margin: 0 0 8px; color: #9aa4b2; font-size: 12px; line-height: 1.45; }
+      .tab-panel .expected { color: #7d8795; font-size: 11px; margin-top: 7px; }
+      .tab-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+      .persona-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+      .persona-bar label { font-size: 12px; color: #9aa4b2; }
+      select {
+        padding: 8px 10px; border-radius: 8px; border: 1px solid #30363d;
+        background: #0f1216; color: #e8eaed; font-size: 13px;
+      }
+      .scopes { font-size: 11px; color: #7d8795; }
+      .secondary {
+        background: #30363d; padding: 8px 10px; font-size: 13px;
+      }
+      .onboard {
+        display: none; margin: -2px 0 14px; padding: 12px; border-radius: 12px;
+        border: 1px solid #30363d; background: #0f1216;
+      }
+      .onboard.open { display: block; }
+      .onboard p { margin: 0 0 10px; color: #9aa4b2; font-size: 12px; line-height: 1.45; }
+      .onboard-row { display: flex; gap: 8px; margin-top: 8px; }
+      .mini {
+        padding: 6px 8px; border-radius: 999px; font-size: 11px;
+        background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+      }
+      #log { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; max-height: 44vh; overflow-y: auto; }
+      .msg { padding: 10px 12px; border-radius: 10px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; }
+      .user { background: #1f6feb22; border: 1px solid #1f6feb55; align-self: flex-end; max-width: 85%; }
+      .bot  { background: #21262d; border: 1px solid #30363d; align-self: flex-start; max-width: 90%; }
+      .meta { color: #9aa4b2; font-size: 12px; align-self: center; font-style: italic; }
+      form { display: flex; gap: 8px; }
+      input {
+        flex: 1; padding: 11px 12px; border-radius: 10px; border: 1px solid #30363d;
+        background: #0f1216; color: #e8eaed; font-size: 14px;
+      }
+      button {
+        padding: 11px 16px; border-radius: 10px; border: 0; background: #1f6feb;
+        color: #fff; font-weight: 600; cursor: pointer; font-size: 14px;
+      }
+      button:disabled { opacity: .5; cursor: default; }
+      .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
+      .chip {
+        font-size: 12px; padding: 6px 10px; border-radius: 999px; cursor: pointer;
+        background: #0f1216; border: 1px solid #30363d; color: #c9d1d9;
+      }
+      @media (max-width: 640px) {
+        .tabs { grid-template-columns: 1fr; }
+        .onboard-row { flex-direction: column; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <section class="section">
+        <div class="section-title">Guided use cases</div>
+        <div class="tabs" role="tablist" aria-label="Demo use cases">
+          <button class="tab active" id="tab-full" type="button" role="tab" aria-selected="true" aria-controls="panel-full" data-tab="full">
+            <strong>Use case 1 — Full-access agent</strong>
+            <span>Concierge can search and book.</span>
+          </button>
+          <button class="tab" id="tab-readonly" type="button" role="tab" aria-selected="false" aria-controls="panel-readonly" data-tab="readonly">
+            <strong>Use case 2 — Read-only agent</strong>
+            <span>Search succeeds; booking is refused.</span>
+          </button>
+          <button class="tab" id="tab-revoked" type="button" role="tab" aria-selected="false" aria-controls="panel-revoked" data-tab="revoked">
+            <strong>Use case 3 — Revoked credential</strong>
+            <span>Revoke Concierge, then retry booking.</span>
+          </button>
+          <button class="tab" id="tab-delegated" type="button" role="tab" aria-selected="false" aria-controls="panel-delegated" data-tab="delegated">
+            <strong>Use case 4 — Delegated agent</strong>
+            <span>Planner delegates read-only authority.</span>
+          </button>
+        </div>
+        <div class="tab-panel" id="panel-full" role="tabpanel" aria-labelledby="tab-full">
+          <p>Select Concierge Agent and ask it to book. Its credential has both
+            <code>read:catalog</code> and <code>write:orders</code>.</p>
+          <div class="tab-actions">
+            <button class="mini" type="button" data-fill="Book flight BA249 for Ada Lovelace">Fill booking prompt</button>
+          </div>
+          <div class="expected">Expected: booking succeeds and Console shows VP verification.</div>
+        </div>
+        <div class="tab-panel" id="panel-readonly" role="tabpanel" aria-labelledby="tab-readonly" hidden>
+          <p>Generate a Console token with only <code>read:catalog</code>, onboard
+            it here, then try search and booking from that persona.</p>
+          <div class="tab-actions">
+            <button class="mini" id="scenario-onboard" type="button">Open onboarding</button>
+            <button class="mini" type="button" data-fill="Search flights from Mumbai to London">Fill search prompt</button>
+            <button class="mini" type="button" data-fill="Book flight BA249 for Grace Hopper">Fill booking prompt</button>
+          </div>
+          <div class="expected">Expected: search succeeds; booking is refused for missing <code>write:orders</code>.</div>
+        </div>
+        <div class="tab-panel" id="panel-revoked" role="tabpanel" aria-labelledby="tab-revoked" hidden>
+          <p>Select Concierge Agent in console agent list, revoke its current credential, then ask it to
+            book again. The wallet still signs a VP, but HelixID rejects it because
+            the credential is now revoked.</p>
+          <div class="tab-actions">
+            <button class="mini" id="scenario-select-concierge" type="button">Select Concierge</button>
+            <button class="mini" id="scenario-revoke" type="button">Revoke selected agent</button>
+            <button class="mini" type="button" data-fill="Book flight BA249 for Ada Lovelace">Fill booking prompt</button>
+          </div>
+          <div class="expected">Expected: retry is refused and Console shows a revoked/failed VP verification.</div>
+        </div>
+        <div class="tab-panel" id="panel-delegated" role="tabpanel" aria-labelledby="tab-delegated" hidden>
+          <p>Create a full-access Planner Agent and no-access Research Agent, then
+            delegate only <code>read:catalog</code> from Planner to Research.</p>
+          <div class="tab-actions">
+            <button class="mini" id="scenario-delegation-setup" type="button">Create demo agents</button>
+            <button class="mini" id="scenario-delegate" type="button">Delegate read access</button>
+            <button class="mini" id="scenario-select-research" type="button">Select Research</button>
+            <button class="mini" type="button" data-fill="Search flights from Mumbai to London">Fill search prompt</button>
+            <button class="mini" type="button" data-fill="Book flight BA249 for Ada Lovelace">Fill booking prompt</button>
+          </div>
+          <div class="expected">Expected: delegated search succeeds; delegated booking is refused for missing <code>write:orders</code>.</div>
+        </div>
+      </section>
+      <section class="section">
+        <h1>Travel Concierge</h1>
+        <p class="sub">
+          LLM agents that act only after HelixID verifies their credentials. Switch
+          the acting agent below and watch
+          <a href="http://localhost:8080" target="_blank" rel="noreferrer" style="color:#58a6ff">Console → Audit</a>.
+        </p>
+        <div class="persona-bar">
+          <label for="persona">Acting agent</label>
+          <select id="persona"></select>
+          <span class="scopes" id="scopes"></span>
+          <button class="secondary" id="open-onboard" type="button">Onboard new agent</button>
+        </div>
+        <div class="onboard" id="onboard-panel">
+          <p>
+            Generate an onboard token in HelixID Console, paste it here, and this
+            Travel Concierge app will enroll a new local persona for that agent.
+            Console remains the source of truth for the credential and audit trail.
+          </p>
+          <form id="onboard-form">
+            <input id="onboard-name" autocomplete="off" placeholder="Display name, e.g. Search Agent" />
+            <div class="onboard-row">
+              <input id="onboard-token" autocomplete="off" placeholder="Paste Console onboard token…" />
+              <button id="onboard-submit" type="submit">Onboard</button>
+            </div>
+          </form>
+        </div>
+        <div id="log">
+          <div class="msg bot">Hi! Try “Book flight BA249 for Ada Lovelace.” Then try read-only, revocation, or delegation from the guided use cases and watch HelixID enforce the credential.</div>
+        </div>
+        <div class="chips">
+          <span class="chip" data-p="Book flight BA249 for Ada Lovelace">Book BA249 for Ada Lovelace</span>
+          <span class="chip" data-p="Search flights from Mumbai to London">Search MUM → LON</span>
+        </div>
+        <form id="f">
+          <input id="m" autocomplete="off" placeholder="Ask the agent to search or book a flight…" />
+          <button id="s" type="submit">Send</button>
+        </form>
+      </section>
+    </div>
+    <script>
+      const log = document.getElementById('log');
+      const form = document.getElementById('f');
+      const input = document.getElementById('m');
+      const sendBtn = document.getElementById('s');
+      const personaSel = document.getElementById('persona');
+      const scopesEl = document.getElementById('scopes');
+      const openOnboardBtn = document.getElementById('open-onboard');
+      const onboardPanel = document.getElementById('onboard-panel');
+      const onboardForm = document.getElementById('onboard-form');
+      const onboardName = document.getElementById('onboard-name');
+      const onboardToken = document.getElementById('onboard-token');
+      const onboardSubmit = document.getElementById('onboard-submit');
+      const scenarioOnboard = document.getElementById('scenario-onboard');
+      const scenarioSelectConcierge = document.getElementById('scenario-select-concierge');
+      const scenarioRevoke = document.getElementById('scenario-revoke');
+      const scenarioDelegationSetup = document.getElementById('scenario-delegation-setup');
+      const scenarioDelegate = document.getElementById('scenario-delegate');
+      const scenarioSelectResearch = document.getElementById('scenario-select-research');
+      const conversationId = 'web-' + Math.random().toString(36).slice(2, 10);
+
+      let personas = [];
+
+      function add(cls, text) {
+        const d = document.createElement('div');
+        d.className = 'msg ' + cls;
+        d.textContent = text;
+        log.appendChild(d);
+        log.scrollTop = log.scrollHeight;
+        return d;
+      }
+
+      function activePersona() {
+        return personas.find((p) => p.id === personaSel.value);
+      }
+
+      function renderScopes() {
+        const p = activePersona();
+        if (!p) {
+          scopesEl.textContent = '';
+          return;
+        }
+        const delegated = p.delegatedScopes?.length
+          ? ' | delegated: ' + p.delegatedScopes.join(', ')
+          : '';
+        scopesEl.textContent = 'scopes: ' + ((p.scopes || []).join(', ') || 'none') + delegated;
+      }
+
+      function selectTab(tabName) {
+        document.querySelectorAll('[role="tab"]').forEach((tab) => {
+          const active = tab.dataset.tab === tabName;
+          tab.classList.toggle('active', active);
+          tab.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        document.querySelectorAll('[role="tabpanel"]').forEach((panel) => {
+          panel.hidden = panel.id !== 'panel-' + tabName;
+        });
+      }
+
+      let loadErrorShown = false;
+      async function loadPersonas() {
+        try {
+          const res = await fetch('/personas', { headers: { accept: 'application/json' } });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const data = await res.json();
+          const next = data.personas || [];
+          // Only re-render options if the set changed (avoid clobbering selection).
+          const changed = JSON.stringify(next.map((p) => p.id)) !== JSON.stringify(personas.map((p) => p.id));
+          personas = next;
+          if (changed) {
+            const current = personaSel.value;
+            personaSel.innerHTML = '';
+            for (const p of personas) {
+              const o = document.createElement('option');
+              o.value = p.id;
+              o.textContent = p.displayName;
+              personaSel.appendChild(o);
+            }
+            if (personas.some((p) => p.id === current)) personaSel.value = current;
+          }
+          renderScopes();
+          sendBtn.disabled = personas.length === 0;
+          loadErrorShown = false;
+        } catch (e) {
+          // Surface the failure instead of leaving a silently-dead UI.
+          sendBtn.disabled = true;
+          if (!loadErrorShown) {
+            add('bot', 'Could not load agents from the backend (GET /personas failed: ' + e.message + '). Is the agent service up?');
+            loadErrorShown = true;
+          }
+        }
+      }
+
+      async function onboardAgent() {
+        const token = onboardToken.value.trim();
+        const displayName = onboardName.value.trim();
+        if (!token) {
+          add('bot', 'Paste an onboard token generated from HelixID Console first.');
+          onboardToken.focus();
+          return;
+        }
+
+        onboardSubmit.disabled = true;
+        const status = add('meta', 'Onboarding new agent…');
+        try {
+          const res = await fetch('/onboard-agent', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'application/json' },
+            body: JSON.stringify({ bootstrapToken: token, displayName }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+
+          onboardToken.value = '';
+          onboardName.value = '';
+          await loadPersonas();
+          if (data.persona?.id) {
+            personaSel.value = data.persona.id;
+            renderScopes();
+          }
+          onboardPanel.classList.remove('open');
+          status.remove();
+          add('bot', 'Onboarded ' + (data.persona?.displayName || 'new agent') + '. It is now selectable as the acting agent.');
+        } catch (e) {
+          status.remove();
+          add('bot', 'Onboarding failed: ' + e.message);
+        } finally {
+          onboardSubmit.disabled = false;
+        }
+      }
+
+      async function revokeActiveAgent() {
+        const persona = activePersona();
+        if (!persona) {
+          add('bot', 'Select an agent before revoking a credential.');
+          return;
+        }
+        scenarioRevoke.disabled = true;
+        const status = add('meta', 'Revoking ' + persona.displayName + ' credential…');
+        try {
+          const res = await fetch('/revoke-agent', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'application/json' },
+            body: JSON.stringify({ personaId: persona.id }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+          status.remove();
+          add('bot', 'Revoked ' + persona.displayName + ' credential ' + data.vcId + '. Try the same booking now; HelixID should refuse the VP.');
+        } catch (e) {
+          status.remove();
+          add('bot', 'Revocation failed: ' + e.message);
+        } finally {
+          scenarioRevoke.disabled = false;
+        }
+      }
+
+      async function setupDelegationAgents() {
+        scenarioDelegationSetup.disabled = true;
+        const status = add('meta', 'Creating Planner Agent and Research Agent…');
+        try {
+          const res = await fetch('/delegation-demo-agents', {
+            method: 'POST',
+            headers: { accept: 'application/json' },
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+          await loadPersonas();
+          status.remove();
+          add('bot', 'Created delegation demo agents: Planner Agent has read:catalog + write:orders; Research Agent starts with no tool scopes.');
+        } catch (e) {
+          status.remove();
+          add('bot', 'Delegation setup failed: ' + e.message);
+        } finally {
+          scenarioDelegationSetup.disabled = false;
+        }
+      }
+
+      async function delegateToResearchAgent() {
+        scenarioDelegate.disabled = true;
+        const status = add('meta', 'Delegating read access from Planner Agent to Research Agent…');
+        try {
+          const res = await fetch('/delegate-agent', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'application/json' },
+            body: JSON.stringify({
+              fromPersonaId: 'delegation-planner',
+              toPersonaId: 'delegation-research',
+              scopes: ['read:catalog'],
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+          await loadPersonas();
+          personaSel.value = 'delegation-research';
+          renderScopes();
+          status.remove();
+          add('bot', 'Delegated read:catalog from Planner Agent to Research Agent. Research Agent is selected and will present the delegated credential.');
+        } catch (e) {
+          status.remove();
+          add('bot', 'Delegation failed: ' + e.message);
+        } finally {
+          scenarioDelegate.disabled = false;
+        }
+      }
+
+      async function send(message) {
+        const persona = activePersona();
+        if (!persona) return;
+        add('user', message);
+        input.value = '';
+        sendBtn.disabled = true;
+        const thinking = add('meta', persona.displayName + ' is thinking…');
+        try {
+          const res = await fetch('/chat', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ personaId: persona.id, message, conversationId }),
+          });
+          const data = await res.json();
+          thinking.remove();
+          add('bot', data.reply || data.error || '(no reply)');
+        } catch (e) {
+          thinking.remove();
+          add('bot', 'Request failed: ' + e.message);
+        } finally {
+          sendBtn.disabled = false;
+          input.focus();
+        }
+      }
+
+      personaSel.addEventListener('change', () => {
+        renderScopes();
+        const p = activePersona();
+        if (p) add('meta', '— now acting as ' + p.displayName + ' —');
+      });
+      openOnboardBtn.addEventListener('click', () => {
+        onboardPanel.classList.toggle('open');
+        if (onboardPanel.classList.contains('open')) onboardToken.focus();
+      });
+      scenarioOnboard.addEventListener('click', () => {
+        onboardPanel.classList.add('open');
+        onboardName.value = onboardName.value || 'Search Agent';
+        onboardToken.focus();
+      });
+      scenarioSelectConcierge.addEventListener('click', () => {
+        if (personas.some((p) => p.id === 'concierge')) {
+          personaSel.value = 'concierge';
+          renderScopes();
+          add('meta', '— now acting as Concierge Agent —');
+        } else {
+          add('bot', 'Concierge Agent is not loaded yet. Wait for setup to finish and /personas to refresh.');
+        }
+      });
+      scenarioRevoke.addEventListener('click', revokeActiveAgent);
+      scenarioDelegationSetup.addEventListener('click', setupDelegationAgents);
+      scenarioDelegate.addEventListener('click', delegateToResearchAgent);
+      scenarioSelectResearch.addEventListener('click', () => {
+        if (personas.some((p) => p.id === 'delegation-research')) {
+          personaSel.value = 'delegation-research';
+          renderScopes();
+          add('meta', '— now acting as Research Agent —');
+        } else {
+          add('bot', 'Research Agent is not loaded yet. Click “Create demo agents” first.');
+        }
+      });
+      onboardForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        onboardAgent();
+      });
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const v = input.value.trim();
+        if (v) send(v);
+      });
+      document.querySelectorAll('.chip').forEach((c) =>
+        c.addEventListener('click', () => send(c.dataset.p)),
+      );
+      document.querySelectorAll('[role="tab"]').forEach((tab) =>
+        tab.addEventListener('click', () => selectTab(tab.dataset.tab)),
+      );
+      document.querySelectorAll('[data-fill]').forEach((b) =>
+        b.addEventListener('click', () => {
+          input.value = b.dataset.fill;
+          input.focus();
+        }),
+      );
+
+      loadPersonas();
+      setInterval(loadPersonas, 4000);
+    </script>
+  </body>
+</html>

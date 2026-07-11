@@ -205,7 +205,7 @@ a self-hosted issuer or any other means.
 npm install @helixid/sdk-js
 ```
 
-**Step 2 — Generate an agent identity and load or self-issue a credential**
+**Step 2 — Generate an agent identity and load or self-issue a dev credential**
 
 ```typescript
 import { AgentWallet, selfIssueVC } from '@helixid/sdk-js'
@@ -217,9 +217,10 @@ const wallet = await AgentWallet.create('./wallet.enc', 'dev-passphrase');
 // spec-compliant source, load it directly:
 await wallet.addCredential(existingVC)
 
-// For local dev and testing only, you can self-issue a credential.
-// Self-signed VCs carry no issuer-attested authority and are rejected
-// by verifiers in production (allowSelfSigned defaults to false).
+// Quick-start only: self-issue a credential for local development.
+// Self-issued VCs carry no issuer-attested authority and are not valid for
+// production, demos that prove trust, revocation, or delegation. Verifiers
+// reject them by default because allowSelfSigned defaults to false.
 const vc = await selfIssueVC(
   { scopes: ['read:orders'], expiresIn: 3600 },
   wallet,
@@ -250,72 +251,126 @@ console.log(result.valid, result.agentDid, result.privilegeScopes)
 // true  did:key:z6Mk...  ['read:orders']
 ```
 
-Full round trip. No issuer, no API call, no Hedera. When ready for production, swap
-`selfIssueVC` for a real bootstrap token enrollment — everything else stays identical.
+Full round trip for local development only. No issuer, no API call, no Hedera.
+For any valid HelixID scenario, swap `selfIssueVC` for a real bootstrap token
+enrollment so the root VC is signed by the trusted issuer.
 
 ---
 
 ### Full Demo (self-hosted, Travel Concierge)
 
-See HelixID enforce scoped access, delegation, and revocation against a real
-AI travel-booking agent — with a live audit trail of every trust decision.
+See a real LLM travel agent enroll with HelixID, receive a scoped credential,
+and call a protected MCP booking tool. The booking runs only after
+`@helixid/mcp` verifies the agent's presentation against the live HelixID API.
 
-Prefer a guided walkthrough? **[Try it on our website →](https://dgverse.in/helixid/try-it-out)**
-Same demo, no local setup.
-
-To run it yourself:
+<!-- Prefer a guided walkthrough? **[Try it on our website →](https://dgverse.in/helixid/try-it-out)**
+Same demo, no local setup. -->
 
 **Step 1 — Get an LLM API key**
 
-The concierge agent needs access to an LLM. Grab a free key from one of:
+The concierge uses a real LLM to decide when to call the booking tool. Obtain a
+key from Anthropic, OpenAI, or Azure OpenAI:
 
 - [Anthropic Console](https://console.anthropic.com/settings/keys)
 - [OpenAI Platform](https://platform.openai.com/api-keys)
 
 **Step 2 — Get the demo**
 
-Download the demo package:
+```bash
+git clone https://github.com/dgverse-labs/helixid.git
+cd helixid
+cd examples/e2e-travel-concierge
+cp .env.example .env
+```
 
-[helixid-travel-concierge-demo.zip](#) — pre-filled `.env` with working demo defaults (LLM key still manual).
-
-Unzip it, then set your key:
+Edit `.env` and add your provider and API key:
 
 ```bash
-# --- LLM Provider ---
-# Which LLM to use: "anthropic" (default) or "openai".
-LLM_PROVIDER=anthropic
-
-# LLM API key obtained from your LLM provider.
-LLM_API_KEY=your-llm-api-key
+LLM_PROVIDER=anthropic # anthropic (default) | openai | azure
+LLM_API_KEY=your-provider-key
 ```
 
 **Step 3 — Run it**
 
 ```bash
-docker-compose up
+docker compose up --build
 ```
 
-This starts the issuer API (sqlite + in-memory cache + `did:web`), the
-**HelixID Console**, the travel-concierge web app, and two pre-provisioned
-agent wallets. A one-shot setup service pre-registers the booking backend as
-a known service, seeds scopes, pre-onboards the demo agents, and seeds a
-status list — fully wired, nothing else to configure.
+This starts the real issuer API with SQLite and local `did:key` identities,
+HelixID Console, a protected MCP server, the LLM agent, and the web chat. A
+one-shot setup service enrolls one agent, issues its credential, saves its
+encrypted wallet to the shared volume, and exits.
 
-Open **http://localhost:5173** for the demo. The terminal will also print a
-URL for the **Console** — the operator view where you'll revoke credentials
-and watch enrollment happen live in Step 4.
+The Console/HelixID SQLite database is the source of truth for real agent trust
+state: enrollment, issued credentials, scopes, revocation, status lists, and
+audit events. The Travel Concierge app's persona list is only local demo state
+used to show selectable agents in the chat UI; it is not the Console database and
+does not replace HelixID's records.
 
-**Step 4 — Try the security patterns**
+Open:
 
-| Scenario | What it shows |
-|---|---|
-| **Search vs. Book** | The Search Agent can look up flights but its VP is rejected when it tries to book — scope enforcement, not a role flag in a database. |
-| **Delegate to a Sub-Agent** | The Concierge Agent delegates a reduced, time-boxed credential to a search sub-agent. The sub-agent can search, but can't book — even though it inherited from an agent that could. |
-| **Revoke Mid-Flight** | An operator revokes the Concierge Agent's credential while it's active. Its very next request is rejected — no key rotation, anywhere. |
-| **Onboard a New Agent, Live** | From the Console, mint a bootstrap token and watch a brand-new agent enroll and receive its VC in real time — the only scenario that isn't pre-seeded. |
+| URL | What |
+| --- | --- |
+| **http://localhost:8090** | Travel Concierge chat |
+| **http://localhost:8080** | HelixID Console — sign in with `admin` / `admin`, then open **Audit** |
 
-Every action above appears in real time in the **Console's audit panel**, so
-you can watch exactly which credential authorized which action, and when.
+**Step 4 — Book a flight**
+
+In the chat, select a suggestion or type:
+
+> **Book flight BA249 for Ada Lovelace**
+
+The LLM calls `book_flight`, the agent signs a fresh VP locally, and the MCP
+server verifies the credential and its `write:orders` scope before creating the
+booking. Refresh **Console → Audit** to see the enrollment, credential issuance,
+and successful `VP_VERIFIED` event.
+
+To onboard another agent at runtime, generate an onboard token in Console, then
+click **Onboard new agent** in the Travel Concierge chat and paste the token. The
+agent service consumes the token, creates a local encrypted wallet, adds only
+local persona metadata to the Travel Concierge manifest, and the new agent
+appears in the persona selector. The Console/HelixID database remains the source
+of truth for the real credential, scopes, revocation state, and audit trail.
+
+To exercise revocation, select **Concierge Agent**, open **Use case 3 — Revoked
+credential**, and click **Revoke selected agent**. The agent service loads the
+selected persona's wallet server-side, reads the credential id, and calls
+`POST /v1/vcs/:vcId/revoke` with the demo admin key. The browser never sees the
+wallet, VC, VP, private key, or admin key. Retry the same booking: the wallet
+still signs a VP, but HelixID rejects it because the live status list now marks
+the credential revoked. Reset with `docker compose down -v` to issue a fresh
+Concierge credential.
+
+To exercise delegation, open **Use case 4 — Delegated agent**. Create the demo
+Planner Agent (`read:catalog` + `write:orders`, delegation depth 1) and Research
+Agent (`read:catalog`), then delegate only `read:catalog` from Planner to
+Research. Research can search through the delegated child credential, but booking
+is refused because that delegated credential lacks `write:orders`. This path is
+enforced by the SDK/MCP verifier; the shipped API does not yet expose API-side
+delegation issuance or Console audit for local child-chain verification.
+
+To exercise the denial path, call the MCP tool without a presentation:
+
+```bash
+curl -s http://localhost:7100/mcp \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call",
+       "params":{"name":"book_flight","arguments":{"flightId":"BA249","passengerName":"Mallory"}}}'
+```
+
+The protected tool refuses the booking because HelixID did not receive a valid
+presentation.
+
+> The current v2 demo includes persona switching, runtime onboarding via a
+> Console-generated token, guided revocation, and SDK/MCP-enforced scoped
+> delegation.
+
+Reset all demo state with:
+
+```bash
+docker compose down -v
+```
 
 ---
 
@@ -450,7 +505,7 @@ console.log(result.valid, result.agentDid, result.privilegeScopes);
 
 `verifyVP()` runs locally (no API call): VP signature, VC signature, validity window, revocation (when credentialStatus exists), target-service checks, and delegation-chain integrity. `vpId` is returned for caller-managed replay protection. If you need a session JWT bridge, call `POST /v1/vp/verify` with `session: true`.
 
-#### Delegate Authority (SDK-local, self-signed)
+#### Delegate Authority (SDK-local, agent-signed child)
 
 ```typescript
 import { AgentWallet, delegate } from '@helixid/sdk-js';
@@ -462,7 +517,7 @@ const delegatedCredential = await delegate(
     to: 'did:key:z6Mk...delegatee',
     scopes: ['read:analytics'],
     expiresIn: 3600,
-    // optional: fromVC: specific parent VC from wallet
+    // optional: fromVC: specific issuer-backed parent VC from wallet
   },
   wallet,
 );
@@ -474,7 +529,11 @@ console.log(
 );
 ```
 
-Delegation is **Option A**: Agent A signs the child VC locally, and verifiers enforce chain integrity, scope subset, and max depth from the VC chain itself. There is no API delegation endpoint.
+Delegation is **Option A**: Agent A signs the child VC locally, and verifiers
+enforce chain integrity, scope subset, and max depth from the VC chain itself.
+The parent/root VC must still be issuer-backed; self-issued VCs are only for the
+quick-start path and are not accepted as a trusted delegation root. There is no
+API delegation endpoint.
 
 ## Framework Integrations
 
@@ -613,7 +672,7 @@ helixid/
 │   ├── langchain/        # LangChain/LangGraph integration
 │   └── cli/              # CLI workflows
 ├── examples/
-│   ├── e2e-travel-concierge/   # Live onboarding, wallet, VP fixture flow
+│   ├── e2e-travel-concierge/   # Dockerized travel-concierge demo
 │   ├── framework-middleware/   # Live LangChain and MCP middleware examples
 │   ├── verify-vp.ts
 │   ├── scope-check.ts

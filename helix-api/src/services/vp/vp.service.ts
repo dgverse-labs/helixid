@@ -229,14 +229,9 @@ export class VPService implements IVPService {
 
       let didDocument;
       try {
-        didDocument = await this.didService.resolveDID(parsed.data.holder);
+        didDocument = await this.resolveDIDDocument(parsed.data.holder);
       } catch {
-        // Fallback to offline resolver (did:key, did:web fetch) when the DID is not present in the API DB
-        try {
-          didDocument = await resolveDIDCore(parsed.data.holder);
-        } catch {
-          throw new VPAgentDIDNotFoundError();
-        }
+        throw new VPAgentDIDNotFoundError();
       }
 
       const publicKeyHex = extractPublicKeyHex(didDocument);
@@ -282,9 +277,9 @@ export class VPService implements IVPService {
       if (!vc.issuer || !vc.proof?.proofValue) {
         throw new VCSignatureInvalidError('The Verifiable Credential proof is missing');
       }
-      let issuerDidDocument: Awaited<ReturnType<IDIDService['resolveDID']>>;
+      let issuerDidDocument: unknown;
       try {
-        issuerDidDocument = await this.didService.resolveDID(vc.issuer as string);
+        issuerDidDocument = await this.resolveDIDDocument(vc.issuer as string);
       } catch {
         throw new VCIssuerNotFoundError();
       }
@@ -302,23 +297,33 @@ export class VPService implements IVPService {
         throw new VCSignatureInvalidError();
       }
 
-      // Step 8: Check VC revocation status through the embedded status-list entry.
-      const statusListCredential = vc.credentialStatus?.statusListCredential;
-      const statusListIndex = vc.credentialStatus?.statusListIndex;
-      if (!statusListCredential || statusListIndex === undefined) {
-        throw new VCRevokedError();
-      }
-      const listId = extractStatusListId(statusListCredential);
-      const statusList = await this.vcService.getStatusList(listId);
-      const bit = getBit(statusList.credentialSubject.encodedList, Number(statusListIndex));
-      if (bit === 1) {
-        throw new VCRevokedError();
+      const agentParse = AgentVCSchema.safeParse(vc);
+      const isDelegated =
+        agentParse.success && (agentParse.data.credentialSubject.delegationDepth ?? 0) > 0;
+
+      // Step 8: A root/non-delegated VC owns its status-list entry. A locally
+      // signed delegated child has no independent revocation bit; its status is
+      // inherited from the parent chain checked below.
+      if (!isDelegated) {
+        const statusListCredential = vc.credentialStatus?.statusListCredential;
+        const statusListIndex = vc.credentialStatus?.statusListIndex;
+        if (!statusListCredential || statusListIndex === undefined) {
+          throw new VCRevokedError();
+        }
+        const listId = extractStatusListId(statusListCredential);
+        const statusList = await this.vcService.getStatusList(listId);
+        const bit = getBit(statusList.credentialSubject.encodedList, Number(statusListIndex));
+        if (bit === 1) {
+          throw new VCRevokedError();
+        }
       }
 
-      const agentParse = AgentVCSchema.safeParse(vc);
       let delegationChainSummary: DelegationChainSummary[] | undefined;
-      if (agentParse.success && (agentParse.data.credentialSubject.delegationDepth ?? 0) > 0) {
-        const chain = await this.reconstructDelegationChain(agentParse.data, requestId);
+      if (agentParse.success && isDelegated) {
+        // Validation schemas intentionally select known claims, but signatures
+        // cover the complete original payload (including delegationChain).
+        // Preserve that payload for cryptographic verification.
+        const chain = await this.reconstructDelegationChain(vc as AgentVC, requestId);
         await this.verifyDelegationChain(chain, requestId);
         delegationChainSummary = summarizeDelegationChain(chain);
         this.auditLogger.log(AuditEvents.CHAIN_VERIFIED, {
@@ -455,7 +460,9 @@ export class VPService implements IVPService {
         });
         throw new Error('parent_vc_invalid_structure');
       }
-      chain.unshift(parsedParent.data);
+      // Keep the stored signed payload intact after validating its structure;
+      // stripping extension claims would change the signature hash.
+      chain.unshift(parent.vc as AgentVC);
       parentVcId = parsedParent.data.credentialSubject.parentVcId;
     }
     return chain;
@@ -464,24 +471,29 @@ export class VPService implements IVPService {
   private async verifyDelegationChain(chain: AgentVC[], requestId: string): Promise<void> {
     try {
       validateChainIntegrity(chain);
-      for (const vc of chain) {
+      for (const [index, vc] of chain.entries()) {
         const expiry = credentialExpiryMs(vc);
         if (expiry !== null && expiry <= Date.now()) {
           throw new Error('vc_expired');
         }
         const statusListCredential = vc.credentialStatus?.statusListCredential;
         const statusListIndex = vc.credentialStatus?.statusListIndex;
-        if (!statusListCredential || statusListIndex === undefined) {
+        // Only the root owns a revocation bit. Delegated descendants inherit
+        // root revocation, although an explicitly supplied child status entry
+        // is still honored.
+        if (index === 0 && (!statusListCredential || statusListIndex === undefined)) {
           throw new Error('vc_revoked');
         }
-        const listId = extractStatusListId(statusListCredential);
-        const statusList = await this.vcService.getStatusList(listId);
-        const bit = getBit(statusList.credentialSubject.encodedList, Number(statusListIndex));
-        if (bit === 1) {
-          throw new Error('vc_revoked');
+        if (statusListCredential && statusListIndex !== undefined) {
+          const listId = extractStatusListId(statusListCredential);
+          const statusList = await this.vcService.getStatusList(listId);
+          const bit = getBit(statusList.credentialSubject.encodedList, Number(statusListIndex));
+          if (bit === 1) {
+            throw new Error('vc_revoked');
+          }
         }
         await this.verifyVCSignedByIssuer(vc);
-        await this.didService.resolveDID(vc.credentialSubject.id);
+        await this.resolveDIDDocument(vc.credentialSubject.id);
       }
     } catch (error) {
       const leafVcId = chain.at(-1)?.id;
@@ -499,9 +511,9 @@ export class VPService implements IVPService {
     if (!vc.issuer || !vc.proof?.proofValue) {
       throw new VCSignatureInvalidError('The Verifiable Credential proof is missing');
     }
-    let issuerDidDocument: Awaited<ReturnType<IDIDService['resolveDID']>>;
+    let issuerDidDocument: unknown;
     try {
-      issuerDidDocument = await this.didService.resolveDID(vc.issuer);
+      issuerDidDocument = await this.resolveDIDDocument(vc.issuer);
     } catch {
       throw new VCIssuerNotFoundError();
     }
@@ -513,6 +525,16 @@ export class VPService implements IVPService {
     const valid = await verifySignature(vcHash, signatureHex, issuerPublicKeyHex);
     if (!valid) {
       throw new VCSignatureInvalidError();
+    }
+  }
+
+  private async resolveDIDDocument(did: string): Promise<unknown> {
+    try {
+      return await this.didService.resolveDID(did);
+    } catch {
+      // Delegated children are commonly issued by wallet-local did:key agents,
+      // which are resolvable offline but are not registered in the API store.
+      return resolveDIDCore(did);
     }
   }
 }

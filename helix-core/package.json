@@ -1,6 +1,6 @@
 {
   "name": "@helixid/core",
-  "version": "0.1.0",
+  "version": "0.1.5",
   "description": "Cryptographic primitives for AI agent identity — DID resolution, Ed25519 signing, VC/VP construction, delegation chains, and Bitstring Status List revocation. Framework-agnostic foundation for the HelixID trust stack.",
   "type": "module",
   "license": "Apache-2.0",

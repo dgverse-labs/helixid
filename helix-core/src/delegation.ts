@@ -39,15 +39,12 @@ function assertAgentVC(vc: SignedVC): asserts vc is AgentSignedVC {
   }
 }
 
-function assertStrictSubset(parentScopes: string[], childScopes: string[]): void {
+function assertSubset(parentScopes: string[], childScopes: string[]): void {
   const parent = new Set(parentScopes);
   for (const scope of childScopes) {
     if (!parent.has(scope)) {
       throw new ScopeEscalationDeniedError(scope);
     }
-  }
-  if (childScopes.length >= parent.size && childScopes.every((scope) => parent.has(scope))) {
-    throw new ScopeEscalationDeniedError('delegated scopes must be a strict subset');
   }
 }
 
@@ -60,7 +57,7 @@ export async function buildDelegationVC(
   const parentDepth = parentSubject.delegationDepth ?? 0;
   const maxDepth = parentSubject.maxDelegationDepth ?? 0;
 
-  assertStrictSubset(parentSubject.privilegeScopes, options.scopes);
+  assertSubset(parentSubject.privilegeScopes, options.scopes);
   if (parentDepth + 1 > maxDepth) {
     throw new MaxDelegationDepthExceededError();
   }
