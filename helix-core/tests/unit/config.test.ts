@@ -123,6 +123,7 @@ describe('Config', () => {
     process.env.DID_DOMAIN = 'api.test.com';
     process.env.HELIX_SIGNING_KEY = 'a'.repeat(64);
     process.env.HELIX_ADMIN_API_KEY = 'test-admin-key-0001';
+    delete process.env.DATABASE_URL;
 
     const { loadConfigFromEnv } = await import('../../src/config/index.js');
     expect(() => loadConfigFromEnv()).toThrow(
