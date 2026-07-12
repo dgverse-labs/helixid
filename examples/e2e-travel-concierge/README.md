@@ -299,12 +299,3 @@ the web app doesn't know HelixID exists.
 - **Guided revocation is intentionally destructive for that demo run.** Once you
   revoke Concierge, its existing credential will keep failing until you reset the
   demo state with `docker compose down -v` and start again.
-- **A working API image.** Two pre-existing problems in `helix-api` make its
-  shipped Docker path unusable, so this demo ships its own `docker/api.Dockerfile`:
-  1. the repo-root Dockerfile runs `pnpm deploy --prod`, which prunes the generated
-     Prisma client, so the API crash-loops on `import { PrismaClient }`;
-  2. `pnpm --filter @helixid/api build` (tsc) currently fails to compile on `main`,
-     so there is no clean `dist/`.
-  The demo image generates the Prisma client in place and runs the API from source
-  with `tsx` (transpile-only) — the same way the repo's own `dev` script runs it.
-  It is still 100% the real API.

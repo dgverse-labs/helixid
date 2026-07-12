@@ -34,6 +34,12 @@ RUN pnpm --filter @helixid/api build
 # Create a self-contained deployment with all production deps resolved (no workspace symlinks)
 RUN pnpm --filter @helixid/api deploy --prod /app/deploy
 
+# `pnpm deploy` re-resolves dependencies from the store rather than copying node_modules,
+# so it drops the .prisma/client output that `prisma generate` wrote during the build step
+# above. Regenerate it directly into the deploy output using the still-present dev CLI
+# (helix-api/node_modules is discarded when only /app/deploy is copied into the runner stage).
+RUN cd /app/deploy && /app/helix-api/node_modules/.bin/prisma generate
+
 
 FROM node:24-alpine AS runner
 
