@@ -32,6 +32,7 @@
     "@helixid/did-hedera": "^0.1.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.7.0",
+    "@prisma/config": "^7.8.0",
     "better-sqlite3": "^12.11.1",
     "bs58": "^6.0.0",
     "dotenv": "^17.4.2",
@@ -43,7 +44,6 @@
   "devDependencies": {
     "@helixid/sdk-js": "^0.1.1",
     "@noble/ed25519": "^2.3.0",
-    "@prisma/config": "^7.8.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/bs58": "^5.0.0",
     "@types/node": "^20.0.0",

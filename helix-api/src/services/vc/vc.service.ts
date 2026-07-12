@@ -59,31 +59,6 @@ function getCredentialSubject(value: unknown): CredentialSubject {
   return asRecord(record.credentialSubject) as CredentialSubject;
 }
 
-function normalizeListLimit(limit: number | undefined): number {
-  if (limit === undefined) return 50;
-  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
-    throw new HelixError(ErrorCode.VALIDATION_ERROR, 'limit must be an integer between 1 and 500', 400);
-  }
-  return limit;
-}
-
-function normalizeListStatus(status: string | undefined): 'active' | 'revoked' | 'expired' | undefined {
-  if (status === undefined || status === 'active' || status === 'revoked' || status === 'expired') {
-    return status;
-  }
-  throw new HelixError(
-    ErrorCode.VALIDATION_ERROR,
-    'status must be one of active, revoked, or expired',
-    400,
-  );
-}
-
-function getRecordStatus(record: { revokedAt: Date | null; expiresAt: Date }): 'active' | 'revoked' | 'expired' {
-  if (record.revokedAt) return 'revoked';
-  if (record.expiresAt.getTime() <= Date.now()) return 'expired';
-  return 'active';
-}
-
 export interface IssueVCParams {
   subjectDid: string;
   subjectType: 'agent' | 'user';
@@ -380,7 +355,7 @@ export class VCService implements IVCService {
     };
   }
 
-  async listVCs(filters: ListVCsFilters): Promise<VCSummary[]> {
+  async listVCs(filters: ListVCFilters = {}): Promise<VCSummary[]> {
     const records = await this.vcRepo.findMany({ subjectDid: filters.subjectDid });
     const limit = filters.limit ?? 50;
     const now = Date.now();
@@ -439,37 +414,6 @@ export class VCService implements IVCService {
       revokedAt: record.revokedAt?.toISOString() || null,
       renewedByVcId: record.renewedByVcId,
     };
-  }
-
-  async listVCs(filters: ListVCFilters = {}): Promise<VCSummary[]> {
-    const records = await this.vcRepo.listVcs({
-      subjectDid: filters.subjectDid,
-      status: normalizeListStatus(filters.status),
-      limit: normalizeListLimit(filters.limit),
-    });
-
-    return records.map((record) => {
-      const vc = asRecord(record.vcJson);
-      const subject = getCredentialSubject(vc);
-      const scopes = Array.isArray(record.privilegeScopes)
-        ? record.privilegeScopes.filter((scope): scope is string => typeof scope === 'string')
-        : Array.isArray(asRecord(vc.credentialSubject).privilegeScopes)
-          ? (asRecord(vc.credentialSubject).privilegeScopes as unknown[]).filter(
-              (scope): scope is string => typeof scope === 'string',
-            )
-          : [];
-      const summary: VCSummary = {
-        vcId: record.vcId,
-        subjectDid: record.subjectDid,
-        scopes,
-        status: getRecordStatus(record),
-        issuedAt: (record.createdAt ?? new Date(0)).toISOString(),
-        expiresAt: record.expiresAt.toISOString(),
-      };
-      if (subject.agentName) summary.agentName = subject.agentName;
-      if (record.parentVcId) summary.parentVcId = record.parentVcId;
-      return summary;
-    });
   }
 
   async getVCStatus(vcId: string): Promise<'active' | 'revoked' | 'expired'> {

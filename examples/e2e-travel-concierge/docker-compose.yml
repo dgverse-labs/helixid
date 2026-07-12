@@ -28,7 +28,7 @@ services:
   helix-api:
     build:
       context: ../..
-      dockerfile: examples/e2e-travel-concierge/docker/api.Dockerfile
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
