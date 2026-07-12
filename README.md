@@ -314,9 +314,20 @@ Open:
 | **http://localhost:8090** | Travel Concierge chat |
 | **http://localhost:8080** | HelixID Console — sign in with `admin` / `admin`, then open **Audit** |
 
-**Step 4 — Book a flight**
+**Step 4 — Try the four guided use cases**
 
-In the chat, select a suggestion or type:
+The web chat has four tabs, each exercising a different trust decision against
+the same MCP server and the same `search_flights` / `book_flight` tools:
+
+| Use case | Persona / credential state | What to try | Expected result |
+| --- | --- | --- | --- |
+| **1 — Full-access agent** | Concierge has `read:catalog` + `write:orders` | Book a flight | Booking succeeds |
+| **2 — Read-only agent** | Runtime-onboarded agent has only `read:catalog` | Search, then book | Search succeeds; booking is refused for missing `write:orders` |
+| **3 — Revoked credential** | Concierge's issued VC is revoked through the live API | Retry booking | VP is rejected because the status-list bit is revoked |
+| **4 — Delegated agent** | Research starts with no tool scopes, then receives a Planner-signed child VC with `read:catalog` | Search, then book | Delegated search succeeds; booking is refused because the child VC lacks `write:orders` |
+
+Open **Use case 1 — Full-access agent**. With **Concierge Agent** selected,
+type or click a suggestion:
 
 > **Book flight BA249 for Ada Lovelace**
 
@@ -325,31 +336,33 @@ server verifies the credential and its `write:orders` scope before creating the
 booking. Refresh **Console → Audit** to see the enrollment, credential issuance,
 and successful `VP_VERIFIED` event.
 
-To onboard another agent at runtime, generate an onboard token in Console, then
-click **Onboard new agent** in the Travel Concierge chat and paste the token. The
-agent service consumes the token, creates a local encrypted wallet, adds only
-local persona metadata to the Travel Concierge manifest, and the new agent
-appears in the persona selector. The Console/HelixID database remains the source
-of truth for the real credential, scopes, revocation state, and audit trail.
+Open **Use case 2 — Read-only agent**. Generate an onboard token in Console,
+then click **Onboard new agent** in the Travel Concierge chat and paste the
+token. The agent service consumes the token, creates a local encrypted wallet,
+adds only local persona metadata to the Travel Concierge manifest, and the new
+agent appears in the persona selector — no restart. Select it and search
+(succeeds, it has `read:catalog`), then try to book (refused — it lacks
+`write:orders`). The Console/HelixID database remains the source of truth for
+the real credential, scopes, revocation state, and audit trail.
 
-To exercise revocation, select **Concierge Agent**, open **Use case 3 — Revoked
-credential**, and click **Revoke selected agent**. The agent service loads the
-selected persona's wallet server-side, reads the credential id, and calls
+Select **Concierge Agent**, open **Use case 3 — Revoked credential**, and click
+**Revoke selected agent**. The agent service loads the selected persona's
+wallet server-side, reads the credential id, and calls
 `POST /v1/vcs/:vcId/revoke` with the demo admin key. The browser never sees the
 wallet, VC, VP, private key, or admin key. Retry the same booking: the wallet
 still signs a VP, but HelixID rejects it because the live status list now marks
 the credential revoked. Reset with `docker compose down -v` to issue a fresh
 Concierge credential.
 
-To exercise delegation, open **Use case 4 — Delegated agent**. Create the demo
-Planner Agent (`read:catalog` + `write:orders`, delegation depth 1) and Research
-Agent (`read:catalog`), then delegate only `read:catalog` from Planner to
-Research. Research can search through the delegated child credential, but booking
-is refused because that delegated credential lacks `write:orders`. This path is
+Open **Use case 4 — Delegated agent**. Create the demo Planner Agent
+(`read:catalog` + `write:orders`, delegation depth 1) and Research Agent
+(`read:catalog`), then delegate only `read:catalog` from Planner to Research.
+Research can search through the delegated child credential, but booking is
+refused because that delegated credential lacks `write:orders`. This path is
 enforced by the SDK/MCP verifier; the shipped API does not yet expose API-side
 delegation issuance or Console audit for local child-chain verification.
 
-To exercise the denial path, call the MCP tool without a presentation:
+To exercise the denial path directly, call the MCP tool without a presentation:
 
 ```bash
 curl -s http://localhost:7100/mcp \
@@ -361,10 +374,6 @@ curl -s http://localhost:7100/mcp \
 
 The protected tool refuses the booking because HelixID did not receive a valid
 presentation.
-
-> The current v2 demo includes persona switching, runtime onboarding via a
-> Console-generated token, guided revocation, and SDK/MCP-enforced scoped
-> delegation.
 
 Reset all demo state with:
 
