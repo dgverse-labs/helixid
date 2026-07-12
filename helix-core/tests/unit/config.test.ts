@@ -1,11 +1,32 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+// CI sets these at the job/step level for @helixid/api's Postgres and Hedera
+// tests, but turbo runs every package's `test` script as a child of that same
+// process, so they leak into this suite's ambient env too. Each test below
+// declares exactly the vars it needs, so start every test from a clean slate
+// instead of one that silently carries CI-injected values.
+const CI_INJECTED_VARS = [
+  'DATABASE_URL',
+  'REDIS_URL',
+  'HEDERA_NETWORK',
+  'HEDERA_OPERATOR_ID',
+  'HEDERA_OPERATOR_KEY',
+  'HEDERA_TOPIC_ID',
+  'HELIX_SIGNING_KEY',
+  'API_BASE_URL',
+  'ENROLLMENT_TOKEN_TTL_SECONDS',
+  'CHALLENGE_TTL_SECONDS',
+  'VP_TTL_SECONDS',
+  'AUDIT_LOG_DESTINATION',
+];
+
 describe('Config', () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
     vi.resetModules();
     process.env = { ...originalEnv };
+    for (const key of CI_INJECTED_VARS) delete process.env[key];
   });
 
   afterEach(() => {
@@ -123,7 +144,6 @@ describe('Config', () => {
     process.env.DID_DOMAIN = 'api.test.com';
     process.env.HELIX_SIGNING_KEY = 'a'.repeat(64);
     process.env.HELIX_ADMIN_API_KEY = 'test-admin-key-0001';
-    delete process.env.DATABASE_URL;
 
     const { loadConfigFromEnv } = await import('../../src/config/index.js');
     expect(() => loadConfigFromEnv()).toThrow(
