@@ -1,4 +1,4 @@
-import { type DIDDocument, type HelixJWTPayload, type KeyPair, type ServiceEndpoint, type SignedVC, type SignedVP, type StatusListCredential, type VerifyVPOptions, type VerifyVPResult } from '@helixid/core';
+import { type DIDDocument, type HelixJWTPayload, type KeyPair, type ServiceEndpoint, type StatusListCredential, type SignedVC, type SignedVP, type VerifyVPOptions, type VerifyVPResult } from '@helixid/core';
 import { HttpAdapter } from '../http/HttpAdapter.js';
 import { AgentWallet } from '../wallet/AgentWallet.js';
 interface PendingKeyPair {
@@ -90,14 +90,6 @@ export interface SessionPublicKeyResponse {
 export interface HelixClientOptions {
     adminApiKey?: string;
 }
-export interface RegisterServiceOptions {
-    serviceName: string;
-    displayName: string;
-    verifiedDomain: string;
-    publicKeyMultibase: string;
-    apiEndpoint: string;
-    metadata: Record<string, unknown>;
-}
 export interface CreateStatusListOptions {
     listId?: string;
     length?: number;
@@ -107,10 +99,10 @@ export declare class HelixClient {
     private readonly wallet;
     private pendingKeyPair;
     private readonly sdkOnlyMode;
+    private readonly apiAuditEnabled;
     constructor(apiUrl?: string);
     constructor(baseUrl: string, options?: HelixClientOptions);
     constructor(http: HttpAdapter, baseUrl: string);
-    registerService(options: RegisterServiceOptions): Promise<Record<string, unknown>>;
     createDID(options: CreateDIDOptions): Promise<CreateDIDResult>;
     resolveDID(did: string, options?: {
         live?: boolean;
@@ -173,11 +165,11 @@ export declare class HelixClient {
         verified: true;
         vc?: Record<string, unknown>;
     }>;
-    listServices(): Promise<Array<Record<string, unknown>>>;
-    getService(serviceName: string): Promise<Record<string, unknown>>;
     __setTestHttpAdapter(adapter: HttpAdapterLike): void;
     __getPendingKeyPairForTest(): PendingKeyPair | null;
+    private recordVPVerificationAudit;
     private signPendingDidCreatePayload;
+    private describeVerificationFailure;
     private assertAPIConfigured;
 }
 export {};

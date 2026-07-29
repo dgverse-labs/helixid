@@ -1,12 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
 import {
-  base58btcEncode,
+  createEd25519Proof,
   createStatusList,
   getBit,
-  hashCanonicalPayload,
   setBit,
-  signBytes,
   type SignedVC,
 } from '@helixid/core';
 
@@ -37,16 +35,9 @@ export async function signCredential(
   issuerDid: string,
   privateKeyHex: string,
 ): Promise<SignedVC> {
-  const signatureHex = await signBytes(hashCanonicalPayload(credential), privateKeyHex);
   return {
     ...credential,
-    proof: {
-      type: 'Ed25519Signature2020',
-      created: new Date().toISOString(),
-      verificationMethod: `${issuerDid}#key-1`,
-      proofPurpose: 'assertionMethod',
-      proofValue: base58btcEncode(Buffer.from(signatureHex, 'hex')),
-    },
+    proof: await createEd25519Proof(credential, privateKeyHex, `${issuerDid}#key-1`),
   } as SignedVC;
 }
 

@@ -15,17 +15,35 @@ export function createProgram(): Command {
   const did = program.command('did').description('DID commands');
   did
     .command('create')
-    .description('Create a new DID and wallet')
+    .description('Create a new DID and wallet (did:web also creates its initial status list)')
     .requiredOption('--method <method>', 'DID method: web, hedera, or key')
     .option('--domain <domain>', 'Domain for did:web (required for web method)')
     .option('--network <network>', 'Hedera network: testnet, previewnet, or mainnet', 'testnet')
     .requiredOption('--wallet <path>', 'Path to encrypted wallet file')
+    .option('--no-status-list', 'Skip creating the initial status list (did:web only)')
+    .option(
+      '--status-list-length <bits>',
+      'Status list capacity in bits (did:web only)',
+      (value) => Number.parseInt(value, 10),
+    )
+    .option(
+      '--status-list-output <path>',
+      'Status list output file path (default: status-list.json next to the wallet file)',
+    )
+    .option(
+      '--status-list-base-url <url>',
+      'Public URL where the status list will be served (default: https://<domain>/.well-known/helix-status-list.json)',
+    )
     .action(async (options) => {
       await runDidCreate({
         method: options.method,
         domain: options.domain,
         network: options.network,
         wallet: options.wallet,
+        statusList: options.statusList,
+        statusListLength: options.statusListLength,
+        statusListOutput: options.statusListOutput,
+        statusListBaseUrl: options.statusListBaseUrl,
       });
     });
 

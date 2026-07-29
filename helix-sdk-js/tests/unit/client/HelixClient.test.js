@@ -55,9 +55,17 @@ describe('HelixClient Branch Coverage', () => {
             const c2 = new HelixClient({ post: vi.fn() }, 'http://localhost');
             await expect(c2.getVC('vc1')).rejects.toThrow('GET not implemented by adapter');
         });
+        it('throws for listVCs if GET missing', async () => {
+            const c2 = new HelixClient({ post: vi.fn() }, 'http://localhost');
+            await expect(c2.listVCs()).rejects.toThrow('GET not implemented by adapter');
+        });
         it('throws for getStatusList if GET missing', async () => {
             const c2 = new HelixClient({ post: vi.fn() }, 'http://localhost');
             await expect(c2.getStatusList('l1')).rejects.toThrow('GET not implemented by adapter');
+        });
+        it('throws for getAuditLog if GET missing', async () => {
+            const c2 = new HelixClient({ post: vi.fn() }, 'http://localhost');
+            await expect(c2.getAuditLog()).rejects.toThrow('GET not implemented by adapter');
         });
         it('throws for fetchSessionPublicKey if GET missing', async () => {
             const c2 = new HelixClient({ post: vi.fn() }, 'http://localhost');

@@ -196,6 +196,23 @@ export class AgentWallet {
     async getCredential(vcId, passphrase, filePath) {
         return ((await this.load(passphrase, filePath)).credentials.find((item) => item.vcId === vcId) ?? null);
     }
+    /**
+     * Selects the most recent DelegationGrantCredential issued by the given SP
+     * for the given user. Grants are per (user, agent, service), so type/recency
+     * filtering alone (getLatestCredential) cannot pick the right one.
+     */
+    selectGrant(issuerDid, userDid) {
+        return this.walletCredentials
+            .filter((item) => {
+            if (!item.type.includes('DelegationGrantCredential'))
+                return false;
+            if (item.issuer !== issuerDid)
+                return false;
+            const parsed = JSON.parse(item.vcJson);
+            return parsed.credentialSubject?.userDid === userDid;
+        })
+            .sort((a, b) => Date.parse(b.addedAt) - Date.parse(a.addedAt))[0];
+    }
     async getLatestCredential(options, passphrase, filePath) {
         const credentials = (await this.load(passphrase, filePath)).credentials
             .filter((item) => !options?.vcType || item.type.includes(options.vcType))

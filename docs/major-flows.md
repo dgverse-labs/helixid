@@ -111,23 +111,7 @@ Surfaces used:
 | Request challenge | `POST /v1/challenges`, `HelixClient.requestUserChallenge()`. |
 | Verify challenge | `POST /v1/challenges/:challengeId/verify`, `HelixClient.verifyUserChallenge()`. |
 
-## 7. Service Registry
-
-Brief flow:
-
-1. Register service metadata.
-2. List available services.
-3. Fetch a single service entry when needed.
-
-Surfaces used:
-
-| Step | Surfaces |
-| --- | --- |
-| Register service | `POST /v1/services`, `HelixClient.registerService()`. |
-| List services | `GET /v1/services`, `HelixClient.listServices()`. |
-| Get service | `GET /v1/services/:serviceName`, `HelixClient.getService()`. |
-
-## 8. Session Bridge
+## 7. Session Bridge
 
 Brief flow:
 
@@ -143,7 +127,7 @@ Surfaces used:
 | Fetch session key | `GET /v1/sessions/public-key`, `HelixClient.fetchSessionPublicKey()`. |
 | Verify session token | `HelixClient.verifySessionToken()`. |
 
-## 9. Local Dev Credential Flow
+## 8. Local Dev Credential Flow
 
 Brief flow:
 
@@ -161,7 +145,7 @@ Surfaces used:
 | Build VP | `VPBuilder.sign()`, `HelixIDMiddleware()`, `HelixIDToolWrapper()`, `attachHelixVP()`. |
 | Verify self-signed VC | `verifyVP({ allowSelfSigned: true })`, `helixidMCPMiddleware({ allowSelfSigned: true })`. |
 
-## 10. Wallet Management
+## 9. Wallet Management
 
 Brief flow:
 

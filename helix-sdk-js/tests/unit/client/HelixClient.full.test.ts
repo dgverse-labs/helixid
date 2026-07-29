@@ -91,30 +91,7 @@ describe('HelixClient Full Unit Tests', () => {
     expect(mockHttp.post).toHaveBeenCalledWith('/v1/challenges/c1/verify', { signature: 'sig' });
   });
 
-  it('lists and gets services', async () => {
-    mockHttp.get.mockResolvedValue({ services: [] });
-    await client.listServices();
-    expect(mockHttp.get).toHaveBeenCalledWith('/v1/services');
-
-    mockHttp.get.mockResolvedValue({});
-    await client.getService('s1');
-    expect(mockHttp.get).toHaveBeenCalledWith('/v1/services/s1');
-  });
-
-  it('registers services and creates status lists through the API', async () => {
-    mockHttp.post.mockResolvedValue({ serviceName: 'amazon' });
-    await client.registerService({
-      serviceName: 'amazon',
-      displayName: 'Amazon Retail',
-      verifiedDomain: 'https://amazon.com',
-      publicKeyMultibase: 'zabc',
-      apiEndpoint: 'https://api.amazon.com/helix-verify',
-      metadata: {},
-    });
-    expect(mockHttp.post).toHaveBeenCalledWith('/v1/services', expect.objectContaining({
-      serviceName: 'amazon',
-    }));
-
+  it('creates status lists through the API', async () => {
     mockHttp.post.mockResolvedValue({
       '@context': ['https://www.w3.org/ns/credentials/v2'],
       id: 'http://api/v1/status-list/helix-status-list-1',

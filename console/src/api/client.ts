@@ -10,8 +10,6 @@ import type {
   AuditLogEntry,
   EnrollmentTokenInput,
   EnrollmentTokenResult,
-  ServiceInput,
-  ServiceRecord,
   VcFilters,
   VCSummary,
   VCResponse,
@@ -83,12 +81,6 @@ export const api = {
     requestJson<VCResponse>(`/v1/vcs/${encodeURIComponent(vcId)}`),
   revokeAgent: async (vcId: string): Promise<{ vcId: string; revoked: true; revokedAt: string }> =>
     requestJson(`/v1/vcs/${encodeURIComponent(vcId)}/revoke`, { method: 'POST' }),
-  listServices: async (): Promise<ServiceRecord[]> => {
-    const result = await requestJson<{ services: ServiceRecord[] }>('/v1/services');
-    return result.services;
-  },
-  registerService: async (input: ServiceInput): Promise<ServiceRecord> =>
-    requestJson<ServiceRecord>('/v1/services', { method: 'POST', body: input }),
   createEnrollmentToken: async (input: EnrollmentTokenInput): Promise<EnrollmentTokenResult> =>
     requestJson<EnrollmentTokenResult>('/v1/enrollment-tokens', {
       method: 'POST',

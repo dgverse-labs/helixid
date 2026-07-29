@@ -1,11 +1,6 @@
 // Copyright 2026 DgVerse LLP
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { AgentService } from '../../../src/services/agent/agent.service.js';
-import { 
-  ServiceNotFoundError,
-  ServiceAlreadyExistsError
-} from '@helixid/core';
-
 describe('AgentService Unit Tests', () => {
   let repository: any;
   let didService: any;
@@ -79,36 +74,4 @@ describe('AgentService Unit Tests', () => {
     });
   });
 
-  describe('getService', () => {
-    it('throws ServiceNotFoundError if missing', async () => {
-      repository.getServiceByName.mockResolvedValue(null);
-      await expect(agentService.getService('missing')).rejects.toThrow(ServiceNotFoundError);
-    });
-
-    it('returns service entry if found', async () => {
-      repository.getServiceByName.mockResolvedValue({ 
-        serviceName: 's1', 
-        displayName: 'S1', 
-        verifiedDomain: 'https://s1.com', 
-        publicKeyMultibase: 'z1', 
-        apiEndpoint: 'https://api.s1.com', 
-        metadata: '{}' 
-      });
-      const result = await agentService.getService('s1');
-      expect(result.serviceName).toBe('s1');
-    });
-  });
-
-  describe('createService', () => {
-    it('throws VALIDATION_ERROR for invalid service name', async () => {
-      await expect(agentService.createService({ serviceName: 'BAD', displayName: 'D', verifiedDomain: 'https://v', publicKeyMultibase: 'z', apiEndpoint: 'https://a', metadata: {} }, 'req-1'))
-        .rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
-    });
-
-    it('throws ServiceAlreadyExistsError if name taken', async () => {
-      repository.findServiceByName.mockResolvedValue({ id: '1' });
-      await expect(agentService.createService({ serviceName: 'taken', displayName: 'D', verifiedDomain: 'https://v', publicKeyMultibase: 'z', apiEndpoint: 'https://a', metadata: {} }, 'req-1'))
-        .rejects.toThrow(ServiceAlreadyExistsError);
-    });
-  });
 });

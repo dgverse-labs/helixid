@@ -9,19 +9,9 @@ export type {
   AuditLogEntry,
   EnrollmentTokenInput,
   EnrollmentTokenResult,
-  ServiceInput,
   VcFilters,
   VCResponse,
   VCSummary,
 } from '@helixid/sdk-js';
 
 export type VCStatus = 'active' | 'revoked' | 'expired';
-
-/** Shape of rows returned by GET /v1/services. */
-export interface ServiceRecord {
-  serviceName: string;
-  displayName?: string;
-  verifiedDomain?: string;
-  apiEndpoint?: string;
-  [key: string]: unknown;
-}

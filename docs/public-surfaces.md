@@ -30,9 +30,6 @@ Base paths are mounted from `helix-api/src/server.ts`.
 | `POST` | `/v1/onboard/verify` | Onboarding step 2: verify challenge and issue VC. | `challengeId`, `signature`, optional `didCreateSignature`. | `agentDid`, `vc`, `vcId`. |
 | `POST` | `/v1/challenges` | Issue user verification challenge. | `did`, `purpose: "user_verification"`. | Challenge id, nonce, expiry. |
 | `POST` | `/v1/challenges/:challengeId/verify` | Verify user challenge signature. | Challenge id, `signature`. | Verified DID and optional VC. |
-| `GET` | `/v1/services` | List registered services. | None. | Service records. |
-| `GET` | `/v1/services/:serviceName` | Fetch registered service. | Service name. | Service record. |
-| `POST` | `/v1/services` | Register service metadata. | `serviceName`, `displayName`, `verifiedDomain`, `publicKeyMultibase`, `apiEndpoint`, `metadata`. | Created service record. |
 | `GET` | `/v1/audit-log` | List audit events. | Optional `eventType`, `since`, `limit`. | Newest-first audit summaries, including derived `delegatedFrom`, `delegatedTo`, `parentVcId`, and `delegationDepth` for VP verification events when delegation context is available. Requires `x-admin-api-key`. |
 | `POST` | `/v1/audit-log/vp-verification` | Record API-backed VP verification audit entry. | `vpId`, `agentDid`, `result`, optional `targetService`, `reason`, `delegatedFrom`, `delegatedTo`, `delegationChain`, `verifiedAt`. | Audit entry recorded. Requires `x-admin-api-key`. |
 
@@ -47,7 +44,6 @@ API-backed client. Construct with no args for SDK-only mode, or with API base UR
 | Method | Purpose |
 | --- | --- |
 | `createDID(options)` | Generate keypair and call `POST /v1/dids`. |
-| `registerService(options)` | Register service metadata through `POST /v1/services`. |
 | `resolveDID(did, options?)` | Resolve DID through API, optionally live. |
 | `addServiceEndpoint(did, endpoint)` | Add DID service endpoint. |
 | `removeServiceEndpoint(did, endpointId)` | Remove DID service endpoint. |
@@ -69,8 +65,6 @@ API-backed client. Construct with no args for SDK-only mode, or with API base UR
 | `completeOnboarding(challengeId, nonce, passphrase, path)` | Sign challenge, verify onboarding, save wallet. |
 | `requestUserChallenge(userDid)` | Request user verification challenge. |
 | `verifyUserChallenge(challengeId, signature)` | Verify user challenge signature. |
-| `listServices()` | List service registry entries. |
-| `getService(serviceName)` | Fetch one service registry entry. |
 
 ### `AgentWallet`
 
@@ -152,7 +146,7 @@ Binary: `helix`.
 
 | Command | Purpose | Required options | Optional options |
 | --- | --- | --- | --- |
-| `helix did create` | Create DID and encrypted wallet. | `--method <web|hedera|key>`, `--wallet <path>` | `--domain <domain>`, `--network <testnet|previewnet|mainnet>` |
+| `helix did create` | Create DID and encrypted wallet. For `--method web`, also creates the SP's initial status list by default. | `--method <web|hedera|key>`, `--wallet <path>` | `--domain <domain>`, `--network <testnet|previewnet|mainnet>`, `--no-status-list`, `--status-list-length <bits>`, `--status-list-output <path>`, `--status-list-base-url <url>` |
 | `helix issuer init` | Validate issuer wallet readiness. | `--wallet <path>` | None. |
 | `helix status-list create` | Create signed BitstringStatusList credential file. | `--length <bits>`, `--output <path>`, `--base-url <url>`, `--wallet <path>` | None. |
 | `helix vc issue` | Issue `HelixAgentCredential` to agent DID. | `--agent-did <did>`, `--scopes <csv>`, `--expires <duration>`, `--status-list <path>`, `--base-url <url>`, `--wallet <path>` | `--output <path>`, `--max-delegation-depth <depth>` |

@@ -24,17 +24,34 @@ pnpm exec tsx src/bin/helix.ts did create --method web --domain example.com --wa
 
 ### `helix did create`
 
-Create an encrypted wallet and DID.
+Create an encrypted wallet and DID. For `--method web`, the command also
+creates the issuer's initial status list by default — one command, two
+artifacts, both of which need hosting on your domain:
+
+1. the DID document at `https://<domain>/.well-known/did.json`, and
+2. the status list JSON at the `--status-list-base-url` (default
+   `https://<domain>/.well-known/helix-status-list.json`).
+
+Pick a generous `--status-list-length` (default 131072 bits; 100k+ is
+recommended — unused bits are free, and grant/credential indices are assigned
+randomly within the list).
 
 ```bash
 export HELIX_WALLET_PASSPHRASE='your-secret'
 
-# Issuer (did:web)
+# Issuer (did:web) — also writes status-list.json next to the wallet file
 helix did create --method web --domain example.com --wallet ./issuer.enc
+
+# Issuer without the status-list step (previous behavior)
+helix did create --method web --domain example.com --wallet ./issuer.enc --no-status-list
 
 # Agent (did:key)
 helix did create --method key --wallet ./agent.enc
 ```
+
+Status-list flags (did:web only): `--no-status-list` to opt out,
+`--status-list-length <bits>`, `--status-list-output <path>`,
+`--status-list-base-url <url>`.
 
 ### `helix issuer init`
 

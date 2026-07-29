@@ -10,8 +10,6 @@ import {
   EnrollmentTokenAlreadyUsedError,
   EnrollmentTokenExpiredError,
   EnrollmentTokenNotFoundError,
-  ServiceAlreadyExistsError,
-  ServiceNotFoundError,
   base58btcDecode,
   resolveDID,
   verifySignature,
@@ -25,7 +23,6 @@ import type { IVCService } from '../vc/IVCService.js';
 import type {
   IAgentService,
   ChallengeResult,
-  ServiceEntry,
   EnrollResult,
 } from './IAgentService.js';
 
@@ -54,10 +51,6 @@ function ensureHttps(url: string): boolean {
   } catch {
     return false;
   }
-}
-
-function ensureServiceName(name: string): boolean {
-  return /^[a-z][a-z0-9-]+$/.test(name);
 }
 
 function extractPublicKeyHex(doc: Awaited<ReturnType<IDIDService['resolveDID']>>): string {
@@ -529,78 +522,6 @@ export class AgentService implements IAgentService {
     return { did: challenge.did, verified: true, vc };
   }
 
-  async listServices(): Promise<{ services: ServiceEntry[] }> {
-    const services = await this.repository.listActiveServices();
-    return {
-      services: services.map((service) => ({
-        serviceName: service.serviceName,
-        displayName: service.displayName,
-        verifiedDomain: service.verifiedDomain,
-        publicKeyMultibase: service.publicKeyMultibase,
-        apiEndpoint: service.apiEndpoint,
-        metadata: JSON.parse(service.metadata),
-      })),
-    };
-  }
-
-  async getService(serviceName: string): Promise<ServiceEntry> {
-    const service = await this.repository.getServiceByName(serviceName);
-    if (!service) {
-      throw new ServiceNotFoundError();
-    }
-    return {
-      serviceName: service.serviceName,
-      displayName: service.displayName,
-      verifiedDomain: service.verifiedDomain,
-      publicKeyMultibase: service.publicKeyMultibase,
-      apiEndpoint: service.apiEndpoint,
-      metadata: JSON.parse(service.metadata),
-    };
-  }
-
-  async createService(
-    input: {
-      serviceName: string;
-      displayName: string;
-      verifiedDomain: string;
-      publicKeyMultibase: string;
-      apiEndpoint: string;
-      metadata: Record<string, unknown>;
-    },
-    _requestId: string,
-  ): Promise<ServiceEntry> {
-    void _requestId;
-    if (
-      !ensureServiceName(input.serviceName) ||
-      !ensureHttps(input.verifiedDomain) ||
-      !ensureHttps(input.apiEndpoint)
-    ) {
-      throw Object.assign(new Error('Invalid service data'), {
-        code: 'VALIDATION_ERROR',
-        httpStatus: 400,
-      });
-    }
-    const existing = await this.repository.findServiceByName(input.serviceName);
-    if (existing) {
-      throw new ServiceAlreadyExistsError();
-    }
-    const created = await this.repository.createService({
-      serviceName: input.serviceName,
-      displayName: input.displayName,
-      verifiedDomain: input.verifiedDomain,
-      publicKeyMultibase: input.publicKeyMultibase,
-      apiEndpoint: input.apiEndpoint,
-      metadata: JSON.stringify(input.metadata),
-    });
-    return {
-      serviceName: created.serviceName,
-      displayName: created.displayName,
-      verifiedDomain: created.verifiedDomain,
-      publicKeyMultibase: created.publicKeyMultibase,
-      apiEndpoint: created.apiEndpoint,
-      metadata: JSON.parse(created.metadata),
-    };
-  }
 }
 
 export function mapAgentError(error: unknown): {

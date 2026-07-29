@@ -11,6 +11,9 @@
 // limitations under the License.
 
 import { gzipSync, gunzipSync } from 'node:zlib';
+import { VC_CONTEXTS } from '../schemas/vc.js';
+
+export { StatusListCredentialSchema } from './schema.js';
 
 export interface StatusListCredential {
   '@context': string[];
@@ -96,6 +99,15 @@ export function getBit(encodedList: string, index: number): 0 | 1 {
 }
 
 /**
+ * Returns the bit capacity of an encoded status list.
+ */
+export function getStatusListLength(encodedList: string): number {
+  const compressed = base64urlDecode(encodedList);
+  const buffer = gunzipSync(compressed);
+  return buffer.length * 8;
+}
+
+/**
  * Builds the W3C Bitstring Status List credential JSON.
  */
 export function buildStatusListCredential(
@@ -105,10 +117,7 @@ export function buildStatusListCredential(
   apiBaseUrl: string
 ): StatusListCredential {
   return {
-    '@context': [
-      'https://www.w3.org/ns/credentials/v2',
-      'https://www.w3.org/ns/credentials/status/v1'
-    ],
+    '@context': [...VC_CONTEXTS],
     id: `${apiBaseUrl}/v1/status-list/${listId}`,
     type: ['VerifiableCredential', 'BitstringStatusListCredential'],
     issuer: issuerDid,

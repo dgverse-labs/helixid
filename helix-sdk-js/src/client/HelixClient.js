@@ -59,10 +59,6 @@ export class HelixClient {
             keyPair,
         };
     }
-    async registerService(options) {
-        this.assertAPIConfigured();
-        return this.http.post('/v1/services', options);
-    }
     async resolveDID(did, options) {
         const query = options?.live ? '?live=true' : '';
         if (!this.http.get)
@@ -147,17 +143,14 @@ export class HelixClient {
                 source: 'sdk',
             };
             const delegatedFrom = result.delegationChain.at(-2)?.subject;
-            if (delegatedFrom !== undefined) {
+            if (delegatedFrom !== undefined)
                 successAudit.delegatedFrom = delegatedFrom;
-            }
             const delegatedTo = result.delegationChain.at(-1)?.subject;
-            if (delegatedTo !== undefined) {
+            if (delegatedTo !== undefined)
                 successAudit.delegatedTo = delegatedTo;
-            }
             const parentVcId = result.delegationChain.at(-2)?.vcId;
-            if (parentVcId !== undefined) {
+            if (parentVcId !== undefined)
                 successAudit.parentVcId = parentVcId;
-            }
             await this.recordVPVerificationAudit(successAudit);
             return result;
         }
@@ -249,17 +242,6 @@ export class HelixClient {
     }
     async verifyUserChallenge(challengeId, signature) {
         return this.http.post(`/v1/challenges/${challengeId}/verify`, { signature });
-    }
-    async listServices() {
-        if (!this.http.get)
-            throw new Error('GET not implemented by adapter');
-        const response = await this.http.get('/v1/services');
-        return response.services;
-    }
-    async getService(serviceName) {
-        if (!this.http.get)
-            throw new Error('GET not implemented by adapter');
-        return this.http.get(`/v1/services/${serviceName}`);
     }
     __setTestHttpAdapter(adapter) {
         this.http = adapter;

@@ -1,15 +1,24 @@
 import { buildDIDDocument, generateKeyPair, publicKeyToMultibase } from '@helixid/core';
 import { access } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { requireHederaOperator, requirePassphrase } from '../lib/env.js';
 import { error, success } from '../lib/output.js';
 import { saveNewWallet } from '../lib/wallet.js';
+import { runStatusListCreate } from './status-list.js';
 
 export interface DidCreateOptions {
   method: 'web' | 'hedera' | 'key';
   domain?: string;
   network?: 'testnet' | 'previewnet' | 'mainnet';
   wallet: string;
+  /** did:web only — set false (--no-status-list) to skip status-list creation. */
+  statusList?: boolean;
+  statusListLength?: number;
+  statusListOutput?: string;
+  statusListBaseUrl?: string;
 }
+
+const DEFAULT_STATUS_LIST_LENGTH = 131072;
 
 export async function runDidCreate(options: DidCreateOptions): Promise<void> {
   const passphrase = requirePassphrase();
@@ -36,6 +45,27 @@ export async function runDidCreate(options: DidCreateOptions): Promise<void> {
     console.log(`Serve this file at: https://${options.domain}/.well-known/did.json`);
     console.log('');
     console.log(JSON.stringify(didDocument, null, 2));
+
+    if (options.statusList !== false) {
+      const statusListOutput =
+        options.statusListOutput ?? join(dirname(options.wallet), 'status-list.json');
+      const statusListBaseUrl =
+        options.statusListBaseUrl ??
+        `https://${options.domain}/.well-known/helix-status-list.json`;
+
+      console.log('');
+      await runStatusListCreate({
+        length: options.statusListLength ?? DEFAULT_STATUS_LIST_LENGTH,
+        output: statusListOutput,
+        baseUrl: statusListBaseUrl,
+        wallet: options.wallet,
+      });
+
+      console.log('');
+      console.log('This command produced two artifacts. Host both on your domain:');
+      console.log(`  1. DID document -> https://${options.domain}/.well-known/did.json`);
+      console.log(`  2. Status list  -> ${statusListBaseUrl} (file: ${statusListOutput})`);
+    }
     return;
   }
 

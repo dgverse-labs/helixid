@@ -29,15 +29,6 @@ export interface UserChallengeVerifyResult {
   vc?: Record<string, unknown>;
 }
 
-export interface ServiceEntry {
-  serviceName: string;
-  displayName: string;
-  verifiedDomain: string;
-  publicKeyMultibase: string;
-  apiEndpoint: string;
-  metadata: Record<string, unknown>;
-}
-
 export interface IAgentService {
   generateEnrollmentToken(
     input: {
@@ -74,10 +65,4 @@ export interface IAgentService {
     input: { signature: string },
     requestId: string,
   ): Promise<UserChallengeVerifyResult>;
-  listServices(): Promise<{ services: ServiceEntry[] }>;
-  getService(serviceName: string): Promise<ServiceEntry>;
-  createService(
-    input: Omit<ServiceEntry, 'metadata'> & { metadata: Record<string, unknown> },
-    requestId: string,
-  ): Promise<ServiceEntry>;
 }

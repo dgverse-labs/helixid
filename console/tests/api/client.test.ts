@@ -122,49 +122,6 @@ describe('api/client', () => {
       await expect(api.revokeAgent('vc:1')).rejects.toThrow('already revoked');
     });
 
-    it('listServices unwraps the services array', async () => {
-      const { api } = await importApi();
-      fetchMock.mockResolvedValueOnce(jsonResponse({ services: [{ serviceName: 'orders' }] }));
-
-      await expect(api.listServices()).resolves.toEqual([{ serviceName: 'orders' }]);
-
-      fetchMock.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        json: async () => ({ error: { message: 'down' } }),
-      } as Response);
-      await expect(api.listServices()).rejects.toThrow('down');
-    });
-
-    it('registerService calls POST /v1/services', async () => {
-      const { api } = await importApi();
-      const origin = window.location.origin;
-      const input = {
-        serviceName: 'orders',
-        displayName: 'Orders',
-        verifiedDomain: 'orders.example.com',
-        publicKeyMultibase: 'z6Mk',
-        apiEndpoint: 'https://orders.example.com',
-      };
-      fetchMock.mockResolvedValueOnce(jsonResponse({ serviceName: 'orders' }));
-
-      await expect(api.registerService(input)).resolves.toEqual({ serviceName: 'orders' });
-      expect(fetchMock).toHaveBeenCalledWith(
-        `${origin}/v1/services`,
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify(input),
-        }),
-      );
-
-      fetchMock.mockResolvedValueOnce({
-        ok: false,
-        status: 409,
-        json: async () => ({ error: { message: 'conflict' } }),
-      } as Response);
-      await expect(api.registerService(input)).rejects.toThrow('conflict');
-    });
-
     it('createEnrollmentToken calls POST /v1/enrollment-tokens', async () => {
       const { api } = await importApi();
       const origin = window.location.origin;

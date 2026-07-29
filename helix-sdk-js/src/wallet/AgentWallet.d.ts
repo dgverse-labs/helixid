@@ -61,6 +61,12 @@ export declare class AgentWallet {
     removeCredential(vcId: string, filePath: string, passphrase: string): Promise<void>;
     listCredentials(passphrase: string, filePath: string): Promise<WalletCredential[]>;
     getCredential(vcId: string, passphrase: string, filePath: string): Promise<WalletCredential | null>;
+    /**
+     * Selects the most recent DelegationGrantCredential issued by the given SP
+     * for the given user. Grants are per (user, agent, service), so type/recency
+     * filtering alone (getLatestCredential) cannot pick the right one.
+     */
+    selectGrant(issuerDid: string, userDid: string): WalletCredential | undefined;
     getLatestCredential(options: {
         vcType?: string;
     } | undefined, passphrase: string, filePath: string): Promise<WalletCredential | null>;

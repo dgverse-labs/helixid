@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { AgentWallet } from '../../../src/wallet/AgentWallet.js';
+import { generateKeyPair, publicKeyToMultibase, selfIssueVC } from '@helixid/core';
 const credential = AgentWallet.credentialFromVC('v', {
     id: 'v',
     type: ['VerifiableCredential', 'HelixAgentCredential'],
@@ -106,6 +107,20 @@ describe('AgentWallet Branch Coverage', () => {
             await rm(dir, { recursive: true, force: true });
         }
     });
+    it('generates keypairs locally without creating a DID', () => {
+        const keypair = AgentWallet.generateKeypair();
+        expect(keypair.publicKey).toMatch(/^[0-9a-f]{64}$/);
+        expect(keypair.privateKey).toMatch(/^[0-9a-f]{64}$/);
+    });
+    it('builds an in-memory wallet from a keypair and credential', async () => {
+        const keypair = generateKeyPair();
+        const did = `did:key:${publicKeyToMultibase(keypair.publicKey)}`;
+        const vc = await selfIssueVC({ scopes: ['read:orders'] }, { did, privateKeyHex: keypair.privateKey });
+        const wallet = AgentWallet.fromKeypairAndCredential(keypair, vc);
+        expect(wallet.getDID()).toBe(did);
+        expect(wallet.credentials).toHaveLength(1);
+        expect(wallet.credentials[0]?.id).toBe(vc.id);
+    });
     it('self-issues and persists credentials for the loaded wallet', async () => {
         const dir = await mkdtemp(join(tmpdir(), 'helix-wallet-'));
         const path = join(dir, 'wallet.json');
@@ -137,6 +152,61 @@ describe('AgentWallet Branch Coverage', () => {
         finally {
             await rm(dir, { recursive: true, force: true });
         }
+    });
+    describe('selectGrant', () => {
+        const agentDid = 'did:key:zAgent';
+        const spDid = 'did:web:airline.example';
+        const userDid = 'did:web:user.example';
+        function grantCredential(vcId, issuer, grantUserDid, addedAt) {
+            const item = AgentWallet.credentialFromVC(vcId, {
+                id: vcId,
+                type: ['VerifiableCredential', 'DelegationGrantCredential'],
+                issuer,
+                credentialSubject: {
+                    id: agentDid,
+                    type: 'DelegationGrant',
+                    userDid: grantUserDid,
+                    scopes: ['book:flights'],
+                    durability: 'standing',
+                },
+            });
+            return { ...item, addedAt };
+        }
+        const agentVC = AgentWallet.credentialFromVC('vc:agent', {
+            id: 'vc:agent',
+            type: ['VerifiableCredential', 'HelixAgentCredential'],
+            issuer: spDid,
+            credentialSubject: { id: agentDid, type: 'HelixAgent', privilegeScopes: ['read:orders'] },
+        });
+        it('returns the correct grant among mixed credential types and ignores other SPs/users', () => {
+            const wallet = new AgentWallet({
+                did: agentDid,
+                credentials: [
+                    agentVC,
+                    grantCredential('vc:grant:other-sp', 'did:web:hotel.example', userDid, '2026-07-01T00:00:00.000Z'),
+                    grantCredential('vc:grant:other-user', spDid, 'did:web:someone-else.example', '2026-07-02T00:00:00.000Z'),
+                    grantCredential('vc:grant:match', spDid, userDid, '2026-06-01T00:00:00.000Z'),
+                ],
+            });
+            expect(wallet.selectGrant(spDid, userDid)?.vcId).toBe('vc:grant:match');
+            expect(wallet.selectGrant('did:web:hotel.example', userDid)?.vcId).toBe('vc:grant:other-sp');
+            expect(wallet.selectGrant(spDid, 'did:web:unknown.example')).toBeUndefined();
+        });
+        it('returns the most recent grant when several match', () => {
+            const wallet = new AgentWallet({
+                did: agentDid,
+                credentials: [
+                    grantCredential('vc:grant:old', spDid, userDid, '2026-05-01T00:00:00.000Z'),
+                    grantCredential('vc:grant:new', spDid, userDid, '2026-07-01T00:00:00.000Z'),
+                    grantCredential('vc:grant:middle', spDid, userDid, '2026-06-01T00:00:00.000Z'),
+                ],
+            });
+            expect(wallet.selectGrant(spDid, userDid)?.vcId).toBe('vc:grant:new');
+        });
+        it('returns undefined for an empty wallet or a wallet with only agent VCs', () => {
+            expect(new AgentWallet({ did: agentDid }).selectGrant(spDid, userDid)).toBeUndefined();
+            expect(new AgentWallet({ did: agentDid, credentials: [agentVC] }).selectGrant(spDid, userDid)).toBeUndefined();
+        });
     });
 });
 //# sourceMappingURL=AgentWallet.test.js.map

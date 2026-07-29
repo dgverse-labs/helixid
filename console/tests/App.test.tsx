@@ -11,8 +11,6 @@ vi.mock('../src/api/client', () => ({
     listAgents: vi.fn(),
     getAgent: vi.fn(),
     revokeAgent: vi.fn(),
-    listServices: vi.fn(),
-    registerService: vi.fn(),
     createEnrollmentToken: vi.fn(),
     getAuditLog: vi.fn(),
   },
@@ -36,7 +34,6 @@ describe('App shell + routing', () => {
     localStorage.clear();
     delete window.__HELIXID_CONFIG__;
     mocked.listAgents.mockResolvedValue([]);
-    mocked.listServices.mockResolvedValue([]);
     mocked.getAuditLog.mockResolvedValue([
       {
         id: '1',
@@ -57,12 +54,12 @@ describe('App shell + routing', () => {
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
   });
 
-  it('renders the shell with a four-item nav (incl. Audit) when authenticated', async () => {
+  it('renders the shell with a three-item nav (incl. Audit) when authenticated', async () => {
     sessionStorage.setItem(AUTH_KEY, 'true');
     renderApp('/');
 
     expect(await screen.findByRole('heading', { name: 'Agents' })).toBeInTheDocument();
-    for (const name of ['Agents', 'Enroll', 'Services', 'Audit']) {
+    for (const name of ['Agents', 'Enroll', 'Audit']) {
       expect(screen.getByRole('link', { name })).toBeInTheDocument();
     }
     // The persistent audit rail is gone — audit now lives on its own page.

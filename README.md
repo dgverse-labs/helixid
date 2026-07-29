@@ -443,26 +443,6 @@ pnpm --filter @helixid/api dev
 
 SQLite mode does not require running database migrations.
 
-#### Register your service
-
-Before any agent can be issued a VP targeting your service, the service itself must be registered. This is the same registry used for both service metadata *and* VP-target eligibility — register once, and it's immediately usable as a `targetService`.
-
-```bash
-curl -X POST $API_BASE_URL/v1/services \
-  -H "x-admin-api-key: $HELIX_ADMIN_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "serviceName": "orders-service",
-    "displayName": "Orders Service",
-    "verifiedDomain": "orders.example.com",
-    "publicKeyMultibase": "z6Mk...",
-    "apiEndpoint": "https://orders.example.com/api",
-    "metadata": {}
-  }'
-```
-
-`serviceName` must be unique and `verifiedDomain`/`apiEndpoint` must be HTTPS. Once registered, `orders-service` can be used as a `targetService` in VP templates, VP builds, and `verifyVP()`'s `expectedTargetService`.
-
 #### Enroll an Agent
 
 The onboarding flow is a single SDK round trip using a one-time **bootstrap token** (single-use, short TTL) delivered out-of-band (env var, secret manager, CI variable).

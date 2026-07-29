@@ -1,4 +1,5 @@
-import { getBit, type StatusListCredential } from './status-list/index.js';
+import { getBit } from './status-list/index.js';
+import { StatusListCredentialSchema } from './status-list/schema.js';
 import { resolveDID } from './did-resolver.js';
 import { verifyEd25519Proof } from './proof.js';
 import {
@@ -105,9 +106,21 @@ async function verifyRevocation(vc: SignedVC): Promise<void> {
   if (!response.ok) {
     throw new VCRevokedError('Unable to verify credential revocation status');
   }
-  const statusList = await response.json() as StatusListCredential;
+  // Fail closed: a fetched list that is not valid JSON or does not match the
+  // shared StatusListCredential shape is treated as revoked/untrusted, never
+  // trusted for getBit(). Applies equally to helix-api- and SP-hosted lists.
+  let json: unknown;
+  try {
+    json = await response.json();
+  } catch {
+    throw new VCRevokedError('Status list response is not valid JSON');
+  }
+  const parsed = StatusListCredentialSchema.safeParse(json);
+  if (!parsed.success) {
+    throw new VCRevokedError('Status list credential failed schema validation');
+  }
   const index = Number(vc.credentialStatus.statusListIndex);
-  if (!Number.isInteger(index) || getBit(statusList.credentialSubject.encodedList, index) === 1) {
+  if (!Number.isInteger(index) || getBit(parsed.data.credentialSubject.encodedList, index) === 1) {
     throw new VCRevokedError();
   }
 }

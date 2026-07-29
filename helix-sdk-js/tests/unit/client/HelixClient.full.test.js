@@ -42,6 +42,11 @@ describe('HelixClient Full Unit Tests', () => {
         await client.issueVC({ subjectDid: 'did:1', subjectType: 'user' });
         expect(mockHttp.post).toHaveBeenCalledWith('/v1/vcs', expect.objectContaining({ subjectDid: 'did:1' }));
     });
+    it('lists VCs with filters', async () => {
+        mockHttp.get.mockResolvedValue([]);
+        await client.listVCs({ subjectDid: 'did:1', status: 'active', limit: 25 });
+        expect(mockHttp.get).toHaveBeenCalledWith('/v1/vcs?subjectDid=did%3A1&status=active&limit=25');
+    });
     it('revokes and renews VC', async () => {
         mockHttp.post.mockResolvedValue({});
         await client.revokeVC('vc1');
@@ -71,13 +76,23 @@ describe('HelixClient Full Unit Tests', () => {
         await client.verifyUserChallenge('c1', 'sig');
         expect(mockHttp.post).toHaveBeenCalledWith('/v1/challenges/c1/verify', { signature: 'sig' });
     });
-    it('lists and gets services', async () => {
-        mockHttp.get.mockResolvedValue({ services: [] });
-        await client.listServices();
-        expect(mockHttp.get).toHaveBeenCalledWith('/v1/services');
-        mockHttp.get.mockResolvedValue({});
-        await client.getService('s1');
-        expect(mockHttp.get).toHaveBeenCalledWith('/v1/services/s1');
+    it('creates status lists through the API', async () => {
+        mockHttp.post.mockResolvedValue({
+            '@context': ['https://www.w3.org/ns/credentials/v2'],
+            id: 'http://api/v1/status-list/helix-status-list-1',
+            type: ['VerifiableCredential', 'BitstringStatusListCredential'],
+            issuer: 'did:web:localhost',
+            validFrom: new Date().toISOString(),
+            credentialSubject: {
+                id: 'http://api/v1/status-list/helix-status-list-1#list',
+                type: 'BitstringStatusList',
+                statusPurpose: 'revocation',
+                encodedList: createStatusList(),
+            },
+        });
+        const statusList = await client.createStatusList({ length: 64 });
+        expect(mockHttp.post).toHaveBeenCalledWith('/v1/status-list', { length: 64 });
+        expect(statusList.type).toContain('BitstringStatusListCredential');
     });
     it('exposes API-backed VP verification but not delegation helpers', () => {
         expect(typeof client.verifyVP).toBe('function');
@@ -159,6 +174,11 @@ describe('HelixClient Full Unit Tests', () => {
             sub: 'did:hedera:testnet:agent',
             targetService: 'amazon',
         });
+    });
+    it('gets audit log with filters', async () => {
+        mockHttp.get.mockResolvedValue([]);
+        await client.getAuditLog({ eventType: 'VC_ISSUED', since: '2026-07-03T00:00:00.000Z', limit: 10 });
+        expect(mockHttp.get).toHaveBeenCalledWith('/v1/audit-log?eventType=VC_ISSUED&since=2026-07-03T00%3A00%3A00.000Z&limit=10');
     });
     it('throws SDK_ONLY_MODE_NO_API for enrollment calls without an API URL', async () => {
         const sdkOnly = new HelixClient();

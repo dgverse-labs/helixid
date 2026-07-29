@@ -160,15 +160,6 @@ export interface HelixClientOptions {
   adminApiKey?: string;
 }
 
-export interface RegisterServiceOptions {
-  serviceName: string;
-  displayName: string;
-  verifiedDomain: string;
-  publicKeyMultibase: string;
-  apiEndpoint: string;
-  metadata: Record<string, unknown>;
-}
-
 export interface CreateStatusListOptions {
   listId?: string;
   length?: number;
@@ -231,11 +222,6 @@ export class HelixClient {
       hederaTransactionId: response.hederaTransactionId,
       keyPair,
     };
-  }
-
-  async registerService(options: RegisterServiceOptions): Promise<Record<string, unknown>> {
-    this.assertAPIConfigured();
-    return this.http.post<Record<string, unknown>>('/v1/services', options);
   }
 
   async resolveDID(
@@ -494,19 +480,6 @@ export class HelixClient {
     signature: string,
   ): Promise<{ did: string; verified: true; vc?: Record<string, unknown> }> {
     return this.http.post(`/v1/challenges/${challengeId}/verify`, { signature });
-  }
-
-  async listServices(): Promise<Array<Record<string, unknown>>> {
-    if (!this.http.get) throw new Error('GET not implemented by adapter');
-    const response = await this.http.get<{ services: Array<Record<string, unknown>> }>(
-      '/v1/services',
-    );
-    return response.services;
-  }
-
-  async getService(serviceName: string): Promise<Record<string, unknown>> {
-    if (!this.http.get) throw new Error('GET not implemented by adapter');
-    return this.http.get(`/v1/services/${serviceName}`);
   }
 
   __setTestHttpAdapter(adapter: HttpAdapterLike): void {

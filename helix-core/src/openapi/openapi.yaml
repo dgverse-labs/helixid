@@ -268,23 +268,6 @@ paths:
       responses:
         "200":
           description: Challenge verified
-  /v1/services:
-    get:
-      summary: List services
-      responses:
-        "200":
-          description: Active services
-    post:
-      summary: Register a service
-      responses:
-        "201":
-          description: Service created
-  /v1/services/{serviceName}:
-    get:
-      summary: Get service by name
-      responses:
-        "200":
-          description: Service found
   /v1/audit-log:
     get:
       summary: List audit events
