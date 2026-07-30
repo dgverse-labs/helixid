@@ -101,7 +101,7 @@ Local encrypted wallet and credential store.
 
 | Export | Purpose |
 | --- | --- |
-| `new VPBuilder({ vc, holderDid, targetService, userDid }).sign(privateKeyHex, verificationMethodId)` | Build and sign a short-lived VP for a target service. |
+| `new VPBuilder({ credentials, holderDid, targetService, userDid? }).sign(privateKeyHex, verificationMethodId)` | Build and sign a short-lived VP for a target service. `credentials` carries 1–2 entries: exactly one agent-authority VC, plus at most one consent grant VC. `userDid` is optional; when omitted, `delegatedBy` is absent from the payload. |
 | `verifyVP(vp, options?)` | Verify VP signature, VC signature, expiry, revocation, target service, and delegation chain. |
 | `delegate(options, wallet)` | Create delegated VC from wallet credential with scoped-down privileges. |
 | `checkScope(result, requiredScope)` | Boolean scope check on `VerifyVPResult`. |

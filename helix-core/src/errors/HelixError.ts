@@ -359,6 +359,24 @@ export class VPInvalidStructureError extends HelixError {
   }
 }
 
+/**
+ * Verification-time grant errors (VP doc §4.4). Deliberately NOT part of the
+ * B7 issuance-error consolidation — these describe VP verification failures.
+ */
+export class ConsentGrantSubjectMismatchError extends HelixError {
+  constructor(
+    message = 'Consent grant does not match the presenting agent or the VP user identifier',
+  ) {
+    super('CONSENT_GRANT_SUBJECT_MISMATCH', message, 400);
+  }
+}
+
+export class ConsentGrantInvalidError extends HelixError {
+  constructor(message = 'Consent grant credential is structurally invalid') {
+    super('CONSENT_GRANT_INVALID', message, 400);
+  }
+}
+
 export class VPAgentDIDNotFoundError extends HelixError {
   constructor(message = 'Agent DID not found') {
     super('VP_AGENT_DID_NOT_FOUND', message, 404);

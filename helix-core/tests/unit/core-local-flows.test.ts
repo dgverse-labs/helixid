@@ -201,7 +201,7 @@ describe('VP builder and verifier', () => {
     );
 
     const vp = await new VPBuilder({
-      vc,
+      credentials: [vc],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -232,7 +232,7 @@ describe('VP builder and verifier', () => {
     );
 
     const vp = await new VPBuilder({
-      vc,
+      credentials: [vc],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -263,7 +263,7 @@ describe('VP builder and verifier', () => {
       mockJsonResponse(statusListBody(createStatusList(8))),
     );
     const vp = await new VPBuilder({
-      vc,
+      credentials: [vc],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -286,7 +286,7 @@ describe('VP builder and verifier', () => {
     );
     expect(getBit(setBit(createStatusList(8), 0, 1), 0)).toBe(1);
     const vp = await new VPBuilder({
-      vc,
+      credentials: [vc],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -305,7 +305,7 @@ describe('VP builder and verifier', () => {
       holderDid,
     );
     const vp = await new VPBuilder({
-      vc,
+      credentials: [vc],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -342,7 +342,7 @@ describe('VP builder and verifier', () => {
       { did: holderDid, privateKeyHex: holder.privateKey },
     );
     const vp = await new VPBuilder({
-      vc,
+      credentials: [vc],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -369,7 +369,7 @@ describe('VP builder and verifier', () => {
       },
     );
     const vp = await new VPBuilder({
-      vc,
+      credentials: [vc],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -384,15 +384,19 @@ describe('VP builder and verifier', () => {
     await expect(
       verifyVP({ ...vp, proof: { ...vp.proof, proofValue: base58btcEncode(new Uint8Array(64)) } }),
     ).rejects.toMatchObject({ code: 'VP_SIGNATURE_INVALID' });
+    // The builder now validates credential types up front, so an unsigned VC
+    // needs a well-typed shell to reach verifyVP's proof check.
     const unsignedVcVp = await new VPBuilder({
-      vc: { id: 'vc:unsigned' } as SignedVC,
+      credentials: [
+        { id: 'vc:unsigned', type: ['VerifiableCredential', 'HelixAgentCredential'] } as SignedVC,
+      ],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
     }).sign(holder.privateKey, `${holderDid}#key-1`);
     await expect(verifyVP(unsignedVcVp)).rejects.toMatchObject({ code: 'VP_INVALID_STRUCTURE' });
     const targetMismatchVp = await new VPBuilder({
-      vc: { ...vc, targetService: 'payments' } as SignedVC,
+      credentials: [{ ...vc, targetService: 'payments' } as SignedVC],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -425,20 +429,20 @@ describe('VP builder and verifier', () => {
       },
     );
     const vp = await new VPBuilder({
-      vc,
+      credentials: [vc],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
     }).sign(holder.privateKey, `${holderDid}#key-1`);
     const futureVp = await new VPBuilder({
-      vc: futureVC,
+      credentials: [futureVC],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
     }).sign(holder.privateKey, `${holderDid}#key-1`);
 
     const badVcSignatureVp = await new VPBuilder({
-      vc: { ...vc, proof: { ...vc.proof, proofValue: base58btcEncode(new Uint8Array(64)) } },
+      credentials: [{ ...vc, proof: { ...vc.proof, proofValue: base58btcEncode(new Uint8Array(64)) } }],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -464,7 +468,7 @@ describe('VP builder and verifier', () => {
     );
     const prefixedVC = { ...vc, proof: { ...vc.proof, proofValue: `z${vc.proof.proofValue}` } };
     const vp = await new VPBuilder({
-      vc: prefixedVC,
+      credentials: [prefixedVC],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -483,7 +487,7 @@ describe('VP builder and verifier', () => {
       holderDid,
     );
     const vp = await new VPBuilder({
-      vc,
+      credentials: [vc],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -510,7 +514,7 @@ describe('VP builder and verifier', () => {
       },
     );
     const badIndexVP = await new VPBuilder({
-      vc: badIndexVC,
+      credentials: [badIndexVC],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -540,7 +544,7 @@ describe('VP builder and verifier', () => {
     );
 
     const vp = await new VPBuilder({
-      vc: child,
+      credentials: [child],
       holderDid: delegateDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -578,7 +582,7 @@ describe('VP builder and verifier', () => {
     );
 
     const vp = await new VPBuilder({
-      vc: child,
+      credentials: [child],
       holderDid: delegateDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -601,7 +605,7 @@ describe('VP builder and verifier', () => {
       { did: holderDid, privateKeyHex: holder.privateKey },
     );
     const vp = await new VPBuilder({
-      vc: child,
+      credentials: [child],
       holderDid: delegateDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -617,7 +621,7 @@ describe('VP builder and verifier', () => {
       proof: await createEd25519Proof(missingChainPayload, holder.privateKey, `${holderDid}#key-1`),
     } as SignedVC;
     const missingChainVp = await new VPBuilder({
-      vc: missingChainChild,
+      credentials: [missingChainChild],
       holderDid: delegateDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -667,7 +671,7 @@ describe('VP builder and verifier', () => {
         proof: await createEd25519Proof(basePayload, signer.privateKey, `${signerDid}#key-1`),
       } as SignedVC;
       const vp = await new VPBuilder({
-        vc: brokenChild,
+        credentials: [brokenChild],
         holderDid: delegateDid,
         targetService: 'orders',
         userDid: 'did:web:user.example',
@@ -799,7 +803,7 @@ describe('delegation and self-issued VC helpers', () => {
     });
 
     const vp = await new VPBuilder({
-      vc: child,
+      credentials: [child],
       holderDid: delegateDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',

@@ -10,7 +10,7 @@ export async function attachHelixVP(
   const vc = selectVC(wallet, options.targetService);
 
   const vp = await new VPBuilder({
-    vc,
+    credentials: [vc],
     holderDid: wallet.getDID(),
     targetService: options.targetService,
     userDid: options.userDid ?? 'did:key:anonymous',

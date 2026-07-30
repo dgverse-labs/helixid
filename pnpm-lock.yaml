@@ -193,8 +193,8 @@ importers:
         specifier: ^5.2.6
         version: 5.2.6
       '@helixid/core':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: workspace:^
+        version: link:../helix-core
       '@helixid/did-hedera':
         specifier: ^0.1.0
         version: 0.1.0(bn.js@5.2.3)

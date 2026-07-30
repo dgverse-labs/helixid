@@ -77,7 +77,7 @@ const wallet = await AgentWallet.loadOrCreate('./wallet.enc', process.env.WALLET
 
 // build and sign a VP — fully local, no network
 const vp = await new VPBuilder({
-  vc: wallet.credentials[0],
+  credentials: [wallet.credentials[0]],   // add a consent grant VC as a second entry when one applies
   holderDid: wallet.getDID(),
   userDid: 'did:web:user.example.com',
   targetService: 'orders-service',
@@ -106,14 +106,16 @@ const seen = await redis.get(`vpid:${result.vpId}`)
 if (seen) throw new Error('REPLAY_DETECTED')
 await redis.set(`vpid:${result.vpId}`, '1', 'EX', result.expiresInSeconds)
 
-// scope check
-if (!result.privilegeScopes.includes('read:orders')) throw new Error('INSUFFICIENT_SCOPE')
+// scope check — effectiveScopes is the enforcement field: identical to
+// privilegeScopes unless the VP carried a consent grant, in which case it is
+// the intersection of the two
+if (!result.effectiveScopes.includes('read:orders')) throw new Error('INSUFFICIENT_SCOPE')
 
 // session handling — verifier's choice, both optional
 
 // Option A: issue a short-lived JWT, agent reuses it for subsequent calls
 const session = new SessionManager({ secret: process.env.JWT_SECRET!, ttl: 600 })
-const token = await session.issue({ agentDid: result.agentDid, scopes: result.privilegeScopes })
+const token = await session.issue({ agentDid: result.agentDid, scopes: result.effectiveScopes })
 
 // Option B: cache the VP result by vpId, skip re-verification on repeat calls
 await cache.set(`vp:${result.vpId}`, result, { ttl: result.expiresInSeconds })
@@ -236,7 +238,7 @@ console.log(wallet.getDID()) // did:key:z6Mk...
 import { VPBuilder, verifyVP } from '@helixid/sdk-js'
 
 const vp = await new VPBuilder({
-  vc: wallet.credentials[0],
+  credentials: [wallet.credentials[0]],   // add a consent grant VC as a second entry when one applies
   holderDid: wallet.getDID(),
   userDid: 'did:web:user.example.com',
   targetService: 'orders-service',
@@ -479,7 +481,7 @@ const credential = wallet.credentials[0];
 if (!credential) throw new Error('Wallet has no credential');
 
 const signedVP = await new VPBuilder({
-  vc: credential,
+  credentials: [credential],
   holderDid: wallet.getDID(),
   userDid: 'did:web:user.example.com',
   targetService: 'orders-service',

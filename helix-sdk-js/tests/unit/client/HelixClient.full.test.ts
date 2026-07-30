@@ -121,7 +121,7 @@ describe('HelixClient Full Unit Tests', () => {
     const did = `did:key:${publicKeyToMultibase(wallet.publicKey)}`;
     const vc = await selfIssueVC({ scopes: ['read:orders'] }, { did, privateKeyHex: wallet.privateKey });
     const vp = await new VPBuilder({
-      vc,
+      credentials: [vc],
       holderDid: did,
       targetService: 'orders',
       userDid: did,

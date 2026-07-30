@@ -23,7 +23,6 @@ import { ApiAuditLogger } from './audit/index.js';
 import { createHederaClient } from './hedera/createHederaClient.js';
 import { DidRepository } from './repositories/did.repository.js';
 import { VcRepository } from './repositories/vc.repository.js';
-import { VPRepository } from './repositories/vp.repository.js';
 import { AuditLogRepository } from './repositories/audit-log.repository.js';
 import { AgentRepository } from './repositories/agent.repository.js';
 import { ServiceRegistryRepository } from './repositories/service-registry.repository.js';
@@ -81,7 +80,6 @@ const redis: RedisLike | null =
 const auditLogger = new ApiAuditLogger(prisma, config, sqlite);
 const didRepository = new DidRepository(prisma, sqlite);
 const vcRepository = new VcRepository(prisma, sqlite);
-const vpRepository = new VPRepository(prisma, sqlite);
 const auditLogRepository = new AuditLogRepository(prisma, sqlite);
 const agentRepository = new AgentRepository(prisma, sqlite);
 const serviceRegistry = new ServiceRegistryRepository(agentRepository);
@@ -112,19 +110,11 @@ const vcService = new VCService(
   statusListCache,
   config.STATUS_LIST_CACHE_L1_TTL_SECONDS,
 );
-const vpService = new VPService(
-  vpRepository,
-  didService,
-  vcService,
-  serviceRegistry,
-  auditLogger,
-  config.VP_TTL_SECONDS,
-  {
-    signingKey: jwtSessionKeyPair.privateKey,
-    issuerDid: config.HELIX_ISSUER_DID,
-    ttlSeconds: config.JWT_SESSION_TTL_SECONDS,
-  },
-);
+const vpService = new VPService(vcService, auditLogger, config.API_BASE_URL, {
+  signingKey: jwtSessionKeyPair.privateKey,
+  issuerDid: config.HELIX_ISSUER_DID,
+  ttlSeconds: config.JWT_SESSION_TTL_SECONDS,
+});
 const agentService = new AgentService(agentRepository, didService, vcService, auditLogger);
 
 const app = Fastify({

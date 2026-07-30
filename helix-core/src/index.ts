@@ -16,7 +16,7 @@ export { resolveDID, clearDIDCache } from './did-resolver.js';
 export { createEd25519Proof, verifyEd25519Proof } from './proof.js';
 export type { LinkedDataProof } from './proof.js';
 export { VPBuilder } from './vp-builder.js';
-export { verifyVP } from './vp-verifier.js';
+export { verifyVP, fetchStatusList } from './vp-verifier.js';
 export { buildDelegationVC } from './delegation.js';
 export { issueGrant, revokeGrant } from './grant.js';
 export type {
@@ -27,6 +27,6 @@ export type {
 } from './grant.js';
 export { selfIssueVC } from './self-signed.js';
 export type { VPBuilderOptions } from './vp-builder.js';
-export type { VerifyVPOptions, VerifyVPResult } from './vp-verifier.js';
+export type { StatusListResolver, VerifyVPOptions, VerifyVPResult } from './vp-verifier.js';
 export type { DelegateOptions, DelegationLink } from './delegation.js';
 export type { SelfIssueOptions } from './self-signed.js';

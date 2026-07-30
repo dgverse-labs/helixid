@@ -39,7 +39,7 @@ export function HelixIDMiddleware(options: LangChainMiddlewareOptions): Runnable
           const w = await getWallet();
           const vc = selectVC(w, options.targetService);
           const vp = await new VPBuilder({
-            vc,
+            credentials: [vc],
             holderDid: w.getDID(),
             targetService: options.targetService,
             userDid: options.userDid ?? 'did:key:anonymous',
@@ -72,7 +72,7 @@ export function HelixIDToolWrapper<T extends StructuredToolLike>(
       const w = await getWallet();
       const vc = selectVC(w, options.targetService);
       const vp = await new VPBuilder({
-        vc,
+        credentials: [vc],
         holderDid: w.getDID(),
         targetService: options.targetService,
         userDid: options.userDid ?? 'did:key:anonymous',
