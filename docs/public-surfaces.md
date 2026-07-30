@@ -140,6 +140,29 @@ Options:
 - `AttachHelixVPOptions`: `walletPassphrase`, `walletFilePath`, `targetService`, optional `userDid`.
 - `MCPMiddlewareOptions`: optional `requiredScopes`, optional `allowSelfSigned`.
 
+## Consent Widget
+
+Package: `@helixid/widget`. Two entry points — the server module must not be
+bundled into the browser.
+
+| Export | Entry point | Purpose |
+| --- | --- | --- |
+| `resolveConsentScopes(options)` | `@helixid/widget/server` | Resolves the SP's full grantable-scope catalog: curated fallback ∪ MCP `tools/list` scopes ∪ `accept-terms`. Takes no requested-scope or agent input. |
+| `humanizeScope(scope)` | `@helixid/widget/server` | Last-resort label for a scope neither source describes (`book:flights` → `book flights`). |
+| `createConsentController(props)` | `@helixid/widget` | Headless consent-selection state: scope checkboxes with required handling, durability choice, fetch/error state, `onAccept`/`onDecline`. |
+| `DEFAULT_DURABILITY_OPTIONS` | `@helixid/widget` | The two durability choices offered by default. |
+
+Options and types:
+
+- `ResolveConsentScopesOptions`: optional `mcpServerUrl`, `curatedFallback` (SP-owned).
+- `HelixConsentWidgetProps`: `agentDid`, `agentName`, `userIdentifier`, `serviceDid`, exactly one of `scopeOptions`/`scopesEndpoint`, optional `agentAvatarUrl`, `durabilityOptions`, `defaultDurability`, plus `onAccept`/`onDecline`.
+- `ConsentSelection`: `scopes`, `durability`.
+
+The SP owns the scope-resolution route itself (HelixID ships only its
+contract): `GET <scopesEndpoint>?agentDid=<did>` → `{ scopeOptions }`, running
+under the consent page's own session auth. `agentDid` is carried for audit
+correlation only and must not change the returned catalog.
+
 ## CLI Commands
 
 Binary: `helix`.

@@ -1,0 +1,52 @@
+{
+  "name": "@helixid/widget",
+  "version": "0.1.0",
+  "description": "HelixID consent widget — SP-side scope resolution and a headless consent-selection controller for issuing DelegationGrantCredentials.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "DgVerse <hello@dgverse.in>",
+  "homepage": "https://www.dgverse.in/products/helix-id",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dgverse-labs/helixid",
+    "directory": "packages/widget"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server/index.js",
+      "require": "./dist/server/index.js",
+      "default": "./dist/server/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "prepublishOnly": "pnpm build",
+    "test": "vitest run --passWithNoTests",
+    "test:non-live": "vitest run --passWithNoTests",
+    "test:unit": "vitest run tests --passWithNoTests",
+    "lint": "eslint src tests",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.8"
+  }
+}
