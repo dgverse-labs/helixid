@@ -52,7 +52,65 @@ docker compose up --build
 
 Reset to a clean slate: `docker compose down -v`.
 
-No LLM API key is required.
+An LLM API key is optional. The demo supports Gemini, OpenAI, and Anthropic
+without changing application code:
+
+```bash
+cp .env.example .env
+```
+
+Then choose one provider in `.env`:
+
+```dotenv
+# Gemini
+LLM_PROVIDER=gemini
+LLM_API_KEY=your-gemini-key
+LLM_MODEL=gemini-flash-latest
+
+# OpenAI
+LLM_PROVIDER=openai
+LLM_API_KEY=your-openai-key
+
+# Anthropic
+LLM_PROVIDER=anthropic
+LLM_API_KEY=your-anthropic-key
+```
+
+`LLM_MODEL` is optional. The example files select `gemini-flash-latest`; if the
+value is omitted, the agent uses a provider-specific demo default. The API key
+stays in the agent container and is never exposed to the
+chat page, either SP, the widget, an MCP request, a VC, or a VP.
+
+If `LLM_API_KEY` is empty or absent, the agent automatically uses its
+deterministic scripted planner. The same chat, tool validation, consent, VP,
+and grant-reuse paths still run, so the demo remains usable offline and in CI.
+
+### Browser demo
+
+Open <http://localhost:4100> and sign in to the Travel Planner:
+
+- username: `traveler`
+- password: `demo123`
+- user DID after login: `did:web:traveler.example`
+
+The chat uses the selected LLM's native tool/function calling to choose among a
+strict allowlist of Airline and Hotel tools. Tool arguments are validated by
+the agent before execution; the LLM never receives wallet or credential
+material. The chat header shows the active provider/model, or `Scripted
+fallback` when no API key is configured. The agent retains the latest 12
+planning turns within the authenticated login
+session, so route/date clarification can span multiple messages. History is
+cleared on logout or agent restart. Flight searches require a date and
+currently include TVM ↔ Delhi and TVM ↔ Mumbai inventory; unsupported routes,
+past dates, and dates more than one year ahead return no flights instead of
+fabricated results. Ask for a dated flight from TVM to Delhi, book option 1, ask for a Delhi
+hotel, then ask for a return flight. On the first booking at each SP, the chat opens that SP in a
+Google-login-style popup. Sign in there with `ada` / `demo123`, review the real
+HelixID consent widget, and accept. The signed grant returns to the agent and
+the booking retries automatically.
+
+The return Airline booking reuses the standing Airline grant, so the chat goes
+straight to a confirmed PNR without opening the login or consent popup again.
 
 ---
 
@@ -103,9 +161,9 @@ appears in none of its responses.
 
 ## Not included
 
-- **No LLM chat loop.** The agent here is a deterministic HTTP driver so the
-  flow is reproducible and testable. The conversational shell lives in
-  `examples/e2e-travel-concierge`.
+- **No LLM dependency for CI.** Native Gemini/OpenAI/Anthropic tool calling is
+  available for the browser demo, while the deterministic no-key planner keeps
+  the credential flow reproducible and testable without network access.
 - **No audit routing.** Epic 4's routing module is parked, so consent events
   (`consent_granted` / `consent_revoked`) are not emitted anywhere. Each SP logs
   its decisions to stdout, and the platform's own six event types still land in

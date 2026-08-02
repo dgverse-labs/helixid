@@ -127,5 +127,15 @@ export const env = {
   walletsDir: process.env['WALLETS_DIR'] ?? '/wallets',
   walletPassphrase: process.env['WALLET_PASSPHRASE'] ?? 'demo-passphrase',
   agentPort: Number(process.env['AGENT_PORT'] ?? 4100),
+  airlineUrl: process.env['AIRLINE_URL'] ?? `http://${process.env['DEMO_HOST'] ?? 'localhost'}:${AIRLINE.port}`,
+  hotelUrl: process.env['HOTEL_URL'] ?? `http://${process.env['DEMO_HOST'] ?? 'localhost'}:${HOTEL.port}`,
+  llmProvider: (process.env['LLM_PROVIDER'] ?? 'gemini') as 'gemini' | 'openai' | 'anthropic',
+  llmApiKey:
+    process.env['LLM_API_KEY'] ??
+    process.env['GEMINI_API_KEY'] ??
+    process.env['OPENAI_API_KEY'] ??
+    process.env['ANTHROPIC_API_KEY'] ??
+    '',
+  llmModel: process.env['LLM_MODEL'] ?? '',
   consoleUrl: process.env['CONSOLE_URL'] ?? 'http://localhost:8080',
 };

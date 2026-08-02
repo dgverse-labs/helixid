@@ -27,6 +27,9 @@ export async function serveSp(definition: SpDefinition): Promise<void> {
       publicKeyHex: identity.publicKeyHex,
     },
     baseUrl: identity.baseUrl,
+    // Scope resolution happens inside this same container. The public did:web
+    // base URL can be localhost, but the server should call its own loopback.
+    mcpServerUrl: `http://127.0.0.1:${definition.port}/api/mcp`,
     store,
     widgetDistPath: resolve(here, '../../../packages/widget/dist'),
   });

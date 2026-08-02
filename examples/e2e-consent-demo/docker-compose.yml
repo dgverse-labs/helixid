@@ -17,9 +17,9 @@ name: helixid-consent-demo
 x-node-service: &node-service
   build:
     context: ../..
-    dockerfile: examples/e2e-travel-concierge/docker/node.Dockerfile
+    dockerfile: examples/e2e-consent-demo/docker/node.Dockerfile
   restart: unless-stopped
-  working_dir: /app/examples/e2e-consent-demo
+  working_dir: /repo/examples/e2e-consent-demo
 
 services:
   # ── HelixID API — issues the agent's authority credential ────────────────
@@ -144,6 +144,11 @@ services:
       WALLET_PASSPHRASE: ${WALLET_PASSPHRASE:-demo-passphrase}
       DEMO_HOST: ${DEMO_HOST:-localhost}
       AGENT_PORT: "4100"
+      AIRLINE_URL: http://sp-airline:4101
+      HOTEL_URL: http://sp-hotel:4102
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
     volumes:
       - wallets:/wallets
     healthcheck:

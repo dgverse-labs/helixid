@@ -14,11 +14,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
+    "@google/genai": "^2.15.0",
     "@helixid/core": "workspace:*",
     "@helixid/sdk-js": "workspace:*",
     "@helixid/widget": "workspace:*",
     "dotenv": "^17.4.2",
     "express": "^4.21.2",
+    "openai": "^4.77.0",
     "tsx": "^4.0.0"
   },
   "devDependencies": {

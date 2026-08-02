@@ -99,6 +99,13 @@ export function createSpApp(options: SpAppOptions): SpApp {
 
   const app = express();
   app.use(express.json({ limit: '2mb' }));
+  const browserSessions = new Set<string>();
+
+  function browserSession(req: Request): string | undefined {
+    const raw = req.headers.cookie ?? '';
+    const value = raw.split(';').map((part) => part.trim()).find((part) => part.startsWith('sp_session='))?.slice('sp_session='.length);
+    return value && browserSessions.has(value) ? value : undefined;
+  }
 
   const log = (message: string): void => {
     console.log(`[${new Date().toISOString()}] [${definition.id}] ${message}`);
@@ -356,10 +363,36 @@ export function createSpApp(options: SpAppOptions): SpApp {
   app.get('/consent', (req: Request, res: Response) => {
     const agentDid = String(req.query['agentDid'] ?? '');
     const userDid = String(req.query['userDid'] ?? '');
+    if (!browserSession(req)) {
+      res.type('html').send(spLoginPageHtml({ definition, agentDid, userDid }));
+      return;
+    }
     res.type('html').send(consentPageHtml({ definition, agentDid, userDid, serviceDid: issuer.did }));
   });
 
+  app.post('/api/sp-login', (req: Request, res: Response) => {
+    const body = req.body as { username?: string; password?: string; agentDid?: string; userDid?: string };
+    if (body.username !== 'ada' || body.password !== 'demo123') {
+      res.status(401).json({ error: 'Invalid username or password' });
+      return;
+    }
+    const token = randomUUID();
+    browserSessions.add(token);
+    res.setHeader('set-cookie', `sp_session=${token}; HttpOnly; SameSite=Lax; Path=/`);
+    res.json({
+      authenticated: true,
+      redirectUrl: `/consent?agentDid=${encodeURIComponent(body.agentDid ?? '')}&userDid=${encodeURIComponent(body.userDid ?? '')}`,
+    });
+  });
+
   return { app, counters, definition, issuerDid: issuer.did };
+}
+
+function spLoginPageHtml(params: { definition: SpDefinition; agentDid: string; userDid: string }): string {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${params.definition.displayName} sign in</title><style>
+  *{box-sizing:border-box}body{margin:0;background:#f6f8fa;color:#1f2328;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh;display:grid;place-items:center}.card{width:min(390px,90vw);background:#fff;border:1px solid #d0d7de;border-radius:16px;padding:28px;box-shadow:0 14px 45px #1f23281c}.brand{width:42px;height:42px;border-radius:12px;background:#1f6feb;color:white;display:grid;place-items:center;font-weight:800}h1{font-size:21px;margin:18px 0 5px}p{color:#656d76;font-size:13px;margin:0 0 20px}input{display:block;width:100%;padding:11px 12px;margin:9px 0;border:1px solid #d0d7de;border-radius:9px;font:inherit}button{width:100%;padding:11px;margin-top:8px;border:0;border-radius:9px;background:#1f6feb;color:white;font-weight:700;cursor:pointer}.error{color:#cf222e;font-size:12px;margin-top:10px}</style></head><body><form class="card" id="login"><div class="brand">${params.definition.id === 'airline' ? 'HA' : 'HS'}</div><h1>Sign in to ${params.definition.displayName}</h1><p>Authenticate with the service provider before reviewing agent permissions.</p><input id="username" value="ada" autocomplete="username" aria-label="Username"><input id="password" value="demo123" type="password" autocomplete="current-password" aria-label="Password"><button>Continue</button><div class="error" id="error"></div></form><script>
+  login.onsubmit=async(e)=>{e.preventDefault();const res=await fetch('/api/sp-login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:username.value,password:password.value,agentDid:${JSON.stringify(params.agentDid)},userDid:${JSON.stringify(params.userDid)}})});const body=await res.json();if(!res.ok){error.textContent=body.error||'Sign in failed';return}location.href=body.redirectUrl};
+  </script></body></html>`;
 }
 
 // ── C4: the booking backend ──────────────────────────────────────────────
@@ -370,13 +403,37 @@ function runTool(
   agentDid: string,
 ): Record<string, unknown> {
   switch (toolName) {
-    case 'search_flights':
-      return {
-        flights: [
-          { flightId: 'HA401', carrier: 'Helix Air', origin: String(args['origin'] ?? 'TVM'), destination: String(args['destination'] ?? 'DEL'), departs: '08:20' },
-          { flightId: 'HA733', carrier: 'Helix Air', origin: String(args['origin'] ?? 'TVM'), destination: String(args['destination'] ?? 'DEL'), departs: '19:05' },
+    case 'search_flights': {
+      const origin = String(args['origin'] ?? '').toUpperCase();
+      const destination = String(args['destination'] ?? '').toUpperCase();
+      const departureDate = String(args['departureDate'] ?? '');
+      const route = `${origin}-${destination}`;
+      const routeInventory: Record<string, Array<{ flightId: string; departs: string }>> = {
+        'TVM-DEL': [
+          { flightId: 'HA401', departs: '08:20' },
+          { flightId: 'HA733', departs: '19:05' },
         ],
+        'TVM-BOM': [
+          { flightId: 'HA215', departs: '07:10' },
+          { flightId: 'HA629', departs: '16:45' },
+        ],
+        'DEL-TVM': [{ flightId: 'HA402', departs: '14:30' }],
+        'BOM-TVM': [{ flightId: 'HA216', departs: '18:15' }],
       };
+      const dateAvailable = isSearchableDate(departureDate);
+      return {
+        query: { origin, destination, departureDate },
+        flights: dateAvailable
+          ? (routeInventory[route] ?? []).map((flight) => ({
+              ...flight,
+              carrier: 'Helix Air',
+              origin,
+              destination,
+              departureDate,
+            }))
+          : [],
+      };
+    }
     case 'book_flight':
       return {
         bookingId: `FLT-${randomUUID().slice(0, 8).toUpperCase()}`,
@@ -407,6 +464,15 @@ function runTool(
     default:
       return { ok: true };
   }
+}
+
+function isSearchableDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const requested = Date.parse(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(requested)) return false;
+  const today = new Date();
+  const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  return requested >= todayUtc && requested <= todayUtc + 365 * 24 * 60 * 60 * 1000;
 }
 
 function consentPageHtml(params: {
@@ -464,12 +530,15 @@ function consentPageHtml(params: {
         }),
       });
       const body = await res.json();
-      window.parent.postMessage({ type: 'helixid:consent-accepted', grantVC: body.grantVC }, '*');
+      if (!res.ok || !body.grantVC) throw new Error(body.error?.message || 'Could not issue permission');
+      (window.opener || window.parent).postMessage({ type: 'helixid:consent-accepted', grantVC: body.grantVC }, '*');
       root.innerHTML = '<p>Authorized. You can return to your agent.</p>';
+      setTimeout(() => window.close(), 450);
     },
     onDecline: () => {
-      window.parent.postMessage({ type: 'helixid:consent-declined' }, '*');
+      (window.opener || window.parent).postMessage({ type: 'helixid:consent-declined' }, '*');
       root.innerHTML = '<p>Declined. Nothing was authorized.</p>';
+      setTimeout(() => window.close(), 450);
     },
   });
 

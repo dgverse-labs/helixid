@@ -155,6 +155,21 @@ Same shape as `e2e-travel-concierge`'s `ai-agent/`: LLM loop, `AgentWallet`,
 happens entirely on the SP's side (widget), the agent just calls tools and
 gets refused-until-consented or succeeds.
 
+**Implemented demo shell:** the UI uses the same dark chat styling as the
+travel-concierge demo. A provider-neutral planner supports Gemini, OpenAI, or
+Anthropic through native function/tool calling (`LLM_PROVIDER`, `LLM_API_KEY`,
+and optional `LLM_MODEL`); LangChain is not required. The model only chooses an
+allowlisted business tool and arguments—the wallet, grant selection, VP build,
+consent interruption, and MCP execution remain trusted backend operations. The
+agent falls back to the deterministic scripted planner when no API key is set,
+using the same validated tool-call and consent execution path. The
+agent login is a backend-checked `traveler` / `demo123` and
+resolves `did:web:traveler.example`. Consent opens the relevant SP in a popup;
+the SP authenticates `ada` / `demo123` before rendering the widget. A grant is
+returned with `postMessage`, stored by the agent, and the pending booking is
+retried automatically. Confirmed bookings render a PNR/confirmation card in
+chat rather than a PDF.
+
 **Concrete behavior needed for the 5-step flow (§4.7):**
 1. Login → agent resolves/holds a `userDid` (or falls back to email, per
    §2.6) — demo can hardcode a regular-login stand-in, this isn't
