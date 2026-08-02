@@ -112,6 +112,34 @@ the booking retries automatically.
 The return Airline booking reuses the standing Airline grant, so the chat goes
 straight to a confirmed PNR without opening the login or consent popup again.
 
+### Sample chat flow
+
+Here is a concrete example of the consent behavior in the browser demo:
+
+```text
+User: Search for a flight from TVM to Delhi for a date in the near future.
+Agent: Shows available flights.
+
+User: Book option 1.
+Agent: The Airline SP asks for consent, so the first consent widget appears.
+User: Accept the consent prompt.
+Agent: The booking continues and succeeds.
+
+User: Find a hotel in Delhi.
+Agent: The Hotel SP asks for consent, so a second consent widget appears.
+User: Accept the consent prompt.
+Agent: The hotel booking continues and succeeds.
+
+User: Book a return flight from Delhi to TVM.
+Agent: No new widget appears, because the Airline grant is already valid and
+       the agent reuses the existing consent grant for the same Service Provider.
+```
+
+In other words: the first booking triggers a widget for the Airline SP, the
+second booking triggers a separate widget for the Hotel SP, and the third
+booking does not show a widget because the agent already has a valid VC/grant
+for that same SP.
+
 ---
 
 ## What each piece owns
