@@ -48,7 +48,11 @@ export const AIRLINE: SpDefinition = {
   ],
   tools: [
     // No requiredScope — open, read-only (register D7).
-    { name: 'search_flights', description: 'Search available flights. Open, no grant required.' },
+    {
+      name: 'search_flights',
+      description:
+        'Search available flights for a route and date. Optionally narrow by carrier and party size. Open, no grant required.',
+    },
     {
       name: 'book_flight',
       description: 'Book a flight. Requires a consent grant carrying book:flights.',
@@ -71,7 +75,11 @@ export const HOTEL: SpDefinition = {
   ],
   tools: [
     // No requiredScope — open, read-only (register D7).
-    { name: 'search_hotels', description: 'Search available hotels. Open, no grant required.' },
+    {
+      name: 'search_hotels',
+      description:
+        'Search available hotels in a city. Optionally cap the nightly rate. Open, no grant required.',
+    },
     {
       name: 'book_hotel',
       description: 'Book a hotel room. Requires a consent grant carrying book:hotel.',

@@ -363,11 +363,17 @@ export function createSpApp(options: SpAppOptions): SpApp {
   app.get('/consent', (req: Request, res: Response) => {
     const agentDid = String(req.query['agentDid'] ?? '');
     const userDid = String(req.query['userDid'] ?? '');
+    // `demo=1` makes this popup advance itself at presentation pace so an
+    // unattended screen recording never stalls here. It changes timing only —
+    // the same routes run, and the same grant is signed.
+    const demo = req.query['demo'] === '1';
     if (!browserSession(req)) {
-      res.type('html').send(spLoginPageHtml({ definition, agentDid, userDid }));
+      res.type('html').send(spLoginPageHtml({ definition, agentDid, userDid, demo }));
       return;
     }
-    res.type('html').send(consentPageHtml({ definition, agentDid, userDid, serviceDid: issuer.did }));
+    res.type('html').send(
+      consentPageHtml({ definition, agentDid, userDid, serviceDid: issuer.did, demo }),
+    );
   });
 
   app.post('/api/sp-login', (req: Request, res: Response) => {
@@ -388,11 +394,100 @@ export function createSpApp(options: SpAppOptions): SpApp {
   return { app, counters, definition, issuerDid: issuer.did };
 }
 
-function spLoginPageHtml(params: { definition: SpDefinition; agentDid: string; userDid: string }): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${params.definition.displayName} sign in</title><style>
-  *{box-sizing:border-box}body{margin:0;background:#f6f8fa;color:#1f2328;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh;display:grid;place-items:center}.card{width:min(390px,90vw);background:#fff;border:1px solid #d0d7de;border-radius:16px;padding:28px;box-shadow:0 14px 45px #1f23281c}.brand{width:42px;height:42px;border-radius:12px;background:#1f6feb;color:white;display:grid;place-items:center;font-weight:800}h1{font-size:21px;margin:18px 0 5px}p{color:#656d76;font-size:13px;margin:0 0 20px}input{display:block;width:100%;padding:11px 12px;margin:9px 0;border:1px solid #d0d7de;border-radius:9px;font:inherit}button{width:100%;padding:11px;margin-top:8px;border:0;border-radius:9px;background:#1f6feb;color:white;font-weight:700;cursor:pointer}.error{color:#cf222e;font-size:12px;margin-top:10px}</style></head><body><form class="card" id="login"><div class="brand">${params.definition.id === 'airline' ? 'HA' : 'HS'}</div><h1>Sign in to ${params.definition.displayName}</h1><p>Authenticate with the service provider before reviewing agent permissions.</p><input id="username" value="ada" autocomplete="username" aria-label="Username"><input id="password" value="demo123" type="password" autocomplete="current-password" aria-label="Password"><button>Continue</button><div class="error" id="error"></div></form><script>
-  login.onsubmit=async(e)=>{e.preventDefault();const res=await fetch('/api/sp-login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:username.value,password:password.value,agentDid:${JSON.stringify(params.agentDid)},userDid:${JSON.stringify(params.userDid)}})});const body=await res.json();if(!res.ok){error.textContent=body.error||'Sign in failed';return}location.href=body.redirectUrl};
-  </script></body></html>`;
+/** Shared chrome for both SP-hosted pages, so login and consent feel like one product. */
+function spChrome(definition: SpDefinition): string {
+  const accent = definition.id === 'airline' ? '#1f6feb' : '#8250df';
+  return `
+  :root{--accent:${accent};--bg:#f6f8fa;--surface:#fff;--border:#d8dee4;--text:#1f2328;--muted:#656d76;--dim:#8c959f}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);min-height:100vh;display:grid;place-items:center;padding:24px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  button{font:inherit;cursor:pointer;border:0}
+  .card{width:min(440px,94vw);background:var(--surface);border:1px solid var(--border);
+    border-radius:16px;box-shadow:0 12px 40px #1f232814;overflow:hidden}
+  .card-head{padding:26px 28px 20px;border-bottom:1px solid var(--border)}
+  .brand{width:42px;height:42px;border-radius:12px;background:var(--accent);color:#fff;
+    display:grid;place-items:center;font-weight:800;font-size:15px;letter-spacing:.02em}
+  h1{font-size:19px;margin-top:16px;letter-spacing:-.01em}
+  .lede{color:var(--muted);font-size:13.5px;margin-top:6px;line-height:1.5}
+  .card-body{padding:22px 28px 26px}
+  .btn{width:100%;padding:11px;border-radius:9px;background:var(--accent);color:#fff;font-weight:650;font-size:14px;
+    transition:opacity .15s}
+  .btn:hover{opacity:.92}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn-ghost{width:100%;padding:11px;border-radius:9px;background:transparent;color:var(--muted);
+    border:1px solid var(--border);font-weight:600;font-size:14px;margin-top:9px}
+  .btn-ghost:hover{background:var(--bg);color:var(--text)}
+  .foot{padding:14px 28px;background:var(--bg);border-top:1px solid var(--border);
+    font-size:11.5px;color:var(--dim);display:flex;align-items:center;gap:7px;line-height:1.5}
+  .lock{flex:0 0 auto}
+  .error{color:#cf222e;font-size:12.5px;margin-top:12px;min-height:16px}`;
+}
+
+function spLoginPageHtml(params: {
+  definition: SpDefinition;
+  agentDid: string;
+  userDid: string;
+  demo?: boolean;
+}): string {
+  const initials = params.definition.id === 'airline' ? 'HA' : 'HS';
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Sign in · ${params.definition.displayName}</title>
+<style>${spChrome(params.definition)}
+  .field{margin-bottom:13px}
+  .field label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.07em;
+    color:var(--dim);font-weight:650;margin-bottom:6px}
+  input{width:100%;padding:11px 12px;border:1px solid var(--border);border-radius:9px;font:inherit;
+    outline:none;transition:border-color .15s,box-shadow .15s}
+  input:focus{border-color:var(--accent);box-shadow:0 0 0 3px ${params.definition.id === 'airline' ? '#1f6feb22' : '#8250df22'}}
+</style>
+</head>
+<body>
+<form class="card" id="login">
+  <div class="card-head">
+    <div class="brand">${initials}</div>
+    <h1>Sign in to ${params.definition.displayName}</h1>
+    <p class="lede">You need to be signed in before you can review what this agent is asking to do.</p>
+  </div>
+  <div class="card-body">
+    <div class="field"><label for="username">Username</label><input id="username" value="ada" autocomplete="username" /></div>
+    <div class="field"><label for="password">Password</label><input id="password" type="password" value="demo123" autocomplete="current-password" /></div>
+    <button class="btn" type="submit">Continue</button>
+    <div class="error" id="error"></div>
+  </div>
+  <div class="foot"><span class="lock">🔒</span><span>${params.definition.displayName} never shares your password with the agent.</span></div>
+</form>
+<script>
+  document.getElementById('login').onsubmit = async (e) => {
+    e.preventDefault();
+    const err = document.getElementById('error');
+    err.textContent = '';
+    const res = await fetch('/api/sp-login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        username: document.getElementById('username').value,
+        password: document.getElementById('password').value,
+        agentDid: ${JSON.stringify(params.agentDid)},
+        userDid: ${JSON.stringify(params.userDid)},
+      }),
+    });
+    const body = await res.json();
+    if (!res.ok) { err.textContent = body.error || 'Sign in failed'; return; }
+    const demo = ${JSON.stringify(Boolean(params.demo))};
+    location.href = body.redirectUrl + (demo ? '&demo=1' : '');
+  };
+
+  // Unattended demo: sign in on its own, after a beat so the screen is legible.
+  if (${JSON.stringify(Boolean(params.demo))}) {
+    setTimeout(() => document.getElementById('login').requestSubmit(), 1600);
+  }
+</script>
+</body>
+</html>`;
 }
 
 // ── C4: the booking backend ──────────────────────────────────────────────
@@ -407,31 +502,31 @@ function runTool(
       const origin = String(args['origin'] ?? '').toUpperCase();
       const destination = String(args['destination'] ?? '').toUpperCase();
       const departureDate = String(args['departureDate'] ?? '');
+      const travelers = Math.max(1, Number(args['travelers'] ?? 1) || 1);
+      const carrierPref = String(args['carrier'] ?? '').trim().toLowerCase();
+
       const route = `${origin}-${destination}`;
-      const routeInventory: Record<string, Array<{ flightId: string; departs: string }>> = {
-        'TVM-DEL': [
-          { flightId: 'HA401', departs: '08:20' },
-          { flightId: 'HA733', departs: '19:05' },
-        ],
-        'TVM-BOM': [
-          { flightId: 'HA215', departs: '07:10' },
-          { flightId: 'HA629', departs: '16:45' },
-        ],
-        'DEL-TVM': [{ flightId: 'HA402', departs: '14:30' }],
-        'BOM-TVM': [{ flightId: 'HA216', departs: '18:15' }],
-      };
+      const inventory = FLIGHT_INVENTORY[route] ?? [];
       const dateAvailable = isSearchableDate(departureDate);
+
+      let flights = dateAvailable ? inventory : [];
+      // An airline preference narrows the list; "any" or an unknown carrier
+      // leaves it untouched so the user is never left with nothing.
+      if (carrierPref && carrierPref !== 'any') {
+        const narrowed = flights.filter((f) => f.carrier.toLowerCase().includes(carrierPref));
+        if (narrowed.length) flights = narrowed;
+      }
+
       return {
-        query: { origin, destination, departureDate },
-        flights: dateAvailable
-          ? (routeInventory[route] ?? []).map((flight) => ({
-              ...flight,
-              carrier: 'Helix Air',
-              origin,
-              destination,
-              departureDate,
-            }))
-          : [],
+        query: { origin, destination, departureDate, travelers, carrier: carrierPref || 'any' },
+        flights: flights.map((flight) => ({
+          ...flight,
+          origin,
+          destination,
+          departureDate,
+          travelers,
+          totalFare: flight.fare * travelers,
+        })),
       };
     }
     case 'book_flight':
@@ -447,13 +542,26 @@ function runTool(
         status: 'MODIFIED',
         modifiedBy: agentDid,
       };
-    case 'search_hotels':
+    case 'search_hotels': {
+      const city = String(args['city'] ?? 'DEL').toUpperCase();
+      const maxNightlyRate = Number(args['maxNightlyRate'] ?? 0) || 0;
+      const guests = Math.max(1, Number(args['guests'] ?? 1) || 1);
+
+      let hotels = HOTEL_INVENTORY[city] ?? [];
+      // A budget cap narrows the list, but never to nothing — if everything is
+      // above budget, show the cheapest so the conversation can continue.
+      if (maxNightlyRate > 0) {
+        const affordable = hotels.filter((h) => h.nightlyRate <= maxNightlyRate);
+        hotels = affordable.length
+          ? affordable
+          : [...hotels].sort((a, b) => a.nightlyRate - b.nightlyRate).slice(0, 1);
+      }
+
       return {
-        hotels: [
-          { hotelId: 'HS-DEL-1', name: 'Helix Stay Aerocity', city: String(args['city'] ?? 'DEL'), nightlyRate: 7400 },
-          { hotelId: 'HS-DEL-2', name: 'Helix Stay Connaught', city: String(args['city'] ?? 'DEL'), nightlyRate: 9100 },
-        ],
+        query: { city, maxNightlyRate: maxNightlyRate || null, guests },
+        hotels: hotels.map((hotel) => ({ ...hotel, city, guests })),
       };
+    }
     case 'book_hotel':
       return {
         bookingId: `HTL-${randomUUID().slice(0, 8).toUpperCase()}`,
@@ -465,6 +573,47 @@ function runTool(
       return { ok: true };
   }
 }
+
+/**
+ * Demo inventory. Two carriers per route so an airline preference is a real
+ * filter, and a spread of fares so party size visibly changes the total.
+ */
+const FLIGHT_INVENTORY: Record<
+  string,
+  Array<{ flightId: string; carrier: string; departs: string; arrives: string; durationMinutes: number; stops: number; fare: number; cabin: string }>
+> = {
+  'TVM-DEL': [
+    { flightId: 'HA401', carrier: 'Helix Air', departs: '08:20', arrives: '11:05', durationMinutes: 165, stops: 0, fare: 8450, cabin: 'Economy' },
+    { flightId: 'HA733', carrier: 'Helix Air', departs: '19:05', arrives: '21:50', durationMinutes: 165, stops: 0, fare: 6980, cabin: 'Economy' },
+    { flightId: 'SK512', carrier: 'Skyline', departs: '13:40', arrives: '17:20', durationMinutes: 220, stops: 1, fare: 5600, cabin: 'Economy' },
+  ],
+  'TVM-BOM': [
+    { flightId: 'HA215', carrier: 'Helix Air', departs: '07:10', arrives: '09:15', durationMinutes: 125, stops: 0, fare: 6300, cabin: 'Economy' },
+    { flightId: 'SK629', carrier: 'Skyline', departs: '16:45', arrives: '19:10', durationMinutes: 145, stops: 0, fare: 4850, cabin: 'Economy' },
+  ],
+  'DEL-TVM': [
+    { flightId: 'HA402', carrier: 'Helix Air', departs: '14:30', arrives: '17:20', durationMinutes: 170, stops: 0, fare: 8100, cabin: 'Economy' },
+    { flightId: 'SK513', carrier: 'Skyline', departs: '06:15', arrives: '10:05', durationMinutes: 230, stops: 1, fare: 5400, cabin: 'Economy' },
+  ],
+  'BOM-TVM': [
+    { flightId: 'HA216', carrier: 'Helix Air', departs: '18:15', arrives: '20:20', durationMinutes: 125, stops: 0, fare: 6150, cabin: 'Economy' },
+  ],
+};
+
+const HOTEL_INVENTORY: Record<
+  string,
+  Array<{ hotelId: string; name: string; nightlyRate: number; rating: number; area: string; amenities: string[] }>
+> = {
+  DEL: [
+    { hotelId: 'HS-DEL-1', name: 'Helix Stay Aerocity', nightlyRate: 7400, rating: 4.5, area: 'Aerocity', amenities: ['Airport shuttle', 'Pool', 'Breakfast'] },
+    { hotelId: 'HS-DEL-2', name: 'Helix Stay Connaught', nightlyRate: 9100, rating: 4.7, area: 'Connaught Place', amenities: ['City centre', 'Spa', 'Breakfast'] },
+    { hotelId: 'HS-DEL-3', name: 'Helix Stay Saket', nightlyRate: 4900, rating: 4.1, area: 'Saket', amenities: ['Metro nearby', 'Workspace'] },
+  ],
+  BOM: [
+    { hotelId: 'HS-BOM-1', name: 'Helix Stay Bandra', nightlyRate: 8200, rating: 4.6, area: 'Bandra West', amenities: ['Sea view', 'Gym'] },
+    { hotelId: 'HS-BOM-2', name: 'Helix Stay Andheri', nightlyRate: 5300, rating: 4.2, area: 'Andheri East', amenities: ['Airport shuttle', 'Workspace'] },
+  ],
+};
 
 function isSearchableDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -480,36 +629,88 @@ function consentPageHtml(params: {
   agentDid: string;
   userDid: string;
   serviceDid: string;
+  demo?: boolean;
 }): string {
   const { definition, agentDid, userDid, serviceDid } = params;
+  const initials = definition.id === 'airline' ? 'HA' : 'HS';
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${definition.displayName} — authorize agent</title>
-<style>
-  body { font-family: system-ui, sans-serif; max-width: 34rem; margin: 3rem auto; padding: 0 1rem; color: #16181d; }
-  h1 { font-size: 1.25rem; }
-  .scope { display: flex; gap: .6rem; align-items: flex-start; padding: .55rem 0; border-bottom: 1px solid #e6e8ec; }
-  .scope small { display: block; color: #5c6370; }
-  .row { margin: 1.25rem 0; }
-  button { font: inherit; padding: .55rem 1.1rem; border-radius: .4rem; border: 1px solid #c9ccd4; background: #fff; cursor: pointer; }
-  button.primary { background: #1c6fe0; border-color: #1c6fe0; color: #fff; }
-  button[disabled] { opacity: .5; cursor: not-allowed; }
-  .error { color: #a3211a; background: #fdecea; padding: .7rem; border-radius: .4rem; }
+<title>Authorize · ${definition.displayName}</title>
+<style>${spChrome(definition)}
+  .agent{display:flex;align-items:center;gap:11px;padding:13px 14px;background:var(--bg);
+    border:1px solid var(--border);border-radius:11px;margin-bottom:20px}
+  .agent .ico{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,#4f7cff,#7c5cff);
+    color:#fff;display:grid;place-items:center;font-weight:800;font-size:12px;flex:0 0 32px}
+  .agent .nm{font-size:13.5px;font-weight:640}
+  .agent .did{font-size:11px;color:var(--dim);font-family:ui-monospace,Menlo,monospace;
+    word-break:break-all;margin-top:2px;line-height:1.4}
+  h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);
+    font-weight:700;margin-bottom:11px}
+  .scope{display:flex;gap:11px;align-items:flex-start;padding:12px 13px;border:1px solid var(--border);
+    border-radius:10px;margin-bottom:8px;transition:border-color .15s;cursor:pointer}
+  .scope:hover{border-color:var(--accent)}
+  .scope.locked{background:var(--bg);cursor:default}
+  .scope input{margin-top:2px;width:16px;height:16px;accent-color:var(--accent);flex:0 0 16px;cursor:inherit}
+  .scope .t{font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .scope .d{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.45}
+  .req{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:700;
+    padding:2px 6px;border-radius:5px;background:var(--border);color:var(--muted)}
+  .durs{display:grid;gap:8px;margin-bottom:22px}
+  .dur{display:flex;gap:11px;align-items:flex-start;padding:12px 13px;border:1px solid var(--border);
+    border-radius:10px;cursor:pointer;transition:border-color .15s}
+  .dur:hover{border-color:var(--accent)}
+  .dur input{margin-top:2px;accent-color:var(--accent);flex:0 0 auto;cursor:inherit}
+  .dur .t{font-size:13.5px;font-weight:600}
+  .dur .d{font-size:12.5px;color:var(--muted);margin-top:3px}
+  .state{padding:30px 0;text-align:center;color:var(--muted);font-size:13.5px}
+  .banner{padding:13px 14px;border-radius:10px;background:#fff5f5;border:1px solid #ffc9c9;
+    color:#a4232b;font-size:13px;line-height:1.5;margin-bottom:16px}
+  .done{text-align:center;padding:26px 0}
+  .done .tick{width:44px;height:44px;border-radius:50%;background:#1a7f37;color:#fff;margin:0 auto 14px;
+    display:grid;place-items:center;font-size:21px;font-weight:800}
+  .done .t{font-size:16px;font-weight:650}
+  .done .d{font-size:13px;color:var(--muted);margin-top:6px}
 </style>
 </head>
 <body>
-<h1>${definition.displayName}</h1>
-<p><strong>${agentDid || 'An agent'}</strong> is asking to act for <strong>${userDid || 'you'}</strong>.</p>
-<div id="root">Loading…</div>
+<div class="card">
+  <div class="card-head">
+    <div class="brand">${initials}</div>
+    <h1>Authorize this agent</h1>
+    <p class="lede"><strong>Travel Planner Agent</strong> is asking to act on your behalf at ${definition.displayName}.</p>
+  </div>
+  <div class="card-body">
+    <div class="agent">
+      <div class="ico">TP</div>
+      <div>
+        <div class="nm">Travel Planner Agent</div>
+        <div class="did">${agentDid || 'unknown agent'}</div>
+      </div>
+    </div>
+    <div id="root"><div class="state">Loading permissions…</div></div>
+  </div>
+  <div class="foot">
+    <span class="lock">🔒</span>
+    <span>Signed by ${definition.displayName} and verified by HelixID. Revocable at any time.</span>
+  </div>
+</div>
 
 <script type="module">
-  // The shipped widget controller — not a re-implementation.
+  // The shipped @helixid/widget controller — this page is only its render layer.
   import { createConsentController } from '/widget/index.js';
 
   const root = document.getElementById('root');
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+  function finish(title, detail) {
+    root.innerHTML = '<div class="done"><div class="tick">✓</div>' +
+      '<div class="t">' + esc(title) + '</div><div class="d">' + esc(detail) + '</div></div>';
+  }
+
   const controller = createConsentController({
     agentDid: ${JSON.stringify(agentDid)},
     agentName: 'Travel Planner Agent',
@@ -530,58 +731,91 @@ function consentPageHtml(params: {
         }),
       });
       const body = await res.json();
-      if (!res.ok || !body.grantVC) throw new Error(body.error?.message || 'Could not issue permission');
-      (window.opener || window.parent).postMessage({ type: 'helixid:consent-accepted', grantVC: body.grantVC }, '*');
-      root.innerHTML = '<p>Authorized. You can return to your agent.</p>';
-      setTimeout(() => window.close(), 450);
+      if (!res.ok || !body.grantVC) {
+        throw new Error((body.error && body.error.message) || 'Could not issue permission');
+      }
+      (window.opener || window.parent).postMessage(
+        { type: 'helixid:consent-accepted', grantVC: body.grantVC }, '*');
+      finish('Permission granted', 'Returning you to the Travel Planner…');
+      setTimeout(() => window.close(), 900);
     },
     onDecline: () => {
       (window.opener || window.parent).postMessage({ type: 'helixid:consent-declined' }, '*');
-      root.innerHTML = '<p>Declined. Nothing was authorized.</p>';
-      setTimeout(() => window.close(), 450);
+      finish('Nothing was authorized', 'You can close this window.');
+      setTimeout(() => window.close(), 900);
     },
   });
 
   function render(state) {
-    if (state.status === 'loading') { root.textContent = 'Loading…'; return; }
+    if (state.status === 'loading') {
+      root.innerHTML = '<div class="state">Loading permissions…</div>';
+      return;
+    }
+
+    // Fetch failed: Accept is disabled, Decline stays available, no retry.
     if (state.status === 'error') {
-      // Accept is disabled; Decline stays available. No retry (register D3).
       root.innerHTML =
-        '<p class="error">Could not load permissions: ' + (state.error ?? 'unknown error') + '</p>' +
-        '<div class="row"><button disabled>Accept</button> <button id="decline">Decline</button></div>';
+        '<div class="banner">We could not load the permissions this agent is requesting. ' +
+        'Nothing has been authorized.<br><small>' + esc(state.error || 'unknown error') + '</small></div>' +
+        '<button class="btn" disabled>Allow</button>' +
+        '<button class="btn-ghost" id="decline">Close</button>';
       document.getElementById('decline').onclick = () => controller.decline();
       return;
     }
 
     root.innerHTML =
-      state.scopeOptions.map((option) => {
-        const checked = state.selectedScopes.includes(option.scope) ? 'checked' : '';
-        const locked = option.required ? 'disabled' : '';
-        return '<label class="scope"><input type="checkbox" data-scope="' + option.scope + '" ' + checked + ' ' + locked + ' />' +
-          '<span>' + option.label + (option.required ? ' <em>(required)</em>' : '') +
-          (option.description ? '<small>' + option.description + '</small>' : '') + '</span></label>';
+      '<h2>This agent will be able to</h2>' +
+      state.scopeOptions.map((o) => {
+        const on = state.selectedScopes.includes(o.scope);
+        return '<label class="scope' + (o.required ? ' locked' : '') + '">' +
+          '<input type="checkbox" data-scope="' + esc(o.scope) + '"' +
+            (on ? ' checked' : '') + (o.required ? ' disabled' : '') + ' />' +
+          '<div><div class="t">' + esc(o.label) +
+            (o.required ? '<span class="req">Required</span>' : '') + '</div>' +
+            (o.description ? '<div class="d">' + esc(o.description) + '</div>' : '') +
+          '</div></label>';
       }).join('') +
-      '<div class="row">' +
-        state.durabilityOptions.map((option) =>
-          '<label style="display:block"><input type="radio" name="durability" value="' + option.value + '"' +
-          (state.durability === option.value ? ' checked' : '') + ' /> ' + option.label + '</label>').join('') +
-      '</div>' +
-      '<div class="row"><button class="primary" id="accept"' + (state.canAccept ? '' : ' disabled') + '>Accept</button> ' +
-      '<button id="decline">Decline</button></div>';
+      '<h2 style="margin-top:22px">For how long</h2>' +
+      '<div class="durs">' + state.durabilityOptions.map((d) =>
+        '<label class="dur"><input type="radio" name="dur" value="' + esc(d.value) + '"' +
+          (state.durability === d.value ? ' checked' : '') + ' />' +
+          '<div><div class="t">' + esc(d.label) + '</div>' +
+          (d.description ? '<div class="d">' + esc(d.description) + '</div>' : '') +
+          '</div></label>').join('') + '</div>' +
+      '<button class="btn" id="accept"' + (state.canAccept ? '' : ' disabled') + '>Allow</button>' +
+      '<button class="btn-ghost" id="decline">Not now</button>';
 
-    root.querySelectorAll('input[data-scope]').forEach((input) => {
-      input.onchange = () => controller.toggleScope(input.dataset.scope);
+    root.querySelectorAll('input[data-scope]').forEach((el) => {
+      el.onchange = () => controller.toggleScope(el.dataset.scope);
     });
-    root.querySelectorAll('input[name=durability]').forEach((input) => {
-      input.onchange = () => controller.setDurability(input.value);
+    root.querySelectorAll('input[name=dur]').forEach((el) => {
+      el.onchange = () => controller.setDurability(el.value);
     });
-    document.getElementById('accept').onclick = () => controller.accept();
+    document.getElementById('accept').onclick = async (e) => {
+      e.target.disabled = true;
+      e.target.textContent = 'Authorizing…';
+      try { await controller.accept(); }
+      catch (err) {
+        root.innerHTML = '<div class="banner">' + esc(err.message) + '</div>' +
+          '<button class="btn-ghost" id="decline">Close</button>';
+        document.getElementById('decline').onclick = () => controller.decline();
+      }
+    };
     document.getElementById('decline').onclick = () => controller.decline();
   }
 
   controller.subscribe(render);
   render(controller.getState());
   await controller.load();
+
+  // Unattended demo: hold long enough for the permissions to be readable on
+  // camera, then approve exactly as a click would.
+  if (${JSON.stringify(Boolean(params.demo))}) {
+    setTimeout(() => {
+      const accept = document.getElementById('accept');
+      if (accept && !accept.disabled) accept.click();
+    }, 3400);
+  }
 </script>
 </body>
 </html>`;

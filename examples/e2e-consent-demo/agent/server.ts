@@ -26,7 +26,29 @@ import type { SignedVC } from '@helixid/core';
 import { AIRLINE, DEMO_USER_DID, HOTEL, env, spDidFor } from '../helixid-config/index.js';
 import { callSpTool, ConsentDeclinedError } from './consentAwareCall.js';
 import { agentPageHtml } from './web.js';
-import { createToolPlanner, DeterministicPlanner, type ChatContext, type PlannerMessage } from './gemini.js';
+import {
+  createToolPlanner,
+  DeterministicPlanner,
+  describePlanForHistory,
+  phraseQuestion,
+  ToolValidationError,
+  type ChatContext,
+  type PlannerMessage,
+} from './gemini.js';
+import {
+  cityLabel,
+  extractSlots,
+  mentionsBookingConfirmation,
+  mentionsFlight,
+  mentionsTripPlanning,
+  nextFlightQuestion,
+  nextHotelQuestion,
+  nextReturnQuestion,
+  resolveTrack,
+  summariseProfile,
+  type ConversationTrack,
+  type TripProfile,
+} from './conversation.js';
 
 const SP_BY_ID = { airline: AIRLINE, hotel: HOTEL } as const;
 const AGENT_USERNAME = 'traveler';
@@ -40,6 +62,19 @@ function cookies(header: string | undefined): Record<string, string> {
 
 function log(message: string): void {
   console.log(`[${new Date().toISOString()}] [agent] ${message}`);
+}
+
+/** What the agent already knows, in the plain words a rewrite can reuse. */
+function knownFacts(profile: TripProfile): Record<string, string | number> {
+  const known: Record<string, string | number> = {};
+  if (profile.origin) known['flyingFrom'] = cityLabel(profile.origin);
+  if (profile.destination) known['flyingTo'] = cityLabel(profile.destination);
+  if (profile.departureDate) known['departureDate'] = profile.departureDate;
+  if (profile.returnDate) known['returnDate'] = profile.returnDate;
+  if (profile.travelers) known['travellers'] = profile.travelers;
+  if (profile.airlinePreference) known['airline'] = profile.airlinePreference;
+  if (profile.hotelBudget) known['nightlyBudget'] = profile.hotelBudget;
+  return known;
 }
 
 async function main(): Promise<void> {
@@ -57,15 +92,23 @@ async function main(): Promise<void> {
         model: env.llmModel || defaultModels[env.llmProvider],
       })
     : new DeterministicPlanner();
+  // Always available, whatever the configured provider is doing.
+  const fallbackPlanner = new DeterministicPlanner();
   log(`wallet loaded: ${wallet.did}`);
 
   const app = express();
   app.use(express.json({ limit: '2mb' }));
   const sessions = new Map<string, { userDid: string; username: string }>();
   const conversationHistory = new Map<string, PlannerMessage[]>();
+  /** What the agent has gathered about the trip, per signed-in session. */
+  const tripProfiles = new Map<string, TripProfile>();
   const plannerInfo = { provider: planner.provider, model: planner.model };
 
-  app.get('/', (_req, res) => res.type('html').send(agentPageHtml()));
+  // The page only accepts postMessage from these exact origins — the two SP
+  // consent popups — so a stray window cannot inject a forged grant.
+  const spOrigins = Object.values(SP_BY_ID).map((sp) => `http://${env.host}:${sp.port}`);
+
+  app.get('/', (_req, res) => res.type('html').send(agentPageHtml(spOrigins)));
 
   app.get('/api/session', (req, res) => {
     const session = sessions.get(cookies(req.headers.cookie)['agent_session'] ?? '');
@@ -109,35 +152,183 @@ async function main(): Promise<void> {
     res.json({ status: 'ok', agentDid: wallet.did, userDid: DEMO_USER_DID, llm: plannerInfo });
   });
 
+  /** Appends one exchange to the rolling planner history. */
+  function recordTurn(
+    token: string,
+    history: PlannerMessage[],
+    userMessage: string,
+    plan: Parameters<typeof describePlanForHistory>[0],
+  ): void {
+    conversationHistory.set(
+      token,
+      [
+        ...history,
+        { role: 'user', content: userMessage },
+        { role: 'assistant', content: describePlanForHistory(plan) },
+      ].slice(-12) as PlannerMessage[],
+    );
+  }
+
   app.post('/api/plan', async (req, res) => {
-    const body = req.body as { message?: string; context?: ChatContext };
+    const body = req.body as {
+      message?: string;
+      context?: ChatContext;
+      /** Set when the message is a direct answer to the agent's last question. */
+      answering?: boolean;
+      /** Which search the conversation is currently gathering for. */
+      track?: ConversationTrack;
+    };
     if (typeof body.message !== 'string' || !body.message.trim()) {
       res.status(400).json({ error: 'message is required' });
       return;
     }
-    try {
-      const token = String(res.locals['agentSessionToken'] ?? '');
-      const history = conversationHistory.get(token) ?? [];
-      const userMessage = body.message.trim();
-      const plan = await planner.plan(userMessage, body.context ?? {}, history);
-      const assistantMessage =
-        plan.kind === 'message'
-          ? plan.message
-          : `Selected ${plan.tool} with arguments ${JSON.stringify(plan.args)}.`;
-      const newTurns: PlannerMessage[] = [
-        { role: 'user', content: userMessage },
-        { role: 'assistant', content: assistantMessage },
-      ];
-      conversationHistory.set(
-        token,
-        [...history, ...newTurns].slice(-12),
-      );
-      log(`${planner.provider} planned ${plan.kind === 'tool_call' ? plan.tool : 'a text response'}`);
-      res.json(plan);
-    } catch (error) {
-      log(`${planner.provider} planning failed: ${(error as Error).message}`);
-      res.status(502).json({ error: `LLM planning failed: ${(error as Error).message}` });
+    const token = String(res.locals['agentSessionToken'] ?? '');
+    const history = conversationHistory.get(token) ?? [];
+    const userMessage = body.message.trim();
+    const context = body.context ?? {};
+
+    // ── Conversational gathering ────────────────────────────────────────
+    // A real assistant collects what it needs before acting. Slot-filling is
+    // resolved here rather than inside a planner so the agent asks the same
+    // questions in the same order with or without a model provider — the LLM
+    // still handles booking confirmations and free-form chat below.
+    const answeringSlot = body.answering === true;
+    // Which leg we are on has to be settled before the message is read, because
+    // it decides where a bare date lands. See resolveTrack().
+    const track = resolveTrack({
+      message: userMessage,
+      answering: answeringSlot,
+      ...(body.track ? { track: body.track } : {}),
+    });
+    const returning = track === 'return';
+
+    const profile = extractSlots(userMessage, tripProfiles.get(token) ?? {}, { forReturn: returning });
+    tripProfiles.set(token, profile);
+
+    const wantsHotel = track === 'hotel';
+    const wantsFlight = mentionsFlight(userMessage) || mentionsTripPlanning(userMessage) || returning;
+    // Confirming a specific offered option is a booking, never a new search —
+    // otherwise "book flight HA733" would re-run the flight search forever.
+    const confirmingOption = mentionsBookingConfirmation(userMessage);
+    const searchIntent = !confirmingOption && (wantsHotel || wantsFlight || answeringSlot);
+
+    if (searchIntent) {
+      const question = track === 'hotel'
+        ? nextHotelQuestion(profile)
+        : track === 'return'
+          ? nextReturnQuestion(profile)
+          : nextFlightQuestion(profile);
+
+      if (question) {
+        // The engine picked the question; the model only says it better. If the
+        // provider is slow or down, phraseQuestion returns the engine's own
+        // wording, so the conversation is identical either way.
+        const spoken = await phraseQuestion(planner, {
+          question: question.question,
+          suggestions: question.suggestions,
+          known: knownFacts(profile),
+        });
+        // Worth saying out loud: a silent fallback looks identical to a working
+        // rewrite, and on a rate-limited key that is the difference between the
+        // agent sounding written and sounding scripted.
+        log(
+          spoken === question.question
+            ? `asking ${question.field} in the engine's own words`
+            : `asking ${question.field}, reworded by ${planner.provider}`,
+        );
+        const ask = {
+          kind: 'ask' as const,
+          field: question.field,
+          message: spoken,
+          suggestions: question.suggestions,
+        };
+        recordTurn(token, history, userMessage, ask);
+        res.json({
+          ...ask,
+          planner: plannerInfo,
+          profile,
+          summary: summariseProfile(profile),
+          track,
+        });
+        return;
+      }
+
+      // Everything needed is known — run the search the user actually asked for.
+      const toolPlan = track === 'hotel'
+        ? {
+            kind: 'tool_call' as const,
+            tool: 'search_hotels' as const,
+            args: {
+              city: profile.destination!,
+              maxNightlyRate: String(profile.hotelBudget ?? 0),
+              guests: String(profile.travelers ?? 1),
+            },
+          }
+        : {
+            kind: 'tool_call' as const,
+            tool: 'search_flights' as const,
+            args: track === 'return'
+              ? {
+                  origin: profile.destination!,
+                  destination: profile.origin!,
+                  departureDate: profile.returnDate!,
+                  travelers: String(profile.travelers ?? 1),
+                  carrier: profile.airlinePreference ?? 'any',
+                }
+              : {
+                  origin: profile.origin!,
+                  destination: profile.destination!,
+                  departureDate: profile.departureDate!,
+                  travelers: String(profile.travelers ?? 1),
+                  carrier: profile.airlinePreference ?? 'any',
+                },
+          };
+
+      recordTurn(token, history, userMessage, toolPlan);
+      log(`gathered details, searching ${toolPlan.tool}`);
+      // The track goes back on searches too, so the page never keeps asking
+      // against a leg the conversation has already moved off.
+      res.json({ ...toolPlan, planner: plannerInfo, profile, summary: summariseProfile(profile), track });
+      return;
     }
+
+    let plan: Awaited<ReturnType<typeof planner.plan>>;
+    let usedPlanner = plannerInfo;
+    try {
+      plan = await planner.plan(userMessage, context, history);
+    } catch (error) {
+      if (error instanceof ToolValidationError) {
+        // The model was understood and refused — tell the user plainly rather
+        // than retrying somewhere else or leaking a stack trace into chat.
+        log(`rejected a planned tool call: ${error.message}`);
+        plan = { kind: 'message', message: `${error.message}. Could you restate what you'd like?` };
+      } else {
+        // The provider itself is unavailable (quota, outage, network). The demo
+        // must keep working: fall back to the deterministic planner, which
+        // drives the identical validated tool-call and consent path.
+        log(`${planner.provider} unavailable, falling back to the scripted planner: ${(error as Error).message}`);
+        try {
+          plan = await fallbackPlanner.plan(userMessage, context, history);
+          usedPlanner = { provider: fallbackPlanner.provider, model: fallbackPlanner.model };
+        } catch (fallbackError) {
+          const message =
+            fallbackError instanceof ToolValidationError
+              ? fallbackError.message
+              : 'I could not work out what to do next.';
+          plan = { kind: 'message', message: `${message}. Could you restate what you'd like?` };
+          usedPlanner = { provider: fallbackPlanner.provider, model: fallbackPlanner.model };
+        }
+      }
+    }
+
+    recordTurn(token, history, userMessage, plan);
+    log(`${usedPlanner.provider} planned ${plan.kind === 'tool_call' ? plan.tool : 'a text response'}`);
+    res.json({
+      ...plan,
+      planner: usedPlanner,
+      profile: tripProfiles.get(token) ?? {},
+      summary: summariseProfile(tripProfiles.get(token) ?? {}),
+    });
   });
 
   /** Everything the UI needs to render current authorization state. */
@@ -145,7 +336,20 @@ async function main(): Promise<void> {
     const grants = Object.values(SP_BY_ID).map((sp) => {
       const serviceDid = spDidFor(env.host, sp.port);
       const held = wallet.selectGrant(serviceDid, DEMO_USER_DID);
-      return { sp: sp.id, displayName: sp.displayName, serviceDid, hasGrant: Boolean(held) };
+      // Surface the actual granted scopes and durability so the UI can show
+      // what the user consented to, not just that they consented.
+      const subject = held
+        ? ((JSON.parse(held.vcJson) as { credentialSubject?: { scopes?: string[]; durability?: string } })
+            .credentialSubject ?? {})
+        : {};
+      return {
+        sp: sp.id,
+        displayName: sp.displayName,
+        serviceDid,
+        hasGrant: Boolean(held),
+        scopes: subject.scopes ?? [],
+        durability: subject.durability ?? null,
+      };
     });
     res.json({ agentDid: wallet.did, userDid: DEMO_USER_DID, grants });
   });
