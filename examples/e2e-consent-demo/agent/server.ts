@@ -361,27 +361,6 @@ async function main(): Promise<void> {
     res.json({ agentDid: wallet.did, userDid: DEMO_USER_DID, grants });
   });
 
-  // The activity trail, read straight from helix-api's audit log — the same
-  // records the operator console shows. Deliberately not a second, agent-local
-  // log: if the panel and the console could disagree, neither would be a
-  // source of truth. Oldest-first, because the panel tells a story.
-  app.get('/api/activity', async (_req, res) => {
-    try {
-      const response = await fetch(`${env.helixApiUrl.replace(/\/$/, '')}/v1/audit-log?limit=100`, {
-        headers: { 'x-admin-api-key': env.adminApiKey },
-      });
-      if (!response.ok) {
-        res.status(502).json({ error: `audit log unavailable (HTTP ${response.status})`, events: [] });
-        return;
-      }
-      const events = (await response.json()) as Array<Record<string, unknown>>;
-      res.json({ events: [...events].reverse() });
-    } catch (error) {
-      // The panel is observability, never a reason for the demo to break.
-      res.status(502).json({ error: (error as Error).message, events: [] });
-    }
-  });
-
   app.post('/api/call', async (req, res) => {
     const body = req.body as {
       sp?: 'airline' | 'hotel';

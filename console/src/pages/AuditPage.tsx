@@ -15,44 +15,91 @@ import type { AuditLogEntry } from '../api/types';
  * depending on the SDK's exported shape.
  */
 interface ActivityFields {
+  correlationId?: string;
+  credentialType?: string;
+  issuer?: string;
+  userDid?: string;
+  scopes?: string[];
+  durability?: string;
   serviceName?: string;
+  serviceDid?: string;
   toolName?: string;
   requiredScope?: string;
   effectiveScopes?: string[];
   reason?: string;
   resultSummary?: string;
+  validUntil?: string;
+  credentialStatus?: string;
 }
 
-function describe(entry: AuditLogEntry): string {
-  const activity = entry as AuditLogEntry & ActivityFields;
-  const parts: string[] = [];
-  // Lead with what actually happened — the DID is context, not the headline.
-  if (activity.resultSummary) parts.push(activity.resultSummary);
-  if (activity.toolName) parts.push(`action ${activity.toolName}`);
-  if (activity.requiredScope) parts.push(`scope ${activity.requiredScope}`);
-  if (activity.serviceName) parts.push(activity.serviceName);
-  if (entry.subjectDid) parts.push(entry.subjectDid);
-  if (entry.vcId) parts.push(entry.vcId);
-  if (!activity.serviceName && entry.targetService) parts.push(`service ${entry.targetService}`);
-  if (entry.result) parts.push(entry.result);
-  // Only when it adds something the summary did not already say.
-  if (activity.reason && activity.reason !== activity.resultSummary) {
-    parts.push(activity.reason);
-  }
-  return parts.join(' · ');
+type AuditRow = AuditLogEntry & ActivityFields;
+
+type Tone = 'success' | 'danger' | 'blocked' | 'accent' | 'neutral';
+
+/**
+ * How each event type reads in the trail. Unlisted types still render — they
+ * fall back to their raw name rather than being hidden, because a trail that
+ * silently drops events is not a source of truth.
+ */
+const LABELS: Record<string, { title: string; tone: Tone }> = {
+  DID_CREATED: { title: 'DID Created', tone: 'accent' },
+  DID_RESOLVED: { title: 'DID Resolved', tone: 'neutral' },
+  DID_DEACTIVATED: { title: 'DID Deactivated', tone: 'danger' },
+  ENROLLMENT_TOKEN_GENERATED: { title: 'Enrollment Token', tone: 'accent' },
+  ENROLLMENT_TOKEN_CONSUMED: { title: 'Enrollment Completed', tone: 'accent' },
+  ENROLLMENT_TOKEN_REJECTED: { title: 'Enrollment Rejected', tone: 'danger' },
+  AGENT_ONBOARDED: { title: 'Agent Enrolled', tone: 'success' },
+  VC_ISSUED: { title: 'Credential Issued', tone: 'success' },
+  VC_REVOKED: { title: 'Credential Revoked', tone: 'danger' },
+  CONSENT_GRANTED: { title: 'Consent Granted', tone: 'success' },
+  CONSENT_REVOKED: { title: 'Consent Revoked', tone: 'danger' },
+  VC_PRESENTED: { title: 'Credential Presented', tone: 'accent' },
+  VP_VERIFIED: { title: 'Verification Success', tone: 'success' },
+  VP_REJECTED: { title: 'Verification FAILED', tone: 'danger' },
+  AUTHZ_GRANTED: { title: 'Authorization Granted', tone: 'success' },
+  AUTHZ_DENIED: { title: 'Authorization BLOCKED', tone: 'blocked' },
+  TOOL_INVOKED: { title: 'Action Performed', tone: 'accent' },
+};
+
+function labelFor(eventType: string): { title: string; tone: Tone } {
+  return LABELS[eventType] ?? { title: eventType.replaceAll('_', ' '), tone: 'neutral' };
+}
+
+/** The recorded outcome overrides the label's default: a failed action is not a success. */
+function toneFor(entry: AuditRow): Tone {
+  if (entry.result === 'failure') return 'danger';
+  if (entry.result === 'blocked') return 'blocked';
+  return labelFor(entry.eventType).tone;
+}
+
+function markFor(tone: Tone): string {
+  if (tone === 'danger') return '✕';
+  if (tone === 'blocked') return '⃠';
+  return '✓';
 }
 
 /**
- * Color tone for the timeline dot + event label. Event types arrive upper-cased
- * (`VP_VERIFIED`), so match case-insensitively — testing the raw value against
- * lower-case patterns silently made every event 'neutral'.
+ * The structured facts behind an event, in the order an auditor reads them:
+ * what was attempted, under what authority, against whom, and by whose grant.
  */
-function tone(eventType: string): 'success' | 'danger' | 'accent' | 'neutral' {
-  const type = eventType.toLowerCase();
-  if (/revoked|rejected|failed|denied|blocked/.test(type)) return 'danger';
-  if (/complete|verified|onboarded|granted/.test(type)) return 'success';
-  if (/issued|created|generated|consumed|presented|invoked/.test(type)) return 'accent';
-  return 'neutral';
+function factsFor(entry: AuditRow): Array<[string, string]> {
+  const facts: Array<[string, string]> = [];
+  if (entry.toolName) facts.push(['Action', entry.toolName]);
+  if (entry.requiredScope) facts.push(['Scope', entry.requiredScope]);
+  if (entry.credentialType) facts.push(['Credential', entry.credentialType]);
+  if (entry.serviceName) facts.push(['Service', entry.serviceName]);
+  else if (entry.targetService) facts.push(['Service', entry.targetService]);
+  if (entry.issuer) facts.push(['Issuer', entry.issuer]);
+  if (entry.userDid) facts.push(['User', entry.userDid]);
+  if (entry.scopes?.length) facts.push(['Granted', entry.scopes.join(', ')]);
+  if (entry.durability) facts.push(['Durability', entry.durability]);
+  if (entry.effectiveScopes?.length) facts.push(['Effective', entry.effectiveScopes.join(', ')]);
+  if (entry.validUntil) facts.push(['Expires', new Date(entry.validUntil).toLocaleString()]);
+  if (entry.credentialStatus) facts.push(['Status', entry.credentialStatus]);
+  if (entry.delegatedFrom) facts.push(['Delegated from', entry.delegatedFrom]);
+  if (entry.vcId) facts.push(['VC', entry.vcId]);
+  if (entry.correlationId) facts.push(['Trace', entry.correlationId]);
+  return facts;
 }
 
 function relativeTime(timestamp: string): string {
@@ -67,7 +114,7 @@ function relativeTime(timestamp: string): string {
 }
 
 export function AuditPage() {
-  const [entries, setEntries] = useState<AuditLogEntry[]>([]);
+  const [entries, setEntries] = useState<AuditRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,8 +122,10 @@ export function AuditPage() {
     setLoading(true);
     setError(null);
     try {
-      const result = await api.getAuditLog({ limit: 20 });
-      setEntries(result);
+      const result = await api.getAuditLog({ limit: 100 });
+      // The API returns newest-first; the trail reads as a story oldest-first,
+      // which is also what makes the step numbering meaningful.
+      setEntries([...(result as AuditRow[])].reverse());
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load audit log');
     } finally {
@@ -94,12 +143,20 @@ export function AuditPage() {
         <div>
           <h1>Audit &amp; Governance</h1>
           <p className="page-subtitle">
-            Tamper-evident record of identity, credential and verification events.
+            Every credential issued, presented, verified, authorized and used — identity through
+            to result.
           </p>
         </div>
-        <button type="button" onClick={() => void loadAudit()}>
-          Refresh
-        </button>
+        <div className="audit-header-actions">
+          {entries.length > 0 && (
+            <span className="audit-count">
+              {entries.length} event{entries.length === 1 ? '' : 's'}
+            </span>
+          )}
+          <button type="button" onClick={() => void loadAudit()}>
+            Refresh
+          </button>
+        </div>
       </div>
 
       {loading && <p className="loading-note">Loading audit log…</p>}
@@ -110,28 +167,55 @@ export function AuditPage() {
       {!loading && !error && entries.length > 0 && (
         <div className="card audit-card">
           <ul className="audit-timeline">
-            {entries.map((entry) => (
-              <li key={entry.id} className={`audit-entry tone-${tone(entry.eventType)}`}>
-                <div className="audit-entry-top">
-                  <span className="audit-event-type">{entry.eventType.replaceAll('_', ' ')}</span>{' '}
-                  <time
-                    dateTime={entry.timestamp}
-                    title={new Date(entry.timestamp).toLocaleString()}
-                  >
-                    {relativeTime(entry.timestamp)}
-                  </time>
-                </div>
-                <div className="audit-description">
-                  {entry.subjectDid ? (
-                    <Link to={`/agents?subjectDid=${encodeURIComponent(entry.subjectDid)}`}>
-                      {describe(entry)}
-                    </Link>
-                  ) : (
-                    describe(entry)
+            {entries.map((entry, index) => {
+              const tone = toneFor(entry);
+              const { title } = labelFor(entry.eventType);
+              const detail = entry.resultSummary ?? entry.reason;
+              const facts = factsFor(entry);
+              return (
+                <li key={entry.id} className={`audit-entry tone-${tone}`}>
+                  <div className="audit-entry-top">
+                    <span className="audit-event-type">
+                      <span className="audit-mark">{markFor(tone)}</span>
+                      {index + 1}. {title}
+                    </span>
+                    <time
+                      dateTime={entry.timestamp}
+                      title={new Date(entry.timestamp).toLocaleString()}
+                    >
+                      {relativeTime(entry.timestamp)}
+                    </time>
+                  </div>
+
+                  {detail && <div className="audit-summary">{detail}</div>}
+
+                  {/* Kept distinct from the summary: the reason is the machine-readable
+                      code an operator greps for, the summary is the sentence. */}
+                  {entry.reason && entry.reason !== detail && (
+                    <div className="audit-reason">{entry.reason}</div>
                   )}
-                </div>
-              </li>
-            ))}
+
+                  {facts.length > 0 && (
+                    <dl className="audit-facts">
+                      {facts.map(([key, value]) => (
+                        <div className="audit-fact" key={`${entry.id}-${key}`}>
+                          <dt>{key}</dt>
+                          <dd>{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+
+                  {entry.subjectDid && (
+                    <div className="audit-subject">
+                      <Link to={`/agents?subjectDid=${encodeURIComponent(entry.subjectDid)}`}>
+                        {entry.subjectDid}
+                      </Link>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

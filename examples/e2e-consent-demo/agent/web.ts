@@ -160,35 +160,6 @@ export function agentPageHtml(spOrigins: string[]): string {
   .scope{font-size:10.5px;font-family:ui-monospace,Menlo,monospace;padding:3px 7px;border-radius:6px;
     background:var(--raised);color:#9fb0cc;border:1px solid var(--border)}
   .dur{font-size:11px;color:var(--dim);margin-top:8px}
-
-  /* ── Activity trail ────────────────────────────────────── */
-  .acthead{display:flex;align-items:baseline;gap:8px;margin-bottom:11px}
-  .acthead h2{margin-bottom:0;flex:1}
-  .actcount{font-size:10.5px;color:var(--dim);font-variant-numeric:tabular-nums}
-  .acttrail{position:relative;padding-left:17px}
-  /* The spine the markers sit on. */
-  .acttrail::before{content:'';position:absolute;left:4px;top:5px;bottom:5px;width:1px;
-    background:var(--border)}
-  .act{position:relative;padding:0 0 13px 0}
-  .act:last-child{padding-bottom:0}
-  .act::before{content:'';position:absolute;left:-16px;top:4px;width:9px;height:9px;
-    border-radius:50%;background:var(--dim);border:2px solid var(--surface);box-shadow:0 0 0 1px var(--border)}
-  .act.ok::before{background:var(--ok);box-shadow:0 0 0 1px rgba(63,185,80,.45)}
-  .act.bad::before{background:var(--danger);box-shadow:0 0 0 1px rgba(248,81,73,.45)}
-  .act.blocked::before{background:var(--warn);box-shadow:0 0 0 1px rgba(210,153,34,.45)}
-  .act .t{font-size:12px;font-weight:640;display:flex;align-items:baseline;gap:6px}
-  .act .t .ico{font-size:11px}
-  .act.ok .t .ico{color:var(--ok)}
-  .act.bad .t .ico{color:var(--danger)}
-  .act.blocked .t .ico{color:var(--warn)}
-  .act .d{font-size:11px;color:var(--muted);line-height:1.5;margin-top:3px}
-  .act .meta{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
-  .act .tag{font-size:10px;font-family:ui-monospace,Menlo,monospace;padding:2px 6px;border-radius:5px;
-    background:var(--raised);color:#9fb0cc;border:1px solid var(--border)}
-  .act .tag.k{color:var(--dim);background:transparent;border-color:transparent;padding-left:0}
-  .act .when{font-size:10px;color:var(--dim);margin-top:4px;font-variant-numeric:tabular-nums}
-  .actempty{font-size:11px;color:var(--dim);line-height:1.6}
-
   .foot{margin-top:auto;font-size:11px;color:var(--dim);line-height:1.6;padding-top:14px;
     border-top:1px solid var(--border-soft)}
 
@@ -246,16 +217,6 @@ export function agentPageHtml(spOrigins: string[]): string {
     <section>
       <h2>Service permissions</h2>
       <div id="sps"></div>
-    </section>
-    <section>
-      <div class="acthead">
-        <h2>Agent activity</h2>
-        <span class="actcount" id="actCount"></span>
-      </div>
-      <div class="acttrail" id="activity">
-        <div class="actempty">Nothing yet. Every credential issued, presented, verified,
-          authorized and used will appear here.</div>
-      </div>
     </section>
     <div class="foot">
       Each permission is a <strong>DelegationGrantCredential</strong> signed by that
@@ -431,95 +392,6 @@ async function refreshTrust() {
   } catch { /* rail is informational; never block the chat on it */ }
 }
 
-// How each audit event type reads in the trail. Anything not listed still
-// renders — it just falls back to its raw event name rather than being hidden,
-// because a trail that silently drops events is not a source of truth.
-const ACT_LABELS = {
-  AGENT_ONBOARDED:            { t: 'Agent Enrolled',        tone: 'ok'  },
-  VC_ISSUED:                  { t: 'Credential Issued',     tone: 'ok'  },
-  CONSENT_GRANTED:            { t: 'Consent Granted',       tone: 'ok'  },
-  CONSENT_REVOKED:            { t: 'Consent Revoked',       tone: 'bad' },
-  VC_REVOKED:                 { t: 'Credential Revoked',    tone: 'bad' },
-  VC_PRESENTED:               { t: 'Credential Presented',  tone: 'ok'  },
-  VP_VERIFIED:                { t: 'Verification Success',  tone: 'ok'  },
-  VP_REJECTED:                { t: 'Verification FAILED',   tone: 'bad' },
-  AUTHZ_GRANTED:              { t: 'Authorization Granted', tone: 'ok'  },
-  AUTHZ_DENIED:               { t: 'Authorization BLOCKED', tone: 'blocked' },
-  TOOL_INVOKED:               { t: 'Action Performed',      tone: 'ok'  },
-  ENROLLMENT_TOKEN_GENERATED: { t: 'Enrollment Token',      tone: 'ok'  },
-  ENROLLMENT_TOKEN_CONSUMED:  { t: 'Enrollment Completed',  tone: 'ok'  },
-  DID_RESOLVED:               { t: 'DID Resolved',          tone: ''    },
-  DID_CREATED:                { t: 'DID Created',           tone: 'ok'  },
-};
-
-const shortDid = (d) => {
-  const s = String(d || '');
-  return s.length > 26 ? s.slice(0, 14) + '…' + s.slice(-8) : s;
-};
-
-function actTags(e) {
-  const tags = [];
-  if (e.toolName)       tags.push(['Action', e.toolName]);
-  if (e.requiredScope)  tags.push(['Scope', e.requiredScope]);
-  if (e.credentialType) tags.push(['Credential', e.credentialType]);
-  if (e.serviceName)    tags.push(['Service', e.serviceName]);
-  if (e.issuer)         tags.push(['Issuer', shortDid(e.issuer)]);
-  if (e.userDid)        tags.push(['User', shortDid(e.userDid)]);
-  if (e.scopes && e.scopes.length)                 tags.push(['Granted', e.scopes.join(', ')]);
-  if (e.effectiveScopes && e.effectiveScopes.length) tags.push(['Effective', e.effectiveScopes.join(', ')]);
-  if (e.vcId)           tags.push(['VC', e.vcId]);
-  if (e.correlationId)  tags.push(['Trace', e.correlationId]);
-  return tags.length
-    ? '<div class="meta">' + tags.map(([k, v]) =>
-        '<span class="tag k">' + esc(k) + '</span><span class="tag">' + esc(v) + '</span>').join('') + '</div>'
-    : '';
-}
-
-function renderActivity(events) {
-  const host = document.getElementById('activity');
-  const count = document.getElementById('actCount');
-  if (!events.length) {
-    count.textContent = '';
-    host.innerHTML = '<div class="actempty">Nothing yet. Every credential issued, presented, ' +
-      'verified, authorized and used will appear here.</div>';
-    return;
-  }
-  count.textContent = events.length + ' event' + (events.length === 1 ? '' : 's');
-  host.innerHTML = events.map((e, i) => {
-    const meta = ACT_LABELS[e.eventType] || { t: String(e.eventType || '').replace(/_/g, ' '), tone: '' };
-    // The recorded outcome wins over the label's default tone: a TOOL_INVOKED
-    // that failed must not render as a success.
-    const tone = e.result === 'failure' ? 'bad'
-      : e.result === 'blocked' ? 'blocked'
-      : meta.tone;
-    const ico = tone === 'bad' ? '✕' : tone === 'blocked' ? '⃠' : '✓';
-    const detail = e.resultSummary || e.reason || '';
-    const when = e.timestamp ? new Date(e.timestamp).toLocaleTimeString() : '';
-    return '<div class="act ' + tone + '">' +
-      '<div class="t"><span class="ico">' + ico + '</span>' +
-        '<span>' + (i + 1) + '. ' + esc(meta.t) + '</span></div>' +
-      (detail ? '<div class="d">' + esc(detail) + '</div>' : '') +
-      actTags(e) +
-      (when ? '<div class="when">' + esc(when) + '</div>' : '') +
-    '</div>';
-  }).join('');
-}
-
-async function refreshActivity() {
-  try {
-    const r = await api('/api/activity');
-    renderActivity(r.events || []);
-  } catch { /* observability only — never blocks the demo */ }
-}
-
-// SPs emit their audit events without awaiting them, so an event can land a
-// moment after the tool response the user already saw. Refresh immediately for
-// responsiveness, then once more after a short settle so nothing is missed.
-function bumpActivity() {
-  refreshActivity();
-  setTimeout(refreshActivity, 700);
-}
-
 async function runCall(call) {
   const result = await api('/api/call', {
     sp: call.sp, tool: call.tool, args: call.args,
@@ -531,7 +403,6 @@ async function runCall(call) {
   if (call.tool === 'search_flights') renderFlights(result.data, call.args.origin === 'DEL' || call.args.origin === 'BOM');
   else if (call.tool === 'search_hotels') renderHotels(result.data);
   else { renderBooking(call.sp, result.data, result.authorizationSource); refreshTrust(); }
-  bumpActivity();
 }
 
 async function handle(text, opts) {
@@ -619,10 +490,6 @@ function enterApp(s) {
   document.getElementById('identity').textContent = s.username + ' · ' + s.userDid;
   showPlanner(s.planner);
   refreshTrust();
-  bumpActivity();
-  // Keeps the trail current even when events originate somewhere the browser
-  // never sees — a revocation from the console, say.
-  setInterval(refreshActivity, 5000);
   input.focus();
 }
 
@@ -648,7 +515,6 @@ window.addEventListener('message', async (e) => {
       const call = { ...pending, authorizationSource: 'fresh_consent' };
       pending = null;
       refreshTrust();
-      bumpActivity();
       await runCall(call);
     } catch (err) { say('Could not store the permission: ' + err.message); }
   }

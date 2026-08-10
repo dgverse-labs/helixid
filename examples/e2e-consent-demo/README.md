@@ -170,8 +170,10 @@ Each SP app owns four things and hosts two artifacts:
 
 ## The activity trail
 
-The right-hand **Agent activity** panel — and the operator console at
-`http://localhost:8080` — record the whole chain, not just the consent moment:
+The operator console's **Audit & Governance** page at `http://localhost:8080`
+records the whole chain, not just the consent moment. The agent UI deliberately
+does not show it: the audit trail is an operator surface, and having it in two
+places invites the two disagreeing.
 
 ```
 ✓ Credential Issued        Helix Air signs a DelegationGrantCredential
