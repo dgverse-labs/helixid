@@ -29,6 +29,37 @@ interface JWTSessionOptions {
   ttlSeconds: number;
 }
 
+interface AttemptedVPContext {
+  attemptedVcId?: string;
+  attemptedParentVcId?: string;
+  attemptedDelegatedFrom?: string;
+}
+
+/**
+ * Pulls identifying fields off the raw, unverified VP so a rejection can still
+ * be correlated to the credential that caused it. Read from the request payload
+ * rather than the parsed VP on purpose: rejection can happen at schema parsing,
+ * before a parsed value exists. Nothing here is validated or trusted — every
+ * read is guarded so a malformed VP yields no fields instead of throwing out of
+ * the rejection audit.
+ */
+function readAttemptedVPContext(signedVP: SignedVP): AttemptedVPContext {
+  const context: AttemptedVPContext = {};
+  try {
+    const credential = signedVP?.verifiableCredential?.[0] as Record<string, unknown> | undefined;
+    const subject = credential?.['credentialSubject'] as Record<string, unknown> | undefined;
+    const vcId = credential?.['id'];
+    if (typeof vcId === 'string') context.attemptedVcId = vcId;
+    const parentVcId = subject?.['parentVcId'];
+    if (typeof parentVcId === 'string') context.attemptedParentVcId = parentVcId;
+    const delegatedFrom = subject?.['delegatedFrom'];
+    if (typeof delegatedFrom === 'string') context.attemptedDelegatedFrom = delegatedFrom;
+  } catch {
+    // Correlation fields are optional by design; a garbage VP just yields none.
+  }
+  return context;
+}
+
 export class VPService implements IVPService {
   private readonly statusListResolver: StatusListResolver;
 
@@ -159,6 +190,7 @@ export class VPService implements IVPService {
         requestId,
         vpId,
         internalReason,
+        ...readAttemptedVPContext(signedVP),
         timestamp: new Date().toISOString(),
       });
       throw new VPVerificationFailedError();

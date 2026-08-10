@@ -30,8 +30,9 @@ Base paths are mounted from `helix-api/src/server.ts`.
 | `POST` | `/v1/onboard/verify` | Onboarding step 2: verify challenge and issue VC. | `challengeId`, `signature`, optional `didCreateSignature`. | `agentDid`, `vc`, `vcId`. |
 | `POST` | `/v1/challenges` | Issue user verification challenge. | `did`, `purpose: "user_verification"`. | Challenge id, nonce, expiry. |
 | `POST` | `/v1/challenges/:challengeId/verify` | Verify user challenge signature. | Challenge id, `signature`. | Verified DID and optional VC. |
-| `GET` | `/v1/audit-log` | List audit events. | Optional `eventType`, `since`, `limit`. | Newest-first audit summaries, including derived `delegatedFrom`, `delegatedTo`, `parentVcId`, and `delegationDepth` for VP verification events when delegation context is available. Requires `x-admin-api-key`. |
-| `POST` | `/v1/audit-log/vp-verification` | Record API-backed VP verification audit entry. | `vpId`, `agentDid`, `result`, optional `targetService`, `reason`, `delegatedFrom`, `delegatedTo`, `delegationChain`, `verifiedAt`. | Audit entry recorded. Requires `x-admin-api-key`. |
+| `GET` | `/v1/audit-log` | List audit events. | Optional `eventType`, `since`, `limit`. | Newest-first audit summaries, including derived `delegatedFrom`, `delegatedTo`, `parentVcId`, and `delegationDepth` for VP verification events when delegation context is available; `attemptedVcId`, `attemptedParentVcId`, `attemptedDelegatedFrom` for rejections; `issuer`, `userDid`, `scopes`, `durability` for consent events. Requires `x-admin-api-key`. |
+| `POST` | `/v1/audit-log/vp-verification` | Record API-backed VP verification audit entry. | `vpId`, `agentDid`, `result`, optional `targetService`, `reason`, `delegatedFrom`, `delegatedTo`, `delegationChain`, `verifiedAt`, and on rejections `attemptedVcId`, `attemptedParentVcId`, `attemptedDelegatedFrom`. | Audit entry recorded. Requires `x-admin-api-key`. |
+| `POST` | `/v1/audit-log/consent-granted` | Record an agent-side `CONSENT_GRANTED` entry when an SP-issued delegation grant lands in the wallet. | `vcId`, `agentDid`, optional `issuer`, `userDid`, `scopes`, `durability`, `grantedAt`. | Audit entry recorded. Requires `x-admin-api-key`. |
 
 ## SDK Methods
 

@@ -119,6 +119,139 @@ describe('Audit log route surface', () => {
     await app.close();
   });
 
+  // Audit-enrichment epic §2a — agent-side consent grants.
+  it('records CONSENT_GRANTED entries behind admin auth', async () => {
+    const log = vi.fn().mockResolvedValue(undefined);
+    const app = Fastify({ logger: false });
+    app.setErrorHandler(errorHandler);
+    await app.register(auditLogRoutes, {
+      prefix: '/v1/audit-log',
+      auditLogRepository: { list: async () => [] } as unknown as AuditLogRepository,
+      auditLogger: { log },
+      adminApiKey: 'test-admin-key-0001',
+    });
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/audit-log/consent-granted',
+      headers: { 'x-admin-api-key': 'test-admin-key-0001' },
+      payload: {
+        vcId: 'vc:helix:grant-1',
+        agentDid: 'did:key:agent',
+        issuer: 'did:web:airline.example',
+        userDid: 'did:key:user',
+        scopes: ['book:flight'],
+        durability: 'standing',
+        grantedAt: '2026-07-03T00:00:00.000Z',
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'CONSENT_GRANTED',
+        vcId: 'vc:helix:grant-1',
+        agentDid: 'did:key:agent',
+        subjectDid: 'did:key:agent',
+        issuer: 'did:web:airline.example',
+        userDid: 'did:key:user',
+        scopes: ['book:flight'],
+        durability: 'standing',
+        timestamp: '2026-07-03T00:00:00.000Z',
+        source: 'sdk',
+      }),
+    );
+    await app.close();
+  });
+
+  it('rejects CONSENT_GRANTED entries missing required identifiers', async () => {
+    const app = await makeApp({ list: async () => [] });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/audit-log/consent-granted',
+      headers: { 'x-admin-api-key': 'test-admin-key-0001' },
+      payload: { issuer: 'did:web:airline.example' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body).error.code).toBe(ErrorCode.VALIDATION_ERROR);
+    await app.close();
+  });
+
+  it('requires admin auth for CONSENT_GRANTED', async () => {
+    const app = await makeApp({ list: async () => [] });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/audit-log/consent-granted',
+      payload: { vcId: 'vc:helix:grant-1', agentDid: 'did:key:agent' },
+    });
+
+    expect(response.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('surfaces consent and attempted-rejection fields in the listing', async () => {
+    const app = await makeApp({
+      list: async () => [
+        {
+          id: '1',
+          eventType: 'VP_REJECTED',
+          timestamp: new Date('2026-07-03T00:00:00.000Z'),
+          requestId: 'req-1',
+          payload: {
+            subjectDid: 'did:key:agent',
+            vpId: 'vp:test:1',
+            attemptedVcId: 'vc:helix:attempted',
+            attemptedParentVcId: 'vc:helix:parent',
+            attemptedDelegatedFrom: 'did:key:parent',
+          },
+        },
+        {
+          id: '2',
+          eventType: 'CONSENT_GRANTED',
+          timestamp: new Date('2026-07-03T00:00:01.000Z'),
+          requestId: 'req-2',
+          payload: {
+            subjectDid: 'did:key:agent',
+            vcId: 'vc:helix:grant-1',
+            userDid: 'did:key:user',
+            scopes: ['book:flight'],
+            durability: 'standing',
+          },
+        },
+      ],
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v1/audit-log?limit=10',
+      headers: { 'x-admin-api-key': 'test-admin-key-0001' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const [rejected, granted] = JSON.parse(response.body);
+    expect(rejected).toMatchObject({
+      eventType: 'VP_REJECTED',
+      attemptedVcId: 'vc:helix:attempted',
+      attemptedParentVcId: 'vc:helix:parent',
+      attemptedDelegatedFrom: 'did:key:parent',
+    });
+    // Unverified context must not be laundered into the verified fields.
+    expect(rejected.delegatedFrom).toBeUndefined();
+    expect(rejected.parentVcId).toBeUndefined();
+    expect(granted).toMatchObject({
+      eventType: 'CONSENT_GRANTED',
+      vcId: 'vc:helix:grant-1',
+      userDid: 'did:key:user',
+      scopes: ['book:flight'],
+      durability: 'standing',
+    });
+    await app.close();
+  });
+
   it('derives delegation context from verification audit payloads', async () => {
     const app = await makeApp({
       list: async () => [

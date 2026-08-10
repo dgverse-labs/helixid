@@ -8,12 +8,18 @@ import {
   publicKeyToMultibase,
   selfIssueVC,
   signData,
+  type DelegationGrantVC,
   type KeyPair,
   type SelfIssueOptions,
   type ServiceEndpoint,
   type SignedVC,
 } from '@helixid/core';
 import type { HelixClient } from '../client/HelixClient.js';
+
+/** Same detection the grant schema's `superRefine` uses. */
+function isDelegationGrantVC(vc: SignedVC): vc is SignedVC<DelegationGrantVC> {
+  return Array.isArray(vc.type) && vc.type.includes('DelegationGrantCredential');
+}
 
 export interface WalletData {
   did: string;
@@ -244,6 +250,7 @@ export class AgentWallet {
       }
       this.walletCredentials = [...this.walletCredentials, AgentWallet.credentialFromVC(vc.id, vc)];
       await this.saveCurrent();
+      await this.recordConsentGrant(vc);
       return;
     }
     if (!vcJson || !filePath || !passphrase) {
@@ -258,6 +265,32 @@ export class AgentWallet {
       passphrase,
       filePath,
     );
+  }
+
+  /**
+   * Emits `CONSENT_GRANTED` when the credential just stored is an SP-issued
+   * delegation grant (spec §2a). Runs after the wallet write has already
+   * succeeded and swallows everything: a wallet with no client attached, an API
+   * that is down, or a grant with unexpected fields must all leave the stored
+   * credential untouched and the caller none the wiser.
+   */
+  private async recordConsentGrant(vc: SignedVC): Promise<void> {
+    if (!this.client || !isDelegationGrantVC(vc)) return;
+    try {
+      const subject = vc.credentialSubject;
+      await this.client.recordConsentGrantedAudit({
+        vcId: vc.id,
+        agentDid: subject.id,
+        issuer: vc.issuer,
+        userDid: subject.userDid,
+        scopes: subject.scopes,
+        durability: subject.durability,
+        grantedAt: new Date().toISOString(),
+        source: 'sdk',
+      });
+    } catch {
+      // Best-effort: the grant is already in the wallet.
+    }
   }
 
   async selfIssueVC(options: SelfIssueOptions): Promise<SignedVC> {
@@ -388,10 +421,18 @@ export class AgentWallet {
     });
   }
 
-  static async create(walletPath: string, passphrase: string): Promise<AgentWallet> {
+  /**
+   * `client` is optional and only used for best-effort audit emission (e.g.
+   * `CONSENT_GRANTED`). Wallets loaded without one behave exactly as before.
+   */
+  static async create(
+    walletPath: string,
+    passphrase: string,
+    client?: HelixClient,
+  ): Promise<AgentWallet> {
     try {
       await access(walletPath);
-      return AgentWallet.load(walletPath, passphrase);
+      return AgentWallet.load(walletPath, passphrase, client);
     } catch {
       // file does not exist yet — create a new wallet
     }
@@ -407,18 +448,23 @@ export class AgentWallet {
       updatedAt: now,
     };
     await new AgentWallet().save(data, passphrase, walletPath);
-    return AgentWallet.fromWalletData(data, walletPath, passphrase);
+    return AgentWallet.fromWalletData(data, walletPath, passphrase, client);
   }
 
-  static async load(walletPath: string, passphrase: string): Promise<AgentWallet> {
+  static async load(
+    walletPath: string,
+    passphrase: string,
+    client?: HelixClient,
+  ): Promise<AgentWallet> {
     const data = await new AgentWallet().load(passphrase, walletPath);
-    return AgentWallet.fromWalletData(data, walletPath, passphrase);
+    return AgentWallet.fromWalletData(data, walletPath, passphrase, client);
   }
 
   private static fromWalletData(
     data: WalletData,
     walletPath: string,
     passphrase: string,
+    client?: HelixClient,
   ): AgentWallet {
     return new AgentWallet({
       did: data.did,
@@ -428,6 +474,8 @@ export class AgentWallet {
       credentials: data.credentials,
       createdAt: data.createdAt,
       updatedAt: data.updatedAt,
+      // exactOptionalPropertyTypes: only set the key when a client was given.
+      ...(client ? { client } : {}),
     });
   }
 }

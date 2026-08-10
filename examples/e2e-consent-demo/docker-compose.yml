@@ -140,6 +140,9 @@ services:
       - "4100:4100"
     environment:
       HELIX_API_URL: http://helix-api:3000
+      # Lets the agent's wallet post CONSENT_GRANTED to helix-api's audit log
+      # when a grant lands. Best-effort: the demo runs fine without it.
+      HELIX_ADMIN_API_KEY: ${HELIX_ADMIN_API_KEY:-dev-admin-key-change-in-production}
       WALLETS_DIR: /wallets
       WALLET_PASSPHRASE: ${WALLET_PASSPHRASE:-demo-passphrase}
       DEMO_HOST: ${DEMO_HOST:-localhost}

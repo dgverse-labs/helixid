@@ -178,6 +178,47 @@ describe('VPService (thin wrapper)', () => {
     });
   });
 
+  // Audit-enrichment epic §1: a rejection has no `result` to read from, so the
+  // correlation fields come off the raw, unverified VP instead.
+  it('enriches VP_REJECTED with attempted* identifiers off the unverified VP', async () => {
+    const issuer = makeActor();
+    const holder = makeActor();
+    const { service, auditLogger } = makeService(issuer);
+    const vc = await makeAgentVC(issuer, holder.did, ['read:orders'], {
+      validUntil: new Date(Date.now() - 1000).toISOString(),
+    });
+    (vc.credentialSubject as Record<string, unknown>)['parentVcId'] = 'vc:helix:parent-1';
+    (vc.credentialSubject as Record<string, unknown>)['delegatedFrom'] = 'did:key:zParent';
+    const vp = await buildSignedVP([vc], holder, USER_DID);
+
+    await expect(service.verifyVP(vp, 'req-1')).rejects.toMatchObject({
+      code: 'VP_VERIFICATION_FAILED',
+    });
+
+    const rejected = auditLogger.events.find(
+      (entry) => entry.event.event === AuditEvents.VP_REJECTED,
+    );
+    expect(rejected?.event['attemptedVcId']).toBe(vc.id);
+    expect(rejected?.event['attemptedParentVcId']).toBe('vc:helix:parent-1');
+    expect(rejected?.event['attemptedDelegatedFrom']).toBe('did:key:zParent');
+  });
+
+  it('still logs VP_REJECTED when the VP is too malformed to read context from', async () => {
+    const { service, auditLogger } = makeService();
+
+    // Rejected at schema parsing, before any parsed VP exists — the enrichment
+    // must degrade to no fields rather than throw over the audit call.
+    await expect(
+      service.verifyVP({ verifiableCredential: 'not-an-array' } as never, 'req-1'),
+    ).rejects.toMatchObject({ code: 'VP_VERIFICATION_FAILED' });
+
+    const rejected = auditLogger.events.find(
+      (entry) => entry.event.event === AuditEvents.VP_REJECTED,
+    );
+    expect(rejected).toBeDefined();
+    expect(rejected?.event['attemptedVcId']).toBeUndefined();
+  });
+
   it('throws when a session is requested but JWT options are not configured', async () => {
     const issuer = makeActor();
     const holder = makeActor();

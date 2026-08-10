@@ -21,7 +21,7 @@ import 'dotenv/config';
 import express from 'express';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import { AgentWallet } from '@helixid/sdk-js';
+import { AgentWallet, HelixClient } from '@helixid/sdk-js';
 import type { SignedVC } from '@helixid/core';
 import { AIRLINE, DEMO_USER_DID, HOTEL, env, spDidFor } from '../helixid-config/index.js';
 import { callSpTool, ConsentDeclinedError } from './consentAwareCall.js';
@@ -79,7 +79,14 @@ function knownFacts(profile: TripProfile): Record<string, string | number> {
 
 async function main(): Promise<void> {
   const walletFile = join(env.walletsDir, 'travel-planner.enc');
-  const wallet = await AgentWallet.load(walletFile, env.walletPassphrase);
+  // The client is attached purely so the wallet can emit CONSENT_GRANTED to
+  // helix-api when a grant lands. Audit is best-effort — if helix-api is down
+  // the grant still stores and the demo still runs.
+  const wallet = await AgentWallet.load(
+    walletFile,
+    env.walletPassphrase,
+    new HelixClient(env.helixApiUrl, { adminApiKey: env.adminApiKey }),
+  );
   const defaultModels = {
     gemini: 'gemini-2.5-flash',
     openai: 'gpt-4o-mini',

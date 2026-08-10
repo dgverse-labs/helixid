@@ -18,11 +18,16 @@ function describe(entry: AuditLogEntry): string {
   return parts.join(' · ');
 }
 
-/** Color tone for the timeline dot + event label. */
+/**
+ * Color tone for the timeline dot + event label. Event types arrive upper-cased
+ * (`VP_VERIFIED`), so match case-insensitively — testing the raw value against
+ * lower-case patterns silently made every event 'neutral'.
+ */
 function tone(eventType: string): 'success' | 'danger' | 'accent' | 'neutral' {
-  if (/revoked|rejected|failed/.test(eventType)) return 'danger';
-  if (/complete|verified|onboarded/.test(eventType)) return 'success';
-  if (/issued|created|generated|consumed/.test(eventType)) return 'accent';
+  const type = eventType.toLowerCase();
+  if (/revoked|rejected|failed/.test(type)) return 'danger';
+  if (/complete|verified|onboarded|granted/.test(type)) return 'success';
+  if (/issued|created|generated|consumed/.test(type)) return 'accent';
   return 'neutral';
 }
 

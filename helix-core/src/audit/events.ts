@@ -37,6 +37,10 @@ export const AuditEvents = {
   CHALLENGE_REJECTED: 'CHALLENGE_REJECTED',
   AGENT_ONBOARDED: 'AGENT_ONBOARDED',
   USER_DID_VERIFIED: 'USER_DID_VERIFIED',
+
+  // B5 — Consent (SP-issued delegation grants)
+  CONSENT_GRANTED: 'CONSENT_GRANTED',
+  CONSENT_REVOKED: 'CONSENT_REVOKED',
 } as const;
 
 export type AuditEventType = (typeof AuditEvents)[keyof typeof AuditEvents];

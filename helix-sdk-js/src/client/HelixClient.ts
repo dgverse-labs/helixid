@@ -50,7 +50,56 @@ interface VPVerificationAuditEntry {
   delegatedTo?: string;
   parentVcId?: string;
   delegationDepth?: number;
+  // Rejection path only. Read off the raw, unverified VP because verification
+  // threw before any `result` existed — best-effort correlation context, never
+  // a trust claim about the presented credential.
+  attemptedVcId?: string;
+  attemptedParentVcId?: string;
+  attemptedDelegatedFrom?: string;
   verifiedAt: string;
+  source: 'sdk';
+}
+
+type AttemptedVPContext = Pick<
+  VPVerificationAuditEntry,
+  'attemptedVcId' | 'attemptedParentVcId' | 'attemptedDelegatedFrom'
+>;
+
+/**
+ * Pulls identifying fields off a raw, unverified VP so a rejection can still be
+ * correlated to the credential that caused it. Nothing here is validated — the
+ * VP is malformed or hostile often enough that every read is guarded, and the
+ * whole thing degrades to `{}` rather than throwing out of the audit call.
+ */
+function readAttemptedVPContext(vp: SignedVP): AttemptedVPContext {
+  const context: AttemptedVPContext = {};
+  try {
+    const credential = vp?.verifiableCredential?.[0] as Record<string, unknown> | undefined;
+    const subject = credential?.['credentialSubject'] as Record<string, unknown> | undefined;
+    const vcId = credential?.['id'];
+    if (typeof vcId === 'string') context.attemptedVcId = vcId;
+    const parentVcId = subject?.['parentVcId'];
+    if (typeof parentVcId === 'string') context.attemptedParentVcId = parentVcId;
+    const delegatedFrom = subject?.['delegatedFrom'];
+    if (typeof delegatedFrom === 'string') context.attemptedDelegatedFrom = delegatedFrom;
+  } catch {
+    // Correlation fields are optional by design; a garbage VP just yields none.
+  }
+  return context;
+}
+
+/**
+ * Agent-side record of a consent grant landing in the wallet (spec §2a) — the
+ * agent-side analogue of `VC_ISSUED`.
+ */
+export interface ConsentGrantedAuditEntry {
+  vcId: string;
+  agentDid: string;
+  issuer?: string;
+  userDid?: string;
+  scopes?: string[];
+  durability?: string;
+  grantedAt: string;
   source: 'sdk';
 }
 
@@ -358,6 +407,7 @@ export class HelixClient {
         targetService: vp.targetService,
         result: 'rejected',
         reason: this.describeVerificationFailure(error),
+        ...readAttemptedVPContext(vp),
         verifiedAt: new Date().toISOString(),
         source: 'sdk',
       });
@@ -488,6 +538,27 @@ export class HelixClient {
 
   __getPendingKeyPairForTest(): PendingKeyPair | null {
     return this.pendingKeyPair;
+  }
+
+  /**
+   * Best-effort consent-grant audit. Called by {@link AgentWallet} once a grant
+   * VC is safely stored; a failure here must never surface to the caller, since
+   * the credential is already in the wallet either way.
+   */
+  async recordConsentGrantedAudit(entry: ConsentGrantedAuditEntry): Promise<void> {
+    if (!this.apiAuditEnabled) {
+      return;
+    }
+
+    try {
+      await this.http.post('/v1/audit-log/consent-granted', {
+        ...entry,
+        subjectDid: entry.agentDid,
+        eventType: AuditEvents.CONSENT_GRANTED,
+      });
+    } catch {
+      // Audit writes are best-effort. The stored credential remains authoritative.
+    }
   }
 
   private async recordVPVerificationAudit(entry: VPVerificationAuditEntry): Promise<void> {

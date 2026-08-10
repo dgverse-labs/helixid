@@ -26,7 +26,24 @@ interface RecordVpVerificationBody {
   delegatedTo?: unknown;
   parentVcId?: unknown;
   delegationDepth?: unknown;
+  // Rejection-path correlation context, read off the raw unverified VP by the
+  // caller. Kept distinct from the verified delegation fields above so an
+  // unverified claim can never be mistaken for a verified one.
+  attemptedVcId?: unknown;
+  attemptedParentVcId?: unknown;
+  attemptedDelegatedFrom?: unknown;
   verifiedAt?: unknown;
+  source?: unknown;
+}
+
+interface RecordConsentGrantedBody {
+  vcId?: unknown;
+  agentDid?: unknown;
+  issuer?: unknown;
+  userDid?: unknown;
+  scopes?: unknown;
+  durability?: unknown;
+  grantedAt?: unknown;
   source?: unknown;
 }
 
@@ -160,10 +177,49 @@ const auditLogRoutes: FastifyPluginAsync<AuditLogRouteOptions> = async (fastify,
       delegatedTo: asString(body.delegatedTo),
       parentVcId: asString(body.parentVcId),
       delegationDepth: typeof body.delegationDepth === 'number' ? body.delegationDepth : undefined,
+      attemptedVcId: asString(body.attemptedVcId),
+      attemptedParentVcId: asString(body.attemptedParentVcId),
+      attemptedDelegatedFrom: asString(body.attemptedDelegatedFrom),
       source: asString(body.source) ?? 'sdk',
     });
 
     return reply.status(201).send({ recorded: true, eventType, timestamp });
+  });
+
+  // Agent-side consent grants (spec §2a). The agent has first-hand knowledge the
+  // moment it stores the grant VC, and already knows this API's URL — so it
+  // posts here directly, mirroring /vp-verification above.
+  fastify.post('/consent-granted', async (request, reply) => {
+    requireAdmin(options.adminApiKey, request);
+    const body = request.body as RecordConsentGrantedBody;
+    const vcId = asString(body.vcId);
+    const agentDid = asString(body.agentDid);
+    if (!vcId || !agentDid) {
+      throw new HelixError(
+        ErrorCode.VALIDATION_ERROR,
+        'vcId and agentDid must be provided for consent audit entries',
+        400,
+      );
+    }
+
+    const timestamp = asString(body.grantedAt) ?? new Date().toISOString();
+    await options.auditLogger.log({
+      event: AuditEvents.CONSENT_GRANTED,
+      timestamp,
+      requestId: request.id,
+      vcId,
+      agentDid,
+      subjectDid: agentDid,
+      issuer: asString(body.issuer),
+      userDid: asString(body.userDid),
+      scopes: Array.isArray(body.scopes)
+        ? body.scopes.filter((scope): scope is string => typeof scope === 'string')
+        : undefined,
+      durability: asString(body.durability),
+      source: asString(body.source) ?? 'sdk',
+    });
+
+    return reply.status(201).send({ recorded: true, eventType: AuditEvents.CONSENT_GRANTED, timestamp });
   });
 
   fastify.get('', async (request, reply) => {
@@ -191,6 +247,18 @@ const auditLogRoutes: FastifyPluginAsync<AuditLogRouteOptions> = async (fastify,
         delegatedTo: getDelegatedTo(record.payload),
         parentVcId: getDelegationParentVcId(record.payload),
         delegationDepth: getDelegationDepth(record.payload),
+        // Unverified rejection context — deliberately not merged into the
+        // verified delegation fields above.
+        attemptedVcId: asString(record.payload.attemptedVcId),
+        attemptedParentVcId: asString(record.payload.attemptedParentVcId),
+        attemptedDelegatedFrom: asString(record.payload.attemptedDelegatedFrom),
+        // Consent-grant fields (CONSENT_GRANTED).
+        issuer: asString(record.payload.issuer),
+        userDid: asString(record.payload.userDid),
+        scopes: Array.isArray(record.payload.scopes)
+          ? record.payload.scopes.filter((scope): scope is string => typeof scope === 'string')
+          : undefined,
+        durability: asString(record.payload.durability),
       })),
     );
   });
