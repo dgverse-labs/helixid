@@ -361,6 +361,27 @@ async function main(): Promise<void> {
     res.json({ agentDid: wallet.did, userDid: DEMO_USER_DID, grants });
   });
 
+  // The activity trail, read straight from helix-api's audit log — the same
+  // records the operator console shows. Deliberately not a second, agent-local
+  // log: if the panel and the console could disagree, neither would be a
+  // source of truth. Oldest-first, because the panel tells a story.
+  app.get('/api/activity', async (_req, res) => {
+    try {
+      const response = await fetch(`${env.helixApiUrl.replace(/\/$/, '')}/v1/audit-log?limit=100`, {
+        headers: { 'x-admin-api-key': env.adminApiKey },
+      });
+      if (!response.ok) {
+        res.status(502).json({ error: `audit log unavailable (HTTP ${response.status})`, events: [] });
+        return;
+      }
+      const events = (await response.json()) as Array<Record<string, unknown>>;
+      res.json({ events: [...events].reverse() });
+    } catch (error) {
+      // The panel is observability, never a reason for the demo to break.
+      res.status(502).json({ error: (error as Error).message, events: [] });
+    }
+  });
+
   app.post('/api/call', async (req, res) => {
     const body = req.body as {
       sp?: 'airline' | 'hotel';
@@ -381,6 +402,10 @@ async function main(): Promise<void> {
     const baseUrl = sp.id === 'airline' ? env.airlineUrl : env.hotelUrl;
     const publicBaseUrl = `http://${env.host}:${sp.port}`;
 
+    // One id per user-initiated action, so the SP's presentation /
+    // verification / authorization / invocation events all stitch back to it.
+    const correlationId = `act_${randomUUID().slice(0, 12)}`;
+
     try {
       const result = await callSpTool({
         wallet,
@@ -388,6 +413,7 @@ async function main(): Promise<void> {
         spMcpUrl: `${baseUrl}/api/mcp`,
         serviceDid,
         toolName: body.tool,
+        correlationId,
         ...(body.args !== undefined ? { args: body.args } : {}),
         // In the browser flow the agent does not resolve consent itself — it
         // reports back where the user must go, and the UI drives the handoff.
@@ -417,7 +443,8 @@ async function main(): Promise<void> {
           status: 'consent_required',
           sp: sp.id,
           serviceDid,
-          consentUrl: `${publicBaseUrl}/consent?agentDid=${encodeURIComponent(wallet.did)}&userDid=${encodeURIComponent(DEMO_USER_DID)}`,
+          consentUrl: `${publicBaseUrl}/consent?agentDid=${encodeURIComponent(wallet.did)}&userDid=${encodeURIComponent(DEMO_USER_DID)}&correlationId=${encodeURIComponent(correlationId)}`,
+          correlationId,
         });
         return;
       }

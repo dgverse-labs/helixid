@@ -168,6 +168,48 @@ Each SP app owns four things and hosts two artifacts:
 
 ---
 
+## The activity trail
+
+The right-hand **Agent activity** panel — and the operator console at
+`http://localhost:8080` — record the whole chain, not just the consent moment:
+
+```
+✓ Credential Issued        Helix Air signs a DelegationGrantCredential
+✓ Consent Granted          it lands in the agent's wallet
+✓ Credential Presented     agent → Helix Air, with the tool it wants to call
+✓ Verification Success     signatures, validity windows, revocation
+✓ Authorization Granted    required scope present in effectiveScopes
+✓ Action Performed         CONFIRMED — FLT-3664780C
+```
+
+Failures are recorded the same way, which is the point:
+
+```
+✓ Verification Success     the credential is perfectly valid…
+⃠ Authorization BLOCKED    …but "book:flights" is not in [modify:booking]
+```
+
+The four call-time events are separate records because any one of them can be
+the thing that failed — a presentation can verify and still be refused. Every
+event carries the same envelope (agent, user, credential, issuer, service,
+tool, required and effective scopes, result, reason), and the events from one
+user action share a `correlationId`, so a trail can be queried after the fact
+rather than only read top to bottom.
+
+Who emits what:
+
+| Emitter | Events |
+|---|---|
+| Service Provider | `VC_ISSUED`, `VC_PRESENTED`, `VP_VERIFIED`/`VP_REJECTED`, `AUTHZ_GRANTED`/`AUTHZ_DENIED`, `TOOL_INVOKED` |
+| Agent wallet | `CONSENT_GRANTED` when a grant is stored |
+| helix-api | enrollment, DID and VC lifecycle events |
+
+The SP reports its own verdicts deliberately: recording them from the agent
+would mean trusting the agent's account of its own authorization. All emission
+is best-effort — an unreachable audit sink never fails a booking.
+
+---
+
 ## Two things worth understanding
 
 **Why a scoped tool checks for a grant, not just for scope.** When a VP carries

@@ -9,12 +9,36 @@ import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type { AuditLogEntry } from '../api/types';
 
+/**
+ * Activity-trail fields the API adds for agent-action events. Declared locally
+ * rather than widening AuditLogEntry, so the audit view can read them without
+ * depending on the SDK's exported shape.
+ */
+interface ActivityFields {
+  serviceName?: string;
+  toolName?: string;
+  requiredScope?: string;
+  effectiveScopes?: string[];
+  reason?: string;
+  resultSummary?: string;
+}
+
 function describe(entry: AuditLogEntry): string {
+  const activity = entry as AuditLogEntry & ActivityFields;
   const parts: string[] = [];
+  // Lead with what actually happened — the DID is context, not the headline.
+  if (activity.resultSummary) parts.push(activity.resultSummary);
+  if (activity.toolName) parts.push(`action ${activity.toolName}`);
+  if (activity.requiredScope) parts.push(`scope ${activity.requiredScope}`);
+  if (activity.serviceName) parts.push(activity.serviceName);
   if (entry.subjectDid) parts.push(entry.subjectDid);
   if (entry.vcId) parts.push(entry.vcId);
-  if (entry.targetService) parts.push(`service ${entry.targetService}`);
+  if (!activity.serviceName && entry.targetService) parts.push(`service ${entry.targetService}`);
   if (entry.result) parts.push(entry.result);
+  // Only when it adds something the summary did not already say.
+  if (activity.reason && activity.reason !== activity.resultSummary) {
+    parts.push(activity.reason);
+  }
   return parts.join(' · ');
 }
 
@@ -25,9 +49,9 @@ function describe(entry: AuditLogEntry): string {
  */
 function tone(eventType: string): 'success' | 'danger' | 'accent' | 'neutral' {
   const type = eventType.toLowerCase();
-  if (/revoked|rejected|failed/.test(type)) return 'danger';
+  if (/revoked|rejected|failed|denied|blocked/.test(type)) return 'danger';
   if (/complete|verified|onboarded|granted/.test(type)) return 'success';
-  if (/issued|created|generated|consumed/.test(type)) return 'accent';
+  if (/issued|created|generated|consumed|presented|invoked/.test(type)) return 'accent';
   return 'neutral';
 }
 

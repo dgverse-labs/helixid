@@ -41,6 +41,21 @@ export const AuditEvents = {
   // B5 — Consent (SP-issued delegation grants)
   CONSENT_GRANTED: 'CONSENT_GRANTED',
   CONSENT_REVOKED: 'CONSENT_REVOKED',
+
+  // B6 — Agent activity trail.
+  //
+  // One guarded tool call produces up to four of these, because they are four
+  // separable facts and any one can be the thing that failed:
+  //   VC_PRESENTED   the agent handed a presentation to a service
+  //   VP_VERIFIED /  the cryptographic verdict (see B3)
+  //   VP_REJECTED
+  //   AUTHZ_*        the policy verdict — a VP can verify perfectly and still
+  //                  be denied for lacking the scope the tool requires
+  //   TOOL_INVOKED   the action actually performed, and its result
+  VC_PRESENTED: 'VC_PRESENTED',
+  AUTHZ_GRANTED: 'AUTHZ_GRANTED',
+  AUTHZ_DENIED: 'AUTHZ_DENIED',
+  TOOL_INVOKED: 'TOOL_INVOKED',
 } as const;
 
 export type AuditEventType = (typeof AuditEvents)[keyof typeof AuditEvents];

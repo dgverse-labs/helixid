@@ -24,9 +24,11 @@ import {
   type SignedVP,
 } from '@helixid/core';
 import { resolveConsentScopes } from '@helixid/widget/server';
+import { AuditEvents } from '@helixid/core';
 import type { SpDefinition } from '../helixid-config/index.js';
 import { statusListUrlFor } from '../helixid-config/index.js';
 import type { SpStore } from './store.js';
+import type { AuditEmitter } from './audit.js';
 
 export interface SpIssuer {
   did: string;
@@ -47,6 +49,11 @@ export interface SpAppOptions {
   mcpServerUrl?: string;
   /** Absolute path to @helixid/widget's dist, served to the consent page. */
   widgetDistPath?: string;
+  /**
+   * Where this SP reports its own activity events. Optional — with no sink
+   * configured the SP behaves exactly as before, just without an audit trail.
+   */
+  audit?: AuditEmitter;
 }
 
 /** Test-visible counters. Part D's step-5 assertion reads these. */
@@ -111,6 +118,8 @@ export function createSpApp(options: SpAppOptions): SpApp {
     console.log(`[${new Date().toISOString()}] [${definition.id}] ${message}`);
   };
 
+  const audit: AuditEmitter = options.audit ?? { emit: () => undefined };
+
   // ── Hosted identity artifacts ──────────────────────────────────────────
   // Both are required for anyone to verify a grant this SP issued: the DID
   // document to check its signature, the status list to check revocation.
@@ -168,6 +177,8 @@ export function createSpApp(options: SpAppOptions): SpApp {
       userDid?: string;
       scopes?: string[];
       durability?: 'standing' | 'session';
+      /** Optional — stitches issuance into the tool call that prompted it. */
+      correlationId?: string;
     };
 
     if (!body.agentDid || !body.userDid || !Array.isArray(body.scopes) || !body.durability) {
@@ -209,6 +220,23 @@ export function createSpApp(options: SpAppOptions): SpApp {
 
       counters.grantsIssued += 1;
       log(`grant issued to ${body.agentDid} for ${body.userDid} [${body.scopes.join(', ')}]`);
+      // Issuer-side record. The agent emits CONSENT_GRANTED when the credential
+      // lands in its wallet; this is the other half — what this SP actually
+      // signed, for whom, and with what authority.
+      audit.emit({
+        event: AuditEvents.VC_ISSUED,
+        correlationId: body.correlationId,
+        agentDid: body.agentDid,
+        userDid: body.userDid,
+        vcId: grantVC.id,
+        credentialType: 'DelegationGrantCredential',
+        issuer: issuer.did,
+        scopes: body.scopes,
+        validUntil: grantVC.validUntil,
+        credentialStatus: 'active',
+        result: 'success',
+        resultSummary: `Consent grant issued for ${body.scopes.join(', ')}`,
+      });
       res.status(201).json({ grantVC });
     } catch (error) {
       res.status(500).json({
@@ -251,12 +279,25 @@ export function createSpApp(options: SpAppOptions): SpApp {
     }
 
     const requiredScope = tool.metadata?.requiredScope;
+    const correlationId =
+      typeof args['_helixCorrelationId'] === 'string' ? args['_helixCorrelationId'] : undefined;
 
     // Open, read-only tools run with no presentation and no scope check.
     // This is what guarantees step 2 of the demo never prompts for consent.
     if (!requiredScope) {
       log(`OPEN    ${toolName}`);
-      res.json(jsonRpcResult(rpc.id, { structuredContent: runTool(toolName, args, 'anonymous') }));
+      const output = runTool(toolName, args, 'anonymous');
+      // Still recorded: "the agent searched" is part of the activity story, and
+      // the trail should make plain that this needed no credential at all.
+      audit.emit({
+        event: AuditEvents.TOOL_INVOKED,
+        correlationId,
+        toolName,
+        result: 'success',
+        resultSummary: summarizeToolResult(toolName, output),
+        reason: 'OPEN_TOOL_NO_SCOPE_REQUIRED',
+      });
+      res.json(jsonRpcResult(rpc.id, { structuredContent: output }));
       return;
     }
 
@@ -264,6 +305,15 @@ export function createSpApp(options: SpAppOptions): SpApp {
     if (!vp) {
       counters.consentRequired += 1;
       log(`DENIED  ${toolName}  no presentation supplied`);
+      audit.emit({
+        event: AuditEvents.AUTHZ_DENIED,
+        correlationId,
+        toolName,
+        requiredScope,
+        result: 'blocked',
+        reason: 'NO_PRESENTATION',
+        resultSummary: `${toolName} blocked — no credential presented`,
+      });
       res.json(
         jsonRpcError(rpc.id, -32001, 'Consent required', {
           code: 'CONSENT_REQUIRED',
@@ -275,6 +325,27 @@ export function createSpApp(options: SpAppOptions): SpApp {
       );
       return;
     }
+
+    // From here the agent has actually presented something. Record that as its
+    // own fact, before saying anything about whether it holds up.
+    const presentedCredentials = Array.isArray(vp.verifiableCredential)
+      ? (vp.verifiableCredential as SignedVC[])
+      : [];
+    audit.emit({
+      event: AuditEvents.VC_PRESENTED,
+      correlationId,
+      agentDid: typeof vp.holder === 'string' ? vp.holder : undefined,
+      userDid: typeof vp.delegatedBy === 'string' ? vp.delegatedBy : undefined,
+      vpId: typeof vp.id === 'string' ? vp.id : undefined,
+      credentialType: presentedCredentials
+        .map((entry) => (Array.isArray(entry.type) ? entry.type : []).find((t) => t !== 'VerifiableCredential'))
+        .filter((t): t is string => typeof t === 'string')
+        .join(' + '),
+      toolName,
+      requiredScope,
+      result: 'success',
+      resultSummary: `Presented ${presentedCredentials.length} credential(s) to ${definition.displayName}`,
+    });
 
     let effectiveScopes: string[];
     let agentDid: string;
@@ -288,6 +359,17 @@ export function createSpApp(options: SpAppOptions): SpApp {
     } catch (error) {
       const code = (error as { code?: string }).code ?? 'VP_VERIFICATION_FAILED';
       log(`DENIED  ${toolName}  verification failed (${code})`);
+      audit.emit({
+        event: AuditEvents.VP_REJECTED,
+        correlationId,
+        agentDid: typeof vp.holder === 'string' ? vp.holder : undefined,
+        vpId: typeof vp.id === 'string' ? vp.id : undefined,
+        toolName,
+        requiredScope,
+        result: 'failure',
+        reason: code,
+        resultSummary: `Verification failed (${code})`,
+      });
       res.json(
         jsonRpcError(rpc.id, -32002, 'Presentation could not be verified', {
           code: 'VP_INVALID',
@@ -296,6 +378,21 @@ export function createSpApp(options: SpAppOptions): SpApp {
       );
       return;
     }
+
+    // Cryptographically sound. Everything after this is policy, not crypto —
+    // which is exactly why it gets its own events.
+    audit.emit({
+      event: AuditEvents.VP_VERIFIED,
+      correlationId,
+      agentDid,
+      userDid: typeof vp.delegatedBy === 'string' ? vp.delegatedBy : undefined,
+      vpId: typeof vp.id === 'string' ? vp.id : undefined,
+      toolName,
+      requiredScope,
+      effectiveScopes,
+      result: 'success',
+      resultSummary: 'Signatures, validity and revocation all checked out',
+    });
 
     // A scoped tool at this SP requires the End User's consent, which means a
     // grant THIS SP issued must actually be in the presentation.
@@ -317,6 +414,18 @@ export function createSpApp(options: SpAppOptions): SpApp {
     if (!grantFromThisSp) {
       counters.consentRequired += 1;
       log(`DENIED  ${toolName}  agent ${agentDid} verified but presented no grant from this SP`);
+      audit.emit({
+        event: AuditEvents.AUTHZ_DENIED,
+        correlationId,
+        agentDid,
+        userDid: typeof vp.delegatedBy === 'string' ? vp.delegatedBy : undefined,
+        toolName,
+        requiredScope,
+        effectiveScopes,
+        result: 'blocked',
+        reason: 'NO_GRANT_FOR_THIS_SERVICE',
+        resultSummary: `${toolName} blocked — credential verified, but this user has granted ${definition.displayName} no consent`,
+      });
       res.json(
         jsonRpcError(rpc.id, -32001, 'Consent required', {
           code: 'CONSENT_REQUIRED',
@@ -335,6 +444,21 @@ export function createSpApp(options: SpAppOptions): SpApp {
     if (!effectiveScopes.includes(requiredScope)) {
       counters.consentRequired += 1;
       log(`DENIED  ${toolName}  agent ${agentDid} verified but lacks ${requiredScope}`);
+      // The demo's sharpest moment: a perfectly valid credential, refused
+      // because the user never granted this particular power.
+      audit.emit({
+        event: AuditEvents.AUTHZ_DENIED,
+        correlationId,
+        agentDid,
+        userDid: typeof vp.delegatedBy === 'string' ? vp.delegatedBy : undefined,
+        vcId: grantFromThisSp.id,
+        toolName,
+        requiredScope,
+        effectiveScopes,
+        result: 'blocked',
+        reason: 'INSUFFICIENT_EFFECTIVE_SCOPE',
+        resultSummary: `${toolName} blocked — required scope "${requiredScope}" not present in [${effectiveScopes.join(', ')}]`,
+      });
       res.json(
         jsonRpcError(rpc.id, -32001, 'Consent required', {
           code: 'CONSENT_REQUIRED',
@@ -348,7 +472,35 @@ export function createSpApp(options: SpAppOptions): SpApp {
     }
 
     log(`GRANTED ${toolName}  agent=${agentDid}  effectiveScopes=[${effectiveScopes.join(', ')}]`);
-    res.json(jsonRpcResult(rpc.id, { structuredContent: runTool(toolName, args, agentDid) }));
+    audit.emit({
+      event: AuditEvents.AUTHZ_GRANTED,
+      correlationId,
+      agentDid,
+      userDid: typeof vp.delegatedBy === 'string' ? vp.delegatedBy : undefined,
+      vcId: grantFromThisSp.id,
+      credentialType: 'DelegationGrantCredential',
+      issuer: issuer.did,
+      toolName,
+      requiredScope,
+      effectiveScopes,
+      result: 'success',
+      resultSummary: `Authorized for "${requiredScope}"`,
+    });
+
+    const output = runTool(toolName, args, agentDid);
+    audit.emit({
+      event: AuditEvents.TOOL_INVOKED,
+      correlationId,
+      agentDid,
+      userDid: typeof vp.delegatedBy === 'string' ? vp.delegatedBy : undefined,
+      vcId: grantFromThisSp.id,
+      toolName,
+      requiredScope,
+      effectiveScopes,
+      result: 'success',
+      resultSummary: summarizeToolResult(toolName, output),
+    });
+    res.json(jsonRpcResult(rpc.id, { structuredContent: output }));
   });
 
   // ── Consent page ───────────────────────────────────────────────────────
@@ -367,12 +519,15 @@ export function createSpApp(options: SpAppOptions): SpApp {
     // unattended screen recording never stalls here. It changes timing only —
     // the same routes run, and the same grant is signed.
     const demo = req.query['demo'] === '1';
+    // Carried through so the grant this page issues lands in the audit trail
+    // attached to the tool call that prompted it.
+    const correlationId = String(req.query['correlationId'] ?? '');
     if (!browserSession(req)) {
       res.type('html').send(spLoginPageHtml({ definition, agentDid, userDid, demo }));
       return;
     }
     res.type('html').send(
-      consentPageHtml({ definition, agentDid, userDid, serviceDid: issuer.did, demo }),
+      consentPageHtml({ definition, agentDid, userDid, serviceDid: issuer.did, demo, correlationId }),
     );
   });
 
@@ -491,6 +646,28 @@ function spLoginPageHtml(params: {
 }
 
 // ── C4: the booking backend ──────────────────────────────────────────────
+
+/**
+ * One human-readable line describing what a tool actually did — the "Result"
+ * column of the activity trail. Reads only from the tool's own output, so it
+ * cannot claim something the call did not return.
+ */
+function summarizeToolResult(toolName: string, output: Record<string, unknown>): string {
+  const flights = output['flights'];
+  if (Array.isArray(flights)) {
+    return `${flights.length} flight${flights.length === 1 ? '' : 's'} found`;
+  }
+  const hotels = output['hotels'];
+  if (Array.isArray(hotels)) {
+    return `${hotels.length} hotel${hotels.length === 1 ? '' : 's'} found`;
+  }
+  const bookingId = output['bookingId'];
+  if (typeof bookingId === 'string' && bookingId) {
+    const status = typeof output['status'] === 'string' ? output['status'] : 'OK';
+    return `${status} — ${bookingId}`;
+  }
+  return `${toolName} completed`;
+}
 
 function runTool(
   toolName: string,
@@ -630,8 +807,10 @@ function consentPageHtml(params: {
   userDid: string;
   serviceDid: string;
   demo?: boolean;
+  correlationId?: string;
 }): string {
   const { definition, agentDid, userDid, serviceDid } = params;
+  const correlationId = params.correlationId ?? '';
   const initials = definition.id === 'airline' ? 'HA' : 'HS';
   return `<!doctype html>
 <html lang="en">
@@ -728,6 +907,7 @@ function consentPageHtml(params: {
           userDid: ${JSON.stringify(userDid)},
           scopes: selection.scopes,
           durability: selection.durability,
+          correlationId: ${JSON.stringify(correlationId)} || undefined,
         }),
       });
       const body = await res.json();

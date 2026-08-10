@@ -93,6 +93,10 @@ services:
     ports:
       - "4101:4101"
     environment:
+      # Where this SP reports its own verification/authorization decisions.
+      # Best-effort: unreachable audit never fails a tool call.
+      HELIX_API_URL: http://helix-api:3000
+      HELIX_ADMIN_API_KEY: ${HELIX_ADMIN_API_KEY:-dev-admin-key-change-in-production}
       WALLETS_DIR: /wallets
       WALLET_PASSPHRASE: ${WALLET_PASSPHRASE:-demo-passphrase}
       DEMO_HOST: ${DEMO_HOST:-localhost}
@@ -116,6 +120,8 @@ services:
     ports:
       - "4102:4102"
     environment:
+      HELIX_API_URL: http://helix-api:3000
+      HELIX_ADMIN_API_KEY: ${HELIX_ADMIN_API_KEY:-dev-admin-key-change-in-production}
       WALLETS_DIR: /wallets
       WALLET_PASSPHRASE: ${WALLET_PASSPHRASE:-demo-passphrase}
       DEMO_HOST: ${DEMO_HOST:-localhost}

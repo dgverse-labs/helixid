@@ -1,4 +1,11 @@
-import { AdminAuthRequiredError, AuditEvents, ErrorCode, HelixError, type IAuditLogger } from '@helixid/core';
+import {
+  AdminAuthRequiredError,
+  AuditEvents,
+  ErrorCode,
+  HelixError,
+  type AuditEventType,
+  type IAuditLogger,
+} from '@helixid/core';
 import type { FastifyPluginAsync } from 'fastify';
 import type { AuditLogRepository } from '../../repositories/audit-log.repository.js';
 
@@ -45,6 +52,63 @@ interface RecordConsentGrantedBody {
   durability?: unknown;
   grantedAt?: unknown;
   source?: unknown;
+}
+
+/**
+ * Event types accepted by the generic ingestion route. An allowlist rather than
+ * "any string" so an emitter cannot invent event names that downstream queries
+ * and compliance reports would silently miss.
+ */
+const INGESTIBLE_EVENTS = new Set<AuditEventType>([
+  AuditEvents.VC_ISSUED,
+  AuditEvents.VC_PRESENTED,
+  AuditEvents.VP_VERIFIED,
+  AuditEvents.VP_REJECTED,
+  AuditEvents.AUTHZ_GRANTED,
+  AuditEvents.AUTHZ_DENIED,
+  AuditEvents.TOOL_INVOKED,
+  AuditEvents.CONSENT_GRANTED,
+  AuditEvents.CONSENT_REVOKED,
+]);
+
+/**
+ * The shared activity-trail envelope. Every field is optional except the event
+ * type and a subject, because a single shape has to describe issuance,
+ * presentation, verification, authorization and invocation — but the *names*
+ * are fixed, which is what makes the trail queryable after the fact.
+ */
+interface RecordActivityEventBody {
+  event?: unknown;
+  timestamp?: unknown;
+  correlationId?: unknown;
+  agentDid?: unknown;
+  userDid?: unknown;
+  vcId?: unknown;
+  credentialType?: unknown;
+  issuer?: unknown;
+  scopes?: unknown;
+  validUntil?: unknown;
+  credentialStatus?: unknown;
+  serviceDid?: unknown;
+  serviceName?: unknown;
+  toolName?: unknown;
+  requiredScope?: unknown;
+  effectiveScopes?: unknown;
+  vpId?: unknown;
+  result?: unknown;
+  reason?: unknown;
+  resultSummary?: unknown;
+  source?: unknown;
+}
+
+function isIngestibleEvent(value: string | undefined): value is AuditEventType {
+  return value !== undefined && INGESTIBLE_EVENTS.has(value as AuditEventType);
+}
+
+function asStringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : undefined;
 }
 
 function requireAdmin(
@@ -222,6 +286,64 @@ const auditLogRoutes: FastifyPluginAsync<AuditLogRouteOptions> = async (fastify,
     return reply.status(201).send({ recorded: true, eventType: AuditEvents.CONSENT_GRANTED, timestamp });
   });
 
+  // Generic activity-trail ingestion. Service Providers and agents both post
+  // here; one route with a fixed envelope rather than a bespoke route per event
+  // kind, so new event types cost nothing on the API side.
+  fastify.post('/events', async (request, reply) => {
+    requireAdmin(options.adminApiKey, request);
+    const body = request.body as RecordActivityEventBody;
+    const event = asString(body.event);
+    if (!isIngestibleEvent(event)) {
+      throw new HelixError(
+        ErrorCode.VALIDATION_ERROR,
+        `event must be one of: ${[...INGESTIBLE_EVENTS].sort().join(', ')}`,
+        400,
+      );
+    }
+
+    const agentDid = asString(body.agentDid);
+    const serviceDid = asString(body.serviceDid);
+    if (!agentDid && !serviceDid) {
+      throw new HelixError(
+        ErrorCode.VALIDATION_ERROR,
+        'at least one of agentDid or serviceDid must be provided',
+        400,
+      );
+    }
+
+    const timestamp = asString(body.timestamp) ?? new Date().toISOString();
+    await options.auditLogger.log({
+      event,
+      timestamp,
+      requestId: request.id,
+      correlationId: asString(body.correlationId),
+      agentDid,
+      // Keeps the agent the queryable subject where there is one, so activity
+      // rows line up with the DID-keyed events the rest of the log already has.
+      subjectDid: agentDid ?? serviceDid,
+      userDid: asString(body.userDid),
+      vcId: asString(body.vcId),
+      credentialType: asString(body.credentialType),
+      issuer: asString(body.issuer),
+      scopes: asStringArray(body.scopes),
+      validUntil: asString(body.validUntil),
+      credentialStatus: asString(body.credentialStatus),
+      serviceDid,
+      serviceName: asString(body.serviceName),
+      targetService: serviceDid,
+      toolName: asString(body.toolName),
+      requiredScope: asString(body.requiredScope),
+      effectiveScopes: asStringArray(body.effectiveScopes),
+      vpId: asString(body.vpId),
+      result: asString(body.result),
+      reason: asString(body.reason),
+      resultSummary: asString(body.resultSummary),
+      source: asString(body.source) ?? 'service',
+    });
+
+    return reply.status(201).send({ recorded: true, eventType: event, timestamp });
+  });
+
   fastify.get('', async (request, reply) => {
     requireAdmin(options.adminApiKey, request);
     const query = request.query as ListAuditLogQuery;
@@ -255,10 +377,20 @@ const auditLogRoutes: FastifyPluginAsync<AuditLogRouteOptions> = async (fastify,
         // Consent-grant fields (CONSENT_GRANTED).
         issuer: asString(record.payload.issuer),
         userDid: asString(record.payload.userDid),
-        scopes: Array.isArray(record.payload.scopes)
-          ? record.payload.scopes.filter((scope): scope is string => typeof scope === 'string')
-          : undefined,
+        scopes: asStringArray(record.payload.scopes),
         durability: asString(record.payload.durability),
+        // Activity-trail fields (VC_PRESENTED, AUTHZ_*, TOOL_INVOKED).
+        correlationId: asString(record.payload.correlationId),
+        credentialType: asString(record.payload.credentialType),
+        validUntil: asString(record.payload.validUntil),
+        credentialStatus: asString(record.payload.credentialStatus),
+        serviceDid: asString(record.payload.serviceDid),
+        serviceName: asString(record.payload.serviceName),
+        toolName: asString(record.payload.toolName),
+        requiredScope: asString(record.payload.requiredScope),
+        effectiveScopes: asStringArray(record.payload.effectiveScopes),
+        reason: asString(record.payload.reason) ?? asString(record.payload.internalReason),
+        resultSummary: asString(record.payload.resultSummary),
       })),
     );
   });

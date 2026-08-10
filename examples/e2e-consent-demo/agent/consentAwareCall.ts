@@ -34,6 +34,12 @@ export interface CallSpToolOptions {
   toolName: string;
   args?: Record<string, unknown>;
   onConsentRequired: ConsentHandler;
+  /**
+   * Stitches every audit event this call produces — presentation,
+   * verification, authorization, invocation, and any grant issued along the
+   * way — into one traceable chain for a single user action.
+   */
+  correlationId?: string;
 }
 
 export interface CallSpToolResult {
@@ -99,6 +105,7 @@ async function postToolCall(
   toolName: string,
   args: Record<string, unknown>,
   vp: SignedVP,
+  correlationId?: string,
 ): Promise<JsonRpcResponse> {
   const response = await fetch(spMcpUrl, {
     method: 'POST',
@@ -107,7 +114,14 @@ async function postToolCall(
       jsonrpc: '2.0',
       id: 1,
       method: 'tools/call',
-      params: { name: toolName, arguments: { ...args, _helixVP: vp } },
+      params: {
+        name: toolName,
+        arguments: {
+          ...args,
+          _helixVP: vp,
+          ...(correlationId !== undefined ? { _helixCorrelationId: correlationId } : {}),
+        },
+      },
     }),
   });
   return (await response.json()) as JsonRpcResponse;
@@ -124,6 +138,7 @@ export async function callSpTool(options: CallSpToolOptions): Promise<CallSpTool
     toolName,
     args,
     await buildVP(wallet, serviceDid, userDid, existingGrant),
+    options.correlationId,
   );
 
   if (!first.error) {
@@ -159,6 +174,7 @@ export async function callSpTool(options: CallSpToolOptions): Promise<CallSpTool
     toolName,
     args,
     await buildVP(wallet, serviceDid, userDid, grantVC),
+    options.correlationId,
   );
 
   if (retry.error) {

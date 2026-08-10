@@ -252,6 +252,173 @@ describe('Audit log route surface', () => {
     await app.close();
   });
 
+  // Activity-trail ingestion — the shared envelope SPs and agents both post to.
+  it('records an activity event with the full envelope', async () => {
+    const log = vi.fn().mockResolvedValue(undefined);
+    const app = Fastify({ logger: false });
+    app.setErrorHandler(errorHandler);
+    await app.register(auditLogRoutes, {
+      prefix: '/v1/audit-log',
+      auditLogRepository: { list: async () => [] } as unknown as AuditLogRepository,
+      auditLogger: { log },
+      adminApiKey: 'test-admin-key-0001',
+    });
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/audit-log/events',
+      headers: { 'x-admin-api-key': 'test-admin-key-0001' },
+      payload: {
+        event: 'AUTHZ_DENIED',
+        correlationId: 'act_abc123',
+        agentDid: 'did:key:agent',
+        userDid: 'did:web:traveler.example',
+        serviceDid: 'did:web:localhost%3A4102',
+        serviceName: 'Helix Stay',
+        toolName: 'book_hotel',
+        requiredScope: 'book:hotel',
+        effectiveScopes: ['book:flights'],
+        result: 'blocked',
+        reason: 'INSUFFICIENT_EFFECTIVE_SCOPE',
+        resultSummary: 'book_hotel blocked',
+        timestamp: '2026-07-03T00:00:00.000Z',
+        source: 'sp',
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'AUTHZ_DENIED',
+        correlationId: 'act_abc123',
+        agentDid: 'did:key:agent',
+        subjectDid: 'did:key:agent',
+        userDid: 'did:web:traveler.example',
+        serviceDid: 'did:web:localhost%3A4102',
+        serviceName: 'Helix Stay',
+        toolName: 'book_hotel',
+        requiredScope: 'book:hotel',
+        effectiveScopes: ['book:flights'],
+        result: 'blocked',
+        reason: 'INSUFFICIENT_EFFECTIVE_SCOPE',
+        timestamp: '2026-07-03T00:00:00.000Z',
+        source: 'sp',
+      }),
+    );
+    await app.close();
+  });
+
+  it('falls back to serviceDid as subject when no agent is known', async () => {
+    const log = vi.fn().mockResolvedValue(undefined);
+    const app = Fastify({ logger: false });
+    app.setErrorHandler(errorHandler);
+    await app.register(auditLogRoutes, {
+      prefix: '/v1/audit-log',
+      auditLogRepository: { list: async () => [] } as unknown as AuditLogRepository,
+      auditLogger: { log },
+      adminApiKey: 'test-admin-key-0001',
+    });
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/audit-log/events',
+      headers: { 'x-admin-api-key': 'test-admin-key-0001' },
+      payload: { event: 'TOOL_INVOKED', serviceDid: 'did:web:sp', toolName: 'search_flights' },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(log).toHaveBeenCalledWith(expect.objectContaining({ subjectDid: 'did:web:sp' }));
+    await app.close();
+  });
+
+  it('rejects event types outside the ingestion allowlist', async () => {
+    const app = await makeApp({ list: async () => [] });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/audit-log/events',
+      headers: { 'x-admin-api-key': 'test-admin-key-0001' },
+      payload: { event: 'TOTALLY_MADE_UP', agentDid: 'did:key:agent' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body).error.code).toBe(ErrorCode.VALIDATION_ERROR);
+    await app.close();
+  });
+
+  it('rejects an activity event with neither agentDid nor serviceDid', async () => {
+    const app = await makeApp({ list: async () => [] });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/audit-log/events',
+      headers: { 'x-admin-api-key': 'test-admin-key-0001' },
+      payload: { event: 'TOOL_INVOKED', toolName: 'search_flights' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('requires admin auth for activity ingestion', async () => {
+    const app = await makeApp({ list: async () => [] });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/audit-log/events',
+      payload: { event: 'TOOL_INVOKED', agentDid: 'did:key:agent' },
+    });
+
+    expect(response.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('projects activity fields into the listing', async () => {
+    const app = await makeApp({
+      list: async () => [
+        {
+          id: '1',
+          eventType: 'AUTHZ_DENIED',
+          timestamp: new Date('2026-07-03T00:00:00.000Z'),
+          requestId: 'req-1',
+          payload: {
+            subjectDid: 'did:key:agent',
+            correlationId: 'act_abc123',
+            serviceName: 'Helix Stay',
+            toolName: 'book_hotel',
+            requiredScope: 'book:hotel',
+            effectiveScopes: ['book:flights'],
+            result: 'blocked',
+            reason: 'INSUFFICIENT_EFFECTIVE_SCOPE',
+            resultSummary: 'book_hotel blocked',
+          },
+        },
+      ],
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v1/audit-log?limit=10',
+      headers: { 'x-admin-api-key': 'test-admin-key-0001' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)[0]).toMatchObject({
+      eventType: 'AUTHZ_DENIED',
+      correlationId: 'act_abc123',
+      serviceName: 'Helix Stay',
+      toolName: 'book_hotel',
+      requiredScope: 'book:hotel',
+      effectiveScopes: ['book:flights'],
+      result: 'blocked',
+      reason: 'INSUFFICIENT_EFFECTIVE_SCOPE',
+      resultSummary: 'book_hotel blocked',
+    });
+    await app.close();
+  });
+
   it('derives delegation context from verification audit payloads', async () => {
     const app = await makeApp({
       list: async () => [

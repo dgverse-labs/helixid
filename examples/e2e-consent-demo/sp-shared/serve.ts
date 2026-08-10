@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { buildStatusListCredential, createStatusList } from '@helixid/core';
 import { env, type SpDefinition } from '../helixid-config/index.js';
 import { createSpApp } from './app.js';
+import { createAuditEmitter } from './audit.js';
 import { loadSpIdentity, statePath, STATUS_LIST_LENGTH } from './identity.js';
 import { SpStore } from './store.js';
 
@@ -32,6 +33,15 @@ export async function serveSp(definition: SpDefinition): Promise<void> {
     mcpServerUrl: `http://127.0.0.1:${definition.port}/api/mcp`,
     store,
     widgetDistPath: resolve(here, '../../../packages/widget/dist'),
+    // Reports this SP's own verification and authorization decisions to the
+    // shared audit log. Unconfigured (no URL/key) degrades to a no-op emitter.
+    audit: createAuditEmitter({
+      helixApiUrl: env.helixApiUrl,
+      adminApiKey: env.adminApiKey,
+      serviceDid: identity.did,
+      serviceName: definition.displayName,
+      onError: (message) => console.warn(`[${definition.id}] ${message}`),
+    }),
   });
 
   app.listen(definition.port, '0.0.0.0', () => {
