@@ -78,7 +78,7 @@ describe('App shell + routing', () => {
     expect(
       await screen.findByRole('heading', { name: /audit & governance/i }),
     ).toBeInTheDocument();
-    expect(mocked.getAuditLog).toHaveBeenCalledWith({ limit: 20 });
+    expect(mocked.getAuditLog).toHaveBeenCalledWith({ limit: 100 });
     expect(
       await screen.findByRole('link', { name: /did:hedera:testnet:billing/ }),
     ).toHaveAttribute(

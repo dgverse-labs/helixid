@@ -61,18 +61,55 @@ const LABELS: Record<string, { title: string; tone: Tone }> = {
   TOOL_INVOKED: { title: 'Action Performed', tone: 'accent' },
 };
 
-function labelFor(eventType: string): { title: string; tone: Tone } {
-  return LABELS[eventType] ?? { title: eventType.replaceAll('_', ' '), tone: 'neutral' };
+/**
+ * Refusals that mean "nobody has asked the user yet" rather than "the user
+ * said no to this". Both are genuinely AUTHZ_DENIED — the Service Provider did
+ * refuse the call — but only the second is a security decision. An agent's
+ * first call to a new service is *expected* to be refused this way: that
+ * refusal is what raises the consent prompt. Showing it as BLOCKED in the
+ * middle of a successful booking reads as a fault when nothing went wrong.
+ */
+const CONSENT_HANDSHAKE_REASONS = new Set(['NO_PRESENTATION', 'NO_GRANT_FOR_THIS_SERVICE']);
+
+function isConsentHandshake(entry: AuditRow): boolean {
+  return entry.eventType === 'AUTHZ_DENIED' && CONSENT_HANDSHAKE_REASONS.has(entry.reason ?? '');
+}
+
+/**
+ * Tone for an event type the map does not know about. Keeps a new or
+ * differently-cased event from silently rendering as 'neutral' just because
+ * nobody added it to LABELS yet.
+ */
+function fallbackTone(eventType: string): Tone {
+  const type = eventType.toLowerCase();
+  if (/revoked|rejected|failed|denied|blocked/.test(type)) return 'danger';
+  if (/complete|verified|onboarded|granted/.test(type)) return 'success';
+  if (/issued|created|generated|consumed|presented|invoked/.test(type)) return 'accent';
+  return 'neutral';
+}
+
+function labelFor(entry: AuditRow): { title: string; tone: Tone } {
+  if (isConsentHandshake(entry)) return { title: 'Consent Required', tone: 'neutral' };
+  return (
+    LABELS[entry.eventType] ?? {
+      title: entry.eventType.replaceAll('_', ' '),
+      tone: fallbackTone(entry.eventType),
+    }
+  );
 }
 
 /** The recorded outcome overrides the label's default: a failed action is not a success. */
 function toneFor(entry: AuditRow): Tone {
+  // Checked before `result`, which is 'blocked' for the handshake too — the
+  // call really was refused; it just isn't a denial of anything.
+  if (isConsentHandshake(entry)) return 'neutral';
   if (entry.result === 'failure') return 'danger';
   if (entry.result === 'blocked') return 'blocked';
-  return labelFor(entry.eventType).tone;
+  return labelFor(entry).tone;
 }
 
-function markFor(tone: Tone): string {
+function markFor(entry: AuditRow, tone: Tone): string {
+  if (isConsentHandshake(entry)) return '⇢';
   if (tone === 'danger') return '✕';
   if (tone === 'blocked') return '⃠';
   return '✓';
@@ -169,14 +206,14 @@ export function AuditPage() {
           <ul className="audit-timeline">
             {entries.map((entry, index) => {
               const tone = toneFor(entry);
-              const { title } = labelFor(entry.eventType);
+              const { title } = labelFor(entry);
               const detail = entry.resultSummary ?? entry.reason;
               const facts = factsFor(entry);
               return (
                 <li key={entry.id} className={`audit-entry tone-${tone}`}>
                   <div className="audit-entry-top">
                     <span className="audit-event-type">
-                      <span className="audit-mark">{markFor(tone)}</span>
+                      <span className="audit-mark">{markFor(entry, tone)}</span>
                       {index + 1}. {title}
                     </span>
                     <time

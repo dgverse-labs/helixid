@@ -312,7 +312,9 @@ export function createSpApp(options: SpAppOptions): SpApp {
         requiredScope,
         result: 'blocked',
         reason: 'NO_PRESENTATION',
-        resultSummary: `${toolName} blocked — no credential presented`,
+        // Worded as a request, not a refusal: nobody has asked the user yet,
+        // and this response is what raises the consent prompt.
+        resultSummary: `${toolName} needs consent — no credential presented`,
       });
       res.json(
         jsonRpcError(rpc.id, -32001, 'Consent required', {
@@ -424,7 +426,10 @@ export function createSpApp(options: SpAppOptions): SpApp {
         effectiveScopes,
         result: 'blocked',
         reason: 'NO_GRANT_FOR_THIS_SERVICE',
-        resultSummary: `${toolName} blocked — credential verified, but this user has granted ${definition.displayName} no consent`,
+        // Expected on an agent's first call to this SP. The credential is
+        // sound; the user simply has not authorized this service yet, so the
+        // agent is sent to the consent page and retries.
+        resultSummary: `${toolName} needs consent — credential verified, but this user has not yet authorized ${definition.displayName}`,
       });
       res.json(
         jsonRpcError(rpc.id, -32001, 'Consent required', {
