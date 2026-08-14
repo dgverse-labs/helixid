@@ -13,8 +13,9 @@
 import { z } from 'zod';
 import {
   DelegationChainInvalidError,
-  DelegationScopeEscalationError,
+  ScopeEscalationDeniedError,
 } from '../errors/HelixError.js';
+import type { DelegationGrantVC } from './delegation-grant.js';
 
 /**
  * W3C Verifiable Credential standard contexts
@@ -74,7 +75,7 @@ export const UserCredentialSubjectSchema = z.object({
 /**
  * Verifiable Credential Base Envelope
  */
-const VCBaseSchema = z.object({
+export const VCBaseSchema = z.object({
   '@context': z.array(z.string()).min(1),
   id: z.string(),
   issuer: z.string(),
@@ -110,7 +111,7 @@ export const UserVCSchema = VCBaseSchema.extend({
 
 export type AgentVC = z.infer<typeof AgentVCSchema>;
 export type UserVC = z.infer<typeof UserVCSchema>;
-export type HelixVC = AgentVC | UserVC;
+export type HelixVC = AgentVC | UserVC | DelegationGrantVC;
 
 export type SignedVC<T extends HelixVC = HelixVC> = T & {
   proof: VCProof;
@@ -120,7 +121,7 @@ export function validateScopeSubset(parentScopes: string[], childScopes: string[
   const parent = new Set(parentScopes);
   for (const scope of childScopes) {
     if (!parent.has(scope)) {
-      throw new DelegationScopeEscalationError(scope);
+      throw new ScopeEscalationDeniedError(scope);
     }
   }
 }

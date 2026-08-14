@@ -116,45 +116,6 @@ const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (fastify, optio
     }
   });
 
-  fastify.get('/services', async (_request, reply) => {
-    const result = await options.agentService.listServices();
-    return reply.code(200).send(result);
-  });
-
-  fastify.get('/services/:serviceName', async (request, reply) => {
-    try {
-      const params = request.params as { serviceName: string };
-      const result = await options.agentService.getService(params.serviceName);
-      return reply.code(200).send(result);
-    } catch (error) {
-      const mapped = mapAgentError(error);
-      return reply
-        .code(mapped.statusCode)
-        .send({ error: { code: mapped.code, message: mapped.message, requestId: request.id } });
-    }
-  });
-
-  fastify.post('/services', async (request, reply) => {
-    try {
-      const result = await options.agentService.createService(
-        request.body as {
-          serviceName: string;
-          displayName: string;
-          verifiedDomain: string;
-          publicKeyMultibase: string;
-          apiEndpoint: string;
-          metadata: Record<string, unknown>;
-        },
-        request.id,
-      );
-      return reply.code(201).send(result);
-    } catch (error) {
-      const mapped = mapAgentError(error);
-      return reply
-        .code(mapped.statusCode)
-        .send({ error: { code: mapped.code, message: mapped.message, requestId: request.id } });
-    }
-  });
 };
 
 export default agentRoutes;

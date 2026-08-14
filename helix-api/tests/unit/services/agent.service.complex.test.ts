@@ -187,15 +187,6 @@ describe('AgentService Branch Coverage', () => {
     });
   });
 
-  describe('createService branches', () => {
-    it('creates service successfully', async () => {
-        repository.findServiceByName.mockResolvedValue(null);
-        repository.createService.mockResolvedValue({ serviceName: 's1', displayName: 'D', verifiedDomain: 'H', publicKeyMultibase: 'K', apiEndpoint: 'E', metadata: '{}' });
-        const res = await service.createService({ serviceName: 's1', displayName: 'D', verifiedDomain: 'https://h.com', publicKeyMultibase: 'K', apiEndpoint: 'https://e.com', metadata: { m: 1 } }, 'req-1');
-        expect(res.serviceName).toBe('s1');
-    });
-  });
-
   describe('mapAgentError branches', () => {
     it('returns 500 for generic error', () => {
         const res = mapAgentError(new Error('boom'));

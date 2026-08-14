@@ -216,12 +216,17 @@ export class SelfSignedVCNotAllowedError extends HelixError {
   }
 }
 
+/**
+ * Canonical scope-escalation error for issuance-time and chain-validation
+ * failures (delegation and grant issuance both throw this).
+ */
 export class ScopeEscalationDeniedError extends HelixError {
   constructor(scope: string) {
     super('SCOPE_ESCALATION_DENIED', `Delegated scope is not permitted by the parent credential: ${scope}`, 400);
   }
 }
 
+/** Canonical delegation-depth error. */
 export class MaxDelegationDepthExceededError extends HelixError {
   constructor(message = 'Maximum delegation depth has been exceeded') {
     super('MAX_DELEGATION_DEPTH_EXCEEDED', message, 400);
@@ -246,17 +251,17 @@ export class DelegationNotPermittedError extends HelixError {
   }
 }
 
-export class DelegationDepthExceededError extends HelixError {
-  constructor(message = 'Delegation depth has been exceeded') {
-    super('DELEGATION_DEPTH_EXCEEDED', message, 400);
-  }
-}
+// Consolidated aliases: DelegationDepthExceededError and
+// DelegationScopeEscalationError duplicated the two canonical classes above
+// with different codes and no distinct behavior. The names remain exported so
+// existing imports (helix-sdk-js error mapping, tests) keep working; the wire
+// codes DELEGATION_DEPTH_EXCEEDED / DELEGATION_SCOPE_ESCALATION stay in
+// codes.ts because the SDK still maps them from API responses.
+export const DelegationDepthExceededError = MaxDelegationDepthExceededError;
+export type DelegationDepthExceededError = MaxDelegationDepthExceededError;
 
-export class DelegationScopeEscalationError extends HelixError {
-  constructor(scope: string) {
-    super('DELEGATION_SCOPE_ESCALATION', `Delegated scope is not permitted by the parent credential: ${scope}`, 400);
-  }
-}
+export const DelegationScopeEscalationError = ScopeEscalationDeniedError;
+export type DelegationScopeEscalationError = ScopeEscalationDeniedError;
 
 export class DelegationChainInvalidError extends HelixError {
   constructor(reason: string) {
@@ -351,6 +356,24 @@ export class VPSignatureInvalidError extends HelixError {
 export class VPInvalidStructureError extends HelixError {
   constructor(message = 'VP payload is invalid') {
     super('VP_INVALID_STRUCTURE', message, 400);
+  }
+}
+
+/**
+ * Verification-time grant errors (VP doc §4.4). Deliberately NOT part of the
+ * B7 issuance-error consolidation — these describe VP verification failures.
+ */
+export class ConsentGrantSubjectMismatchError extends HelixError {
+  constructor(
+    message = 'Consent grant does not match the presenting agent or the VP user identifier',
+  ) {
+    super('CONSENT_GRANT_SUBJECT_MISMATCH', message, 400);
+  }
+}
+
+export class ConsentGrantInvalidError extends HelixError {
+  constructor(message = 'Consent grant credential is structurally invalid') {
+    super('CONSENT_GRANT_INVALID', message, 400);
   }
 }
 

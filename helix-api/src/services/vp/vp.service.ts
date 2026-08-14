@@ -1,70 +1,26 @@
 import { randomBytes } from 'node:crypto';
 import {
   AuditEvents,
-  AgentVCSchema,
-  ErrorCodes,
-  VPAgentDIDNotFoundError,
-  VPExpiredError,
   VPInvalidStructureError,
-  VPNoActiveVCError,
   VPVerificationFailedError,
-  VCSignatureInvalidError,
-  VCRevokedError,
-  VCIssuerNotFoundError,
-  base58btcDecode,
-  hashCanonicalPayload,
+  fetchStatusList,
   issueJWT,
-  getBit,
   signedVPSchema,
-  validateChainIntegrity,
-  verifySignature,
-  resolveDID as resolveDIDCore,
-  type IAuditLogger,
-  type AgentVC,
+  verifyVP as verifyVPCore,
   type HelixJWTPayload,
+  type IAuditLogger,
   type SignedVP,
+  type StatusListCredential,
+  type StatusListResolver,
+  type VerifyVPResult,
 } from '@helixid/core';
-import type { IDIDService } from '../did/IDIDService.js';
 import type { IVCService } from '../vc/IVCService.js';
-import type { VPRepository } from '../../repositories/vp.repository.js';
-import {
-  ServiceNotFoundError,
-  type ServiceRegistryRepository,
-} from '../../repositories/service-registry.repository.js';
-import type {
-  IVPService,
-  VPTemplateParams,
-  VPTemplateResult,
-  VPVerificationResult,
-} from './IVPService.js';
-
-type DIDVerificationMethodLike = {
-  type?: unknown;
-  publicKeyHex?: unknown;
-  publicKeyMultibase?: unknown;
-};
-
-type DIDDocumentLike = {
-  verificationMethod?: DIDVerificationMethodLike[];
-};
-
-type DIDResolveLike = DIDDocumentLike & {
-  document?: DIDDocumentLike;
-  didDocument?: DIDDocumentLike;
-};
+import type { IVPService, VPVerificationResult } from './IVPService.js';
 
 type HelixHttpErrorLike = {
   code: string;
   httpStatus: number;
   message: string;
-};
-
-type DelegationChainSummary = {
-  vcId: string;
-  issuer: string;
-  subjectDid: string;
-  parentVcId?: string;
-  delegationDepth: number;
 };
 
 interface JWTSessionOptions {
@@ -73,139 +29,61 @@ interface JWTSessionOptions {
   ttlSeconds: number;
 }
 
-function makeVpId(): string {
-  return `vp:helix:${randomBytes(12).toString('hex')}`;
+interface AttemptedVPContext {
+  attemptedVcId?: string;
+  attemptedParentVcId?: string;
+  attemptedDelegatedFrom?: string;
 }
 
-function extractPublicKeyHex(doc: unknown): string {
-  const wrapped = doc as DIDResolveLike;
-  const document = wrapped.document ?? wrapped.didDocument ?? wrapped;
-  const method = document.verificationMethod?.find(
-    (item) => typeof item.type === 'string' && item.type.includes('Ed25519'),
-  );
-  if (!method) {
-    throw new VPAgentDIDNotFoundError();
+/**
+ * Pulls identifying fields off the raw, unverified VP so a rejection can still
+ * be correlated to the credential that caused it. Read from the request payload
+ * rather than the parsed VP on purpose: rejection can happen at schema parsing,
+ * before a parsed value exists. Nothing here is validated or trusted — every
+ * read is guarded so a malformed VP yields no fields instead of throwing out of
+ * the rejection audit.
+ */
+function readAttemptedVPContext(signedVP: SignedVP): AttemptedVPContext {
+  const context: AttemptedVPContext = {};
+  try {
+    const credential = signedVP?.verifiableCredential?.[0] as Record<string, unknown> | undefined;
+    const subject = credential?.['credentialSubject'] as Record<string, unknown> | undefined;
+    const vcId = credential?.['id'];
+    if (typeof vcId === 'string') context.attemptedVcId = vcId;
+    const parentVcId = subject?.['parentVcId'];
+    if (typeof parentVcId === 'string') context.attemptedParentVcId = parentVcId;
+    const delegatedFrom = subject?.['delegatedFrom'];
+    if (typeof delegatedFrom === 'string') context.attemptedDelegatedFrom = delegatedFrom;
+  } catch {
+    // Correlation fields are optional by design; a garbage VP just yields none.
   }
-  if (typeof method.publicKeyHex === 'string') {
-    return method.publicKeyHex;
-  }
-  if (typeof method.publicKeyMultibase === 'string' && method.publicKeyMultibase.startsWith('z')) {
-    const decoded = base58btcDecode(method.publicKeyMultibase.slice(1));
-    return Buffer.from(decoded.slice(2)).toString('hex');
-  }
-  throw new VPAgentDIDNotFoundError();
-}
-
-function summarizeDelegationChain(chain: AgentVC[]): DelegationChainSummary[] {
-  return chain.map((vc) => {
-    const summary: DelegationChainSummary = {
-      vcId: vc.id,
-      issuer: vc.issuer,
-      subjectDid: vc.credentialSubject.id,
-      delegationDepth: vc.credentialSubject.delegationDepth ?? 0,
-    };
-    if (vc.credentialSubject.parentVcId !== undefined) {
-      summary.parentVcId = vc.credentialSubject.parentVcId;
-    }
-    return summary;
-  });
-}
-
-function decodeBase58ProofValue(proofValue: string): Uint8Array {
-  const rawProofValue = proofValue.startsWith('z') ? proofValue.slice(1) : proofValue;
-  return base58btcDecode(rawProofValue);
-}
-
-function extractScopes(vc: { credentialSubject?: unknown }): string[] {
-  const subject = vc.credentialSubject;
-  if (!subject || typeof subject !== 'object') {
-    return [];
-  }
-  const scopes = (subject as { privilegeScopes?: unknown }).privilegeScopes;
-  return Array.isArray(scopes)
-    ? scopes.filter((scope): scope is string => typeof scope === 'string')
-    : [];
-}
-
-function credentialExpiryMs(vc: { validUntil?: unknown; expirationDate?: unknown }): number | null {
-  const value =
-    typeof vc.validUntil === 'string'
-      ? vc.validUntil
-      : typeof vc.expirationDate === 'string'
-        ? vc.expirationDate
-        : null;
-  return value ? new Date(value).getTime() : null;
-}
-
-function extractStatusListId(statusListCredential: string): string {
-  const pathname = new URL(statusListCredential).pathname;
-  const marker = '/v1/status-list/';
-  const index = pathname.indexOf(marker);
-  if (index === -1) {
-    throw new Error('credential_status_invalid');
-  }
-  return decodeURIComponent(pathname.slice(index + marker.length));
+  return context;
 }
 
 export class VPService implements IVPService {
+  private readonly statusListResolver: StatusListResolver;
+
   constructor(
-    private readonly vpRepository: VPRepository,
-    private readonly didService: IDIDService,
     private readonly vcService: IVCService,
-    private readonly serviceRegistry: ServiceRegistryRepository,
     private readonly auditLogger: IAuditLogger,
-    private readonly vpTtlSeconds = 300,
+    apiBaseUrl: string,
     private readonly jwtSessionOptions?: JWTSessionOptions,
-  ) {}
-
-  async generateVPTemplate(params: VPTemplateParams, requestId: string): Promise<VPTemplateResult> {
-    try {
-      await this.didService.resolveDID(params.agentDid);
-    } catch {
-      throw new VPAgentDIDNotFoundError();
-    }
-
-    const activeVC = params.vcId
-      ? await this.vcService.findActiveByVcIdForSubject(params.vcId, params.agentDid, params.vcType)
-      : await this.vcService.findActiveBySubjectDid(params.agentDid, params.vcType);
-    if (!activeVC) {
-      throw new VPNoActiveVCError();
-    }
-
-    await this.serviceRegistry.assertExists(params.targetService);
-
-    const vpId = makeVpId();
-    const expiresAt = new Date(Date.now() + this.vpTtlSeconds * 1000);
-    const unsignedVP = {
-      '@context': ['https://www.w3.org/ns/credentials/v2'],
-      type: ['VerifiablePresentation'],
-      id: vpId,
-      holder: params.agentDid,
-      verifiableCredential: [activeVC],
-      nonce: randomBytes(32).toString('hex'),
-      expirationDate: expiresAt.toISOString(),
-      delegatedBy: params.userDid,
-      targetService: params.targetService,
+  ) {
+    // §4.3 local-repo fast path: this API's own hosted lists are read straight
+    // from the repository; everything else (SP-hosted lists included) goes
+    // over HTTP exactly like any other verifier. Either way the result still
+    // passes core's schema validation before getBit() — the fast path changes
+    // how the bytes are obtained, not whether they're validated.
+    const ownListPrefix = `${apiBaseUrl.replace(/\/$/, '')}/v1/status-list/`;
+    this.statusListResolver = async (statusListUrl: string): Promise<StatusListCredential> => {
+      if (statusListUrl.startsWith(ownListPrefix)) {
+        const listId = decodeURIComponent(
+          statusListUrl.slice(ownListPrefix.length).split(/[#?]/, 1)[0] ?? '',
+        );
+        return (await this.vcService.getStatusList(listId)) as StatusListCredential;
+      }
+      return fetchStatusList(statusListUrl);
     };
-
-    await this.vpRepository.create({
-      vpId,
-      agentDid: params.agentDid,
-      userDid: params.userDid,
-      targetService: params.targetService,
-      expiresAt,
-    });
-
-    this.auditLogger.log(AuditEvents.VP_TEMPLATE_ISSUED, {
-      requestId,
-      vpId,
-      agentDid: params.agentDid,
-      userDid: params.userDid,
-      targetService: params.targetService,
-      expiresAt: expiresAt.toISOString(),
-    });
-
-    return { unsignedVP, vpId, expiresAt: expiresAt.toISOString() };
   }
 
   async verifyVP(
@@ -219,145 +97,50 @@ export class VPService implements IVPService {
       if (!parsed.success) {
         throw new VPInvalidStructureError();
       }
-
       vpId = parsed.data.id;
-      // Skipping server-side vpId record checks and consumption. Verifier is responsible for replay protection.
-      // Check expiry from the VP payload itself
-      if (new Date(parsed.data.expirationDate).getTime() <= Date.now()) {
-        throw new VPExpiredError();
-      }
 
-      let didDocument;
-      try {
-        didDocument = await this.resolveDIDDocument(parsed.data.holder);
-      } catch {
-        throw new VPAgentDIDNotFoundError();
-      }
-
-      const publicKeyHex = extractPublicKeyHex(didDocument);
-      const { proof, ...payloadWithoutProof } = parsed.data;
-      const hash = hashCanonicalPayload(payloadWithoutProof);
-      const proofBytes = decodeBase58ProofValue(proof.proofValue);
-      const signatureHex = Buffer.from(proofBytes).toString('hex');
-      const validSignature = await verifySignature(hash, signatureHex, publicKeyHex);
-      if (!validSignature) {
-        throw new Error('signature_invalid');
-      }
-
-      const vc = parsed.data.verifiableCredential[0] as {
-        id?: string;
-        issuer?: string;
-        validUntil?: string;
-        expirationDate?: string;
-        credentialStatus?: {
-          statusListCredential?: string;
-          statusListIndex?: string;
-        };
-        credentialSubject?: unknown;
-        proof?: {
-          proofValue?: string;
-          verificationMethod?: string;
-          type?: string;
-          created?: string;
-          proofPurpose?: string;
-        };
-        [key: string]: unknown;
-      };
-
-      // Step 6: Check VC expiry from the VC payload itself
-      const vcExpiry = credentialExpiryMs(vc);
-      if (vcExpiry !== null && vcExpiry <= Date.now()) {
-        throw new Error('vc_expired');
-      }
-      if (!vc.id) {
-        throw new VPInvalidStructureError('Missing VC id');
-      }
-
-      // Step 7: Verify the VC signature (issuer signed the credential).
-      if (!vc.issuer || !vc.proof?.proofValue) {
-        throw new VCSignatureInvalidError('The Verifiable Credential proof is missing');
-      }
-      let issuerDidDocument: unknown;
-      try {
-        issuerDidDocument = await this.resolveDIDDocument(vc.issuer as string);
-      } catch {
-        throw new VCIssuerNotFoundError();
-      }
-
-      const issuerPublicKeyHex = extractPublicKeyHex(issuerDidDocument);
-      const { proof: vcProof, ...vcPayload } = vc as Record<string, unknown> & {
-        proof: NonNullable<typeof vc.proof>;
-      };
-      const vcHash = hashCanonicalPayload(vcPayload);
-      const vcProofBytes = decodeBase58ProofValue(vcProof.proofValue!);
-      const vcSignatureHex = Buffer.from(vcProofBytes).toString('hex');
-
-      const validVCSignature = await verifySignature(vcHash, vcSignatureHex, issuerPublicKeyHex);
-      if (!validVCSignature) {
-        throw new VCSignatureInvalidError();
-      }
-
-      const agentParse = AgentVCSchema.safeParse(vc);
-      const isDelegated =
-        agentParse.success && (agentParse.data.credentialSubject.delegationDepth ?? 0) > 0;
-
-      // Step 8: A root/non-delegated VC owns its status-list entry. A locally
-      // signed delegated child has no independent revocation bit; its status is
-      // inherited from the parent chain checked below.
-      if (!isDelegated) {
-        const statusListCredential = vc.credentialStatus?.statusListCredential;
-        const statusListIndex = vc.credentialStatus?.statusListIndex;
-        if (!statusListCredential || statusListIndex === undefined) {
-          throw new VCRevokedError();
-        }
-        const listId = extractStatusListId(statusListCredential);
-        const statusList = await this.vcService.getStatusList(listId);
-        const bit = getBit(statusList.credentialSubject.encodedList, Number(statusListIndex));
-        if (bit === 1) {
-          throw new VCRevokedError();
-        }
-      }
-
-      let delegationChainSummary: DelegationChainSummary[] | undefined;
-      if (agentParse.success && isDelegated) {
-        // Validation schemas intentionally select known claims, but signatures
-        // cover the complete original payload (including delegationChain).
-        // Preserve that payload for cryptographic verification.
-        const chain = await this.reconstructDelegationChain(vc as AgentVC, requestId);
-        await this.verifyDelegationChain(chain, requestId);
-        delegationChainSummary = summarizeDelegationChain(chain);
-        this.auditLogger.log(AuditEvents.CHAIN_VERIFIED, {
-          requestId,
-          leafVcId: agentParse.data.id,
-          chainDepth: chain.length - 1,
-          agentDid: parsed.data.holder,
-          result: 'success',
-        });
-      }
-
-      // No server-side consume; replay protection is handled by the verifier.
+      // Single verification implementation (§2.1): everything — VP checks,
+      // credential checks, embedded delegation-chain walk, grant matching,
+      // revocation — happens inside core's verifyVP().
+      const result: VerifyVPResult = await verifyVPCore(parsed.data as SignedVP, {
+        statusListResolver: this.statusListResolver,
+      });
 
       const verifiedAt = new Date().toISOString();
+      // §7.3: exactly one VP_VERIFIED event after the core call returns — no
+      // mid-verification chain-walk events.
+      const chainLeaf = result.delegationChain.at(-1);
+      const chainParent = result.delegationChain.at(-2);
       this.auditLogger.log(AuditEvents.VP_VERIFIED, {
         requestId,
         vpId,
-        agentDid: parsed.data.holder,
+        agentDid: result.agentDid,
         result: 'success',
         verifiedAt,
-        delegatedFrom: delegationChainSummary?.at(-2)?.subjectDid,
-        delegatedTo: delegationChainSummary?.at(-1)?.subjectDid,
-        parentVcId: delegationChainSummary?.at(-1)?.parentVcId,
-        delegationDepth: delegationChainSummary?.at(-1)?.delegationDepth,
-        ...(delegationChainSummary ? { delegationChain: delegationChainSummary } : {}),
+        delegatedFrom: chainParent?.subject,
+        delegatedTo: result.delegationChain.length > 1 ? chainLeaf?.subject : undefined,
+        delegationDepth: chainLeaf?.delegationDepth,
+        ...(result.delegationChain.length > 1
+          ? {
+              delegationChain: result.delegationChain.map((link) => ({
+                vcId: link.vcId,
+                issuer: link.issuer,
+                subjectDid: link.subject,
+                delegationDepth: link.delegationDepth,
+              })),
+            }
+          : {}),
       });
 
-      const result: VPVerificationResult = {
+      const response: VPVerificationResult = {
         valid: true,
-        agentDid: parsed.data.holder,
-        userDid: parsed.data.delegatedBy,
+        agentDid: result.agentDid,
         targetService: parsed.data.targetService,
         verifiedAt,
       };
+      if (parsed.data.delegatedBy !== undefined) {
+        response.userDid = parsed.data.delegatedBy;
+      }
 
       if (options.issueSession) {
         if (!this.jwtSessionOptions) {
@@ -365,16 +148,17 @@ export class VPService implements IVPService {
         }
         const nowSeconds = Math.floor(Date.now() / 1000);
         const expiresAtSeconds = nowSeconds + this.jwtSessionOptions.ttlSeconds;
-        const scopes = extractScopes(vc);
         const payload: HelixJWTPayload = {
           iss: this.jwtSessionOptions.issuerDid,
-          sub: parsed.data.holder,
+          sub: result.agentDid,
           iat: nowSeconds,
           exp: expiresAtSeconds,
           jti: `jwt:${randomBytes(16).toString('hex')}`,
-          userDid: parsed.data.delegatedBy,
+          userDid: parsed.data.delegatedBy ?? result.agentDid,
           targetService: parsed.data.targetService,
-          scopes,
+          // §2.7 / §9.4 A2: the session carries enforcement scopes — the grant
+          // intersection when a grant was presented, not the raw VC scopes.
+          scopes: result.effectiveScopes,
           vpId,
         };
         const token = issueJWT(payload, this.jwtSessionOptions.signingKey);
@@ -388,153 +172,28 @@ export class VPService implements IVPService {
           vpId,
           expiresAt: sessionExpiresAt,
         });
-        result.session = {
+        response.session = {
           token,
           expiresAt: sessionExpiresAt,
           publicKeyEndpoint: '/v1/sessions/public-key',
         };
       }
 
-      // Step 10: Return from the cryptographically trusted parsed VP payload, not the DB record
-      return result;
+      return response;
     } catch (error) {
       const internalReason =
         error instanceof Error
           ? `${error.message}${'code' in error ? ` [code=${(error as { code?: string }).code}]` : ''}`
           : String(error);
+      // §7.3: exactly one VP_REJECTED event with the failure reason.
       this.auditLogger.log(AuditEvents.VP_REJECTED, {
         requestId,
         vpId,
         internalReason,
+        ...readAttemptedVPContext(signedVP),
         timestamp: new Date().toISOString(),
       });
-      if (error instanceof ServiceNotFoundError) {
-        throw error;
-      }
       throw new VPVerificationFailedError();
-    }
-  }
-
-  private async reconstructDelegationChain(leafVC: AgentVC, requestId: string): Promise<AgentVC[]> {
-    const chain: AgentVC[] = [leafVC];
-    let parentVcId = leafVC.credentialSubject.parentVcId;
-    while (parentVcId) {
-      const parent = await this.vcService.findRecordByVcId(parentVcId);
-      if (!parent) {
-        this.auditLogger.log(AuditEvents.CHAIN_REJECTED, {
-          requestId,
-          leafVcId: leafVC.id,
-          internalReason: 'parent_vc_not_found',
-          timestamp: new Date().toISOString(),
-        });
-        throw new Error('parent_vc_not_found');
-      }
-      if (parent.status === 'revoked') {
-        this.auditLogger.log(AuditEvents.CHAIN_REJECTED, {
-          requestId,
-          leafVcId: leafVC.id,
-          internalReason: 'vc_revoked',
-          parentVcId,
-          timestamp: new Date().toISOString(),
-        });
-        throw new Error('vc_revoked');
-      }
-      if (parent.status === 'expired') {
-        this.auditLogger.log(AuditEvents.CHAIN_REJECTED, {
-          requestId,
-          leafVcId: leafVC.id,
-          internalReason: 'vc_expired',
-          parentVcId,
-          timestamp: new Date().toISOString(),
-        });
-        throw new Error('vc_expired');
-      }
-      const parsedParent = AgentVCSchema.safeParse(parent.vc);
-      if (!parsedParent.success) {
-        this.auditLogger.log(AuditEvents.CHAIN_REJECTED, {
-          requestId,
-          leafVcId: leafVC.id,
-          internalReason: 'parent_vc_invalid_structure',
-          parentVcId,
-          timestamp: new Date().toISOString(),
-        });
-        throw new Error('parent_vc_invalid_structure');
-      }
-      // Keep the stored signed payload intact after validating its structure;
-      // stripping extension claims would change the signature hash.
-      chain.unshift(parent.vc as AgentVC);
-      parentVcId = parsedParent.data.credentialSubject.parentVcId;
-    }
-    return chain;
-  }
-
-  private async verifyDelegationChain(chain: AgentVC[], requestId: string): Promise<void> {
-    try {
-      validateChainIntegrity(chain);
-      for (const [index, vc] of chain.entries()) {
-        const expiry = credentialExpiryMs(vc);
-        if (expiry !== null && expiry <= Date.now()) {
-          throw new Error('vc_expired');
-        }
-        const statusListCredential = vc.credentialStatus?.statusListCredential;
-        const statusListIndex = vc.credentialStatus?.statusListIndex;
-        // Only the root owns a revocation bit. Delegated descendants inherit
-        // root revocation, although an explicitly supplied child status entry
-        // is still honored.
-        if (index === 0 && (!statusListCredential || statusListIndex === undefined)) {
-          throw new Error('vc_revoked');
-        }
-        if (statusListCredential && statusListIndex !== undefined) {
-          const listId = extractStatusListId(statusListCredential);
-          const statusList = await this.vcService.getStatusList(listId);
-          const bit = getBit(statusList.credentialSubject.encodedList, Number(statusListIndex));
-          if (bit === 1) {
-            throw new Error('vc_revoked');
-          }
-        }
-        await this.verifyVCSignedByIssuer(vc);
-        await this.resolveDIDDocument(vc.credentialSubject.id);
-      }
-    } catch (error) {
-      const leafVcId = chain.at(-1)?.id;
-      this.auditLogger.log(AuditEvents.CHAIN_REJECTED, {
-        requestId,
-        leafVcId,
-        internalReason: error instanceof Error ? error.message : String(error),
-        timestamp: new Date().toISOString(),
-      });
-      throw error;
-    }
-  }
-
-  private async verifyVCSignedByIssuer(vc: AgentVC): Promise<void> {
-    if (!vc.issuer || !vc.proof?.proofValue) {
-      throw new VCSignatureInvalidError('The Verifiable Credential proof is missing');
-    }
-    let issuerDidDocument: unknown;
-    try {
-      issuerDidDocument = await this.resolveDIDDocument(vc.issuer);
-    } catch {
-      throw new VCIssuerNotFoundError();
-    }
-    const issuerPublicKeyHex = extractPublicKeyHex(issuerDidDocument);
-    const { proof, ...payload } = vc;
-    const vcHash = hashCanonicalPayload(payload);
-    const proofBytes = decodeBase58ProofValue(proof.proofValue);
-    const signatureHex = Buffer.from(proofBytes).toString('hex');
-    const valid = await verifySignature(vcHash, signatureHex, issuerPublicKeyHex);
-    if (!valid) {
-      throw new VCSignatureInvalidError();
-    }
-  }
-
-  private async resolveDIDDocument(did: string): Promise<unknown> {
-    try {
-      return await this.didService.resolveDID(did);
-    } catch {
-      // Delegated children are commonly issued by wallet-local did:key agents,
-      // which are resolvable offline but are not registered in the API store.
-      return resolveDIDCore(did);
     }
   }
 }
@@ -547,9 +206,6 @@ export function mapErrorToResponse(error: unknown): {
   if (error && typeof error === 'object' && 'code' in error && 'httpStatus' in error) {
     const typed = error as HelixHttpErrorLike;
     return { statusCode: typed.httpStatus, code: typed.code, message: typed.message };
-  }
-  if (error instanceof ServiceNotFoundError) {
-    return { statusCode: 404, code: ErrorCodes.SERVICE_NOT_FOUND, message: error.message };
   }
   return { statusCode: 500, code: 'INTERNAL_ERROR', message: 'Internal server error' };
 }

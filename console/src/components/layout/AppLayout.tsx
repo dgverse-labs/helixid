@@ -6,7 +6,7 @@
 
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/useAuth';
-import { ActivityIcon, BotIcon, KeyIcon, ShieldIcon } from './icons';
+import { BotIcon, KeyIcon, ShieldIcon } from './icons';
 import { ThemeToggle } from './ThemeToggle';
 import helixMark from '../../assets/helix-mark.png';
 import helixWordmark from '../../assets/helix-wordmark.png';
@@ -35,10 +35,6 @@ export function AppLayout() {
           <NavLink to="/enroll">
             <KeyIcon />
             Enroll
-          </NavLink>
-          <NavLink to="/services">
-            <ActivityIcon />
-            Services
           </NavLink>
           <NavLink to="/audit">
             <ShieldIcon />

@@ -1,472 +1,237 @@
 // Copyright 2026 DgVerse LLP
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { VPService, mapErrorToResponse } from '../../../src/services/vp/vp.service.js';
-import { 
-    VPVerificationFailedError, 
-    VPAgentDIDNotFoundError,
-    createStatusList,
-    setBit,
-    generateKeyPair,
-    publicKeyToMultibase,
-    type AgentVC,
-} from '@helixid/core';
-import { ServiceNotFoundError } from '../../../src/repositories/service-registry.repository.js';
+// Post-consolidation VPService unit tests (§4.2, §7.3, §9.4 A2/A3/A5/A6).
+// The service is a thin wrapper over core verifyVP(): no DB-walk, no template
+// step, single audit event per outcome, JWT scopes from effectiveScopes.
 
-vi.mock('@helixid/core', async () => {
-  const actual = await vi.importActual('@helixid/core') as any;
-  return {
-    ...actual,
-    verifySignature: vi.fn(),
-    hashCanonicalPayload: vi.fn(() => Buffer.from('hash')),
-    base58btcDecode: vi.fn((val: string) => {
-        if (val === 'invalid') return new Uint8Array();
-        return new Uint8Array(64).fill(0);
-    }),
-    base58btcEncode: vi.fn(() => 'zabc'),
-  };
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { AuditEvents } from '@helixid/core';
+import { VPService } from '../../../src/services/vp/vp.service.js';
+import { TestAuditLogger } from '../../utils/TestAuditLogger.js';
+import {
+  API_BASE_URL,
+  OWN_LIST_ID,
+  SP_LIST_URL,
+  USER_DID,
+  buildSignedVP,
+  decodeJwtPayload,
+  makeActor,
+  makeAgentVC,
+  makeGrant,
+  makeOwnStatusList,
+  makeSpStatusList,
+  makeVcServiceStub,
+  stubFetch,
+} from '../../utils/vp-fixtures.js';
+
+function makeService(issuer = makeActor()) {
+  const auditLogger = new TestAuditLogger();
+  const lists = { [OWN_LIST_ID]: makeOwnStatusList(issuer) };
+  const service = new VPService(makeVcServiceStub(lists), auditLogger, API_BASE_URL, {
+    signingKey: issuer.privateKeyHex,
+    issuerDid: issuer.did,
+    ttlSeconds: 600,
+  });
+  return { service, auditLogger, issuer };
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
-import { hashCanonicalPayload, verifySignature } from '@helixid/core';
+describe('VPService (thin wrapper)', () => {
+  it('verifies a valid single-credential VP and logs exactly one VP_VERIFIED event (A5)', async () => {
+    const issuer = makeActor();
+    const holder = makeActor();
+    const { service, auditLogger } = makeService(issuer);
+    const vc = await makeAgentVC(issuer, holder.did);
+    const vp = await buildSignedVP([vc], holder, USER_DID);
 
-describe('VPService Branch Coverage', () => {
-  let repository: any;
-  let didService: any;
-  let vcService: any;
-  let serviceRegistry: any;
-  let auditLogger: any;
-  let service: VPService;
+    const result = await service.verifyVP(vp, 'req-1');
 
-  const validVP = { 
-    '@context': ['https://www.w3.org/ns/credentials/v2'],
-    type: ['VerifiablePresentation'],
-    id: 'vp:helix:123', 
-    holder: 'did:h:1', 
-    delegatedBy: 'did:h:2', 
-    targetService: 's1',
-    nonce: 'a'.repeat(64),
-    expirationDate: new Date(Date.now() + 10000).toISOString(), 
-    verifiableCredential: [{ 
-        id: 'vc1', 
-        issuer: 'did:helix:issuer', 
-        validUntil: new Date(Date.now() + 10000).toISOString(),
-        credentialStatus: {
-          statusListCredential: 'http://localhost:3000/v1/status-list/helix-status-list-1',
-          statusListIndex: '0',
-        },
-        proof: { proofValue: 'zproof', verificationMethod: 'did:helix:issuer#key-1' } 
-    }], 
-    proof: { 
-        type: 'Ed25519Signature2020',
-        created: new Date().toISOString(),
-        verificationMethod: 'did:h:1#key-1',
-        proofPurpose: 'assertionMethod',
-        proofValue: 'zproof' 
-    } 
-  };
-
-  const statusEntry = {
-    id: 'http://localhost:3000/v1/status-list/helix-status-list-1#0',
-    type: 'BitstringStatusListEntry' as const,
-    statusPurpose: 'revocation' as const,
-    statusListIndex: '0',
-    statusListCredential: 'http://localhost:3000/v1/status-list/helix-status-list-1',
-  };
-
-  const parentVC: AgentVC = {
-    '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helixid.io/contexts/v1'],
-    id: 'vc-parent',
-    type: ['VerifiableCredential', 'HelixAgentCredential'],
-    issuer: 'did:helix:issuer',
-    validFrom: new Date(Date.now() - 1_000).toISOString(),
-    validUntil: new Date(Date.now() + 60_000).toISOString(),
-    credentialStatus: statusEntry,
-    credentialSubject: {
-      id: 'did:agent:parent',
-      type: 'HelixAgent',
-      privilegeScopes: ['read:orders', 'write:orders'],
-      agentName: 'Parent Agent',
-      delegationDepth: 0,
-      maxDelegationDepth: 1,
-    },
-    proof: {
-      type: 'Ed25519Signature2020',
-      created: new Date().toISOString(),
-      verificationMethod: 'did:helix:issuer#key-1',
-      proofPurpose: 'assertionMethod',
-      proofValue: 'zproof',
-    },
-  };
-
-  const childVC: AgentVC = {
-    ...parentVC,
-    id: 'vc-child',
-    credentialStatus: undefined,
-    credentialSubject: {
-      id: 'did:h:1',
-      type: 'HelixAgent',
-      privilegeScopes: ['read:orders'],
-      agentName: 'Child Agent',
-      delegatedFrom: 'did:agent:parent',
-      delegationDepth: 1,
-      maxDelegationDepth: 1,
-      parentVcId: 'vc-parent',
-    },
-  };
-
-  beforeEach(() => {
-    repository = {
-      create: vi.fn(),
-      findByVpId: vi.fn(),
-      consumeAtomically: vi.fn(),
-    };
-    didService = { resolveDID: vi.fn() };
-    vcService = {
-      getVC: vi.fn(),
-      getVCStatus: vi.fn(),
-      getStatusList: vi.fn(),
-      findActiveBySubjectDid: vi.fn(),
-      findActiveByVcIdForSubject: vi.fn(),
-      findRecordByVcId: vi.fn(),
-    };
-    serviceRegistry = { assertExists: vi.fn() };
-    auditLogger = { log: vi.fn() };
-    service = new VPService(repository, didService, vcService, serviceRegistry, auditLogger);
-    vcService.getStatusList.mockResolvedValue({ credentialSubject: { encodedList: createStatusList() } });
-    vi.mocked(verifySignature).mockReset();
+    expect(result).toMatchObject({
+      valid: true,
+      agentDid: holder.did,
+      userDid: USER_DID,
+      targetService: 'orders',
+    });
+    const eventTypes = auditLogger.events.map((entry) => entry.event.event);
+    expect(eventTypes.filter((type) => type === AuditEvents.VP_VERIFIED)).toHaveLength(1);
+    expect(eventTypes).not.toContain(AuditEvents.CHAIN_VERIFIED);
+    expect(eventTypes).not.toContain(AuditEvents.CHAIN_REJECTED);
+    expect(eventTypes).not.toContain(AuditEvents.VP_REJECTED);
   });
 
-  describe('generateVPTemplate branches', () => {
-    it('throws VPAgentDIDNotFoundError if agent DID resolution fails', async () => {
-        didService.resolveDID.mockRejectedValue(new Error('fail'));
-        await expect(service.generateVPTemplate({ agentDid: 'd1', userDid: 'u1', targetService: 's1', vcType: 'HelixAgentCredential' }, 'req-1'))
-            .rejects.toThrow(VPAgentDIDNotFoundError);
-    });
+  it('uses the injected local-repo resolver for its own status lists — no HTTP round-trip (A3)', async () => {
+    const issuer = makeActor();
+    const holder = makeActor();
+    const lists = { [OWN_LIST_ID]: makeOwnStatusList(issuer) };
+    const getStatusListSpy = vi.fn(async (listId: string) => lists[listId]!);
+    const service = new VPService(
+      { getStatusList: getStatusListSpy } as never,
+      new TestAuditLogger(),
+      API_BASE_URL,
+    );
+    const fetchSpy = stubFetch({});
+    const vc = await makeAgentVC(issuer, holder.did);
+    const vp = await buildSignedVP([vc], holder, USER_DID);
 
-    it('uses explicit vcId when provided', async () => {
-        didService.resolveDID.mockResolvedValue({});
-        vcService.findActiveByVcIdForSubject.mockResolvedValue({ id: 'vc-explicit' });
-
-        const result = await service.generateVPTemplate({
-          agentDid: 'd1',
-          userDid: 'u1',
-          targetService: 's1',
-          vcType: 'HelixAgentCredential',
-          vcId: 'vc-explicit',
-        }, 'req-1');
-
-        expect(result.unsignedVP.verifiableCredential[0]).toEqual({ id: 'vc-explicit' });
-        expect(vcService.findActiveByVcIdForSubject).toHaveBeenCalledWith('vc-explicit', 'd1', 'HelixAgentCredential');
-        expect(vcService.findActiveBySubjectDid).not.toHaveBeenCalled();
-    });
+    await expect(service.verifyVP(vp, 'req-1')).resolves.toMatchObject({ valid: true });
+    expect(getStatusListSpy).toHaveBeenCalledWith(OWN_LIST_ID);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  describe('extractPublicKeyHex branches', () => {
-    it('throws VPAgentDIDNotFoundError if no Ed25519 method', async () => {
-        didService.resolveDID.mockResolvedValue({ verificationMethod: [{ type: 'Other' }] });
-        repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
-        await expect(service.verifyVP(validVP as any, 'req-1')).rejects.toThrow(VPVerificationFailedError);
+  it('resolves an SP-hosted grant status list over HTTP with schema validation (A4)', async () => {
+    const issuer = makeActor();
+    const holder = makeActor();
+    const sp = makeActor();
+    const { service } = makeService(issuer);
+    const spList = makeSpStatusList(sp);
+    const fetchSpy = stubFetch({ [SP_LIST_URL]: spList });
+    const vc = await makeAgentVC(issuer, holder.did);
+    const grant = await makeGrant(sp, holder.did, USER_DID, ['book:flights'], spList);
+    const vp = await buildSignedVP([vc, grant], holder, USER_DID);
+
+    await expect(service.verifyVP(vp, 'req-1')).resolves.toMatchObject({ valid: true });
+    expect(fetchSpy).toHaveBeenCalledWith(SP_LIST_URL, expect.anything());
+  });
+
+  it('rejects when the SP-hosted list fails schema validation — fail closed (A4/S2)', async () => {
+    const issuer = makeActor();
+    const holder = makeActor();
+    const sp = makeActor();
+    const { service, auditLogger } = makeService(issuer);
+    stubFetch({ [SP_LIST_URL]: { not: 'a status list' } });
+    const vc = await makeAgentVC(issuer, holder.did);
+    const grant = await makeGrant(sp, holder.did, USER_DID, ['book:flights'], makeSpStatusList(sp));
+    const vp = await buildSignedVP([vc, grant], holder, USER_DID);
+
+    await expect(service.verifyVP(vp, 'req-1')).rejects.toMatchObject({
+      code: 'VP_VERIFICATION_FAILED',
+    });
+    const rejected = auditLogger.events.filter(
+      (entry) => entry.event.event === AuditEvents.VP_REJECTED,
+    );
+    expect(rejected).toHaveLength(1);
+    expect(String(rejected[0]?.event['internalReason'])).toContain('VC_REVOKED');
+  });
+
+  it('issues a session JWT whose scopes claim is effectiveScopes, not raw VC scopes (A2)', async () => {
+    const issuer = makeActor();
+    const holder = makeActor();
+    const sp = makeActor();
+    const { service } = makeService(issuer);
+    const spList = makeSpStatusList(sp);
+    stubFetch({ [SP_LIST_URL]: spList });
+    const vc = await makeAgentVC(issuer, holder.did, ['read:orders', 'book:flights']);
+    const grant = await makeGrant(sp, holder.did, USER_DID, ['book:flights', 'modify:booking'], spList);
+    const vp = await buildSignedVP([vc, grant], holder, USER_DID);
+
+    const result = await service.verifyVP(vp, 'req-1', { issueSession: true });
+
+    expect(result.session?.token).toBeTruthy();
+    const payload = decodeJwtPayload(result.session!.token);
+    expect(payload['scopes']).toEqual(['book:flights']);
+    expect(payload['userDid']).toBe(USER_DID);
+  });
+
+  it('session without a grant carries the full VC scopes (effectiveScopes === privilegeScopes)', async () => {
+    const issuer = makeActor();
+    const holder = makeActor();
+    const { service } = makeService(issuer);
+    const vc = await makeAgentVC(issuer, holder.did, ['read:orders', 'book:flights']);
+    const vp = await buildSignedVP([vc], holder, USER_DID);
+
+    const result = await service.verifyVP(vp, 'req-1', { issueSession: true });
+    expect(decodeJwtPayload(result.session!.token)['scopes']).toEqual([
+      'read:orders',
+      'book:flights',
+    ]);
+  });
+
+  it('logs exactly one VP_REJECTED with the failure reason on rejection (A6)', async () => {
+    const issuer = makeActor();
+    const holder = makeActor();
+    const { service, auditLogger } = makeService(issuer);
+    const vc = await makeAgentVC(issuer, holder.did, ['read:orders'], {
+      validUntil: new Date(Date.now() - 1000).toISOString(),
+    });
+    const vp = await buildSignedVP([vc], holder, USER_DID);
+
+    await expect(service.verifyVP(vp, 'req-1')).rejects.toMatchObject({
+      code: 'VP_VERIFICATION_FAILED',
     });
 
-    it('handles publicKeyMultibase', async () => {
-        const vp = JSON.parse(JSON.stringify(validVP));
-        repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
-        didService.resolveDID.mockResolvedValue({ 
-            verificationMethod: [{ type: 'Ed25519VerificationKey2020', publicKeyMultibase: 'zabc' }] 
-        });
-        vi.mocked(verifySignature).mockResolvedValue(true);
-        vcService.getVCStatus.mockResolvedValue('active');
-        repository.consumeAtomically.mockResolvedValue(true);
+    const eventTypes = auditLogger.events.map((entry) => entry.event.event);
+    expect(eventTypes.filter((type) => type === AuditEvents.VP_REJECTED)).toHaveLength(1);
+    expect(eventTypes).not.toContain(AuditEvents.VP_VERIFIED);
+    expect(eventTypes).not.toContain(AuditEvents.CHAIN_REJECTED);
+    const rejected = auditLogger.events.find(
+      (entry) => entry.event.event === AuditEvents.VP_REJECTED,
+    );
+    expect(String(rejected?.event['internalReason'])).toContain('VC_EXPIRED');
+  });
 
-        const res = await service.verifyVP(vp, 'req-1');
-        expect(res.valid).toBe(true);
+  it('rejects a payload that fails signedVPSchema parsing', async () => {
+    const { service } = makeService();
+    await expect(service.verifyVP({ nope: true } as never, 'req-1')).rejects.toMatchObject({
+      code: 'VP_VERIFICATION_FAILED',
     });
   });
 
-  describe('verifyVP branches', () => {
-    it('throws VPInvalidStructureError for invalid schema', async () => {
-        await expect(service.verifyVP({ id: 'bad' } as any, 'req-1')).rejects.toThrow(VPVerificationFailedError);
+  // Audit-enrichment epic §1: a rejection has no `result` to read from, so the
+  // correlation fields come off the raw, unverified VP instead.
+  it('enriches VP_REJECTED with attempted* identifiers off the unverified VP', async () => {
+    const issuer = makeActor();
+    const holder = makeActor();
+    const { service, auditLogger } = makeService(issuer);
+    const vc = await makeAgentVC(issuer, holder.did, ['read:orders'], {
+      validUntil: new Date(Date.now() - 1000).toISOString(),
+    });
+    (vc.credentialSubject as Record<string, unknown>)['parentVcId'] = 'vc:helix:parent-1';
+    (vc.credentialSubject as Record<string, unknown>)['delegatedFrom'] = 'did:key:zParent';
+    const vp = await buildSignedVP([vc], holder, USER_DID);
+
+    await expect(service.verifyVP(vp, 'req-1')).rejects.toMatchObject({
+      code: 'VP_VERIFICATION_FAILED',
     });
 
-    it('throws VPExpiredError if VP payload expirationDate passed', async () => {
-        const vp = JSON.parse(JSON.stringify(validVP));
-        vp.expirationDate = new Date(Date.now() - 10000).toISOString();
-        repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
-        await expect(service.verifyVP(vp, 'req-1')).rejects.toThrow(VPVerificationFailedError);
-    });
-
-    it('throws VPAgentDIDNotFoundError if holder resolution fails', async () => {
-        repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
-        didService.resolveDID.mockRejectedValueOnce(new Error('fail'));
-        await expect(service.verifyVP(validVP as any, 'req-1')).rejects.toThrow(VPVerificationFailedError);
-    });
-
-    it('throws Error(signature_invalid) if VP signature fails', async () => {
-        repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
-        didService.resolveDID.mockResolvedValue({ 
-            verificationMethod: [{ type: 'Ed25519', publicKeyHex: '00' }] 
-        });
-        vi.mocked(verifySignature).mockResolvedValue(false);
-        await expect(service.verifyVP(validVP as any, 'req-1')).rejects.toThrow(VPVerificationFailedError);
-    });
-
-    it('throws Error(vc_expired) if VC expired', async () => {
-        const vp = JSON.parse(JSON.stringify(validVP));
-        vp.verifiableCredential[0].validUntil = new Date(Date.now() - 10000).toISOString();
-        repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
-        didService.resolveDID.mockResolvedValue({ 
-            verificationMethod: [{ type: 'Ed25519', publicKeyHex: '00' }] 
-        });
-        vi.mocked(verifySignature).mockResolvedValue(true);
-        await expect(service.verifyVP(vp, 'req-1')).rejects.toThrow(VPVerificationFailedError);
-    });
-
-    it('throws VPInvalidStructureError if VC id missing', async () => {
-        const vp = JSON.parse(JSON.stringify(validVP));
-        delete vp.verifiableCredential[0].id;
-        repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
-        didService.resolveDID.mockResolvedValue({ 
-            verificationMethod: [{ type: 'Ed25519', publicKeyHex: '00' }] 
-        });
-        vi.mocked(verifySignature).mockResolvedValue(true);
-        await expect(service.verifyVP(vp, 'req-1')).rejects.toThrow(VPVerificationFailedError);
-    });
-
-    it('throws VCSignatureInvalidError if VC signature fails', async () => {
-        repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
-        didService.resolveDID.mockResolvedValue({ 
-            verificationMethod: [{ type: 'Ed25519', publicKeyHex: '00' }] 
-        });
-        vi.mocked(verifySignature)
-            .mockResolvedValueOnce(true) // VP signature
-            .mockResolvedValueOnce(false); // VC signature
-        await expect(service.verifyVP(validVP as any, 'req-1')).rejects.toThrow(VPVerificationFailedError);
-    });
-
-    it('throws VCIssuerNotFoundError if issuer resolution fails', async () => {
-        repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
-        didService.resolveDID.mockImplementation((did: string) => {
-            if (did === 'did:helix:issuer') throw new Error('fail');
-            return { verificationMethod: [{ type: 'Ed25519', publicKeyHex: '00' }] };
-        });
-        vi.mocked(verifySignature).mockResolvedValue(true);
-        await expect(service.verifyVP(validVP as any, 'req-1')).rejects.toThrow(VPVerificationFailedError);
-    });
-
-    it('throws VPAlreadyConsumedError if consumeAtomically fails', async () => {
-        repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
-        didService.resolveDID.mockResolvedValue({ 
-            verificationMethod: [{ type: 'Ed25519', publicKeyHex: '00' }] 
-        });
-        vi.mocked(verifySignature).mockResolvedValue(true);
-        vcService.getVCStatus.mockResolvedValue('active');
-        repository.consumeAtomically.mockResolvedValue(false);
-        await expect(service.verifyVP(validVP as any, 'req-1')).rejects.toThrow(VPVerificationFailedError);
-    });
-
-    it('bubbles up ServiceNotFoundError', async () => {
-        repository.findByVpId.mockImplementation(() => {
-            throw new ServiceNotFoundError('s1');
-        });
-        await expect(service.verifyVP(validVP as any, 'req-1')).rejects.toThrow(ServiceNotFoundError);
-    });
-
-    it('handles non-Error thrown values', async () => {
-        repository.findByVpId.mockImplementation(() => {
-            throw "string error";
-        });
-        await expect(service.verifyVP(validVP as any, 'req-1')).rejects.toThrow(VPVerificationFailedError);
-    });
-
-    it('verifies VC signature when issuer is hedera', async () => {
-        const vp = JSON.parse(JSON.stringify(validVP));
-        vp.verifiableCredential[0].issuer = 'did:hedera:testnet:123';
-        repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
-        didService.resolveDID.mockResolvedValue({ 
-            verificationMethod: [{ type: 'Ed25519', publicKeyHex: '00' }] 
-        });
-        vi.mocked(verifySignature).mockResolvedValue(true);
-        vcService.getVCStatus.mockResolvedValue('active');
-        repository.consumeAtomically.mockResolvedValue(true);
-
-        const res = await service.verifyVP(vp, 'req-1');
-        expect(res.valid).toBe(true);
-        expect(verifySignature).toHaveBeenCalledTimes(2);
-    });
-
-    it('rejects missing VC issuer', async () => {
-        const vp = JSON.parse(JSON.stringify(validVP));
-        delete vp.verifiableCredential[0].issuer;
-        repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
-        didService.resolveDID.mockResolvedValue({ 
-            verificationMethod: [{ type: 'Ed25519', publicKeyHex: '00' }] 
-        });
-        vi.mocked(verifySignature).mockResolvedValue(true);
-        vcService.getVCStatus.mockResolvedValue('active');
-        repository.consumeAtomically.mockResolvedValue(true);
-
-        await expect(service.verifyVP(vp, 'req-1')).rejects.toThrow(VPVerificationFailedError);
-    });
-
-    it('verifies a delegated agent VC chain', async () => {
-        const vp = JSON.parse(JSON.stringify({
-          ...validVP,
-          verifiableCredential: [childVC],
-        }));
-        repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
-        didService.resolveDID.mockResolvedValue({
-            verificationMethod: [{ type: 'Ed25519', publicKeyHex: '00' }]
-        });
-        vi.mocked(verifySignature).mockResolvedValue(true);
-        vcService.findRecordByVcId.mockResolvedValue({
-          vcId: 'vc-parent',
-          vc: parentVC,
-          status: 'active',
-        });
-        repository.consumeAtomically.mockResolvedValue(true);
-
-        const res = await service.verifyVP(vp, 'req-1');
-
-        expect(res.valid).toBe(true);
-        expect(vcService.findRecordByVcId).toHaveBeenCalledWith('vc-parent');
-        expect(vcService.getStatusList).toHaveBeenCalledTimes(1);
-        expect(auditLogger.log).toHaveBeenCalledWith('CHAIN_VERIFIED', expect.objectContaining({
-          leafVcId: 'vc-child',
-          chainDepth: 1,
-        }));
-    });
-
-    it('resolves a wallet-local did:key issuer for a delegated child', async () => {
-        const parentAgentDid = `did:key:${publicKeyToMultibase(generateKeyPair().publicKey)}`;
-        const localParent = {
-          ...parentVC,
-          credentialSubject: { ...parentVC.credentialSubject, id: parentAgentDid },
-        };
-        const localChild = {
-          ...childVC,
-          issuer: parentAgentDid,
-          delegationChain: [localParent],
-          credentialSubject: {
-            ...childVC.credentialSubject,
-            delegatedFrom: parentAgentDid,
-          },
-        };
-        const vp = JSON.parse(JSON.stringify({
-          ...validVP,
-          verifiableCredential: [localChild],
-        }));
-        didService.resolveDID.mockImplementation(async (did: string) => {
-          if (did === parentAgentDid) throw new Error('not registered');
-          return { verificationMethod: [{ type: 'Ed25519', publicKeyHex: '00' }] };
-        });
-        vi.mocked(verifySignature).mockResolvedValue(true);
-        vcService.findRecordByVcId.mockResolvedValue({
-          vcId: 'vc-parent',
-          vc: localParent,
-          status: 'active',
-        });
-
-        await expect(service.verifyVP(vp, 'req-1')).resolves.toMatchObject({ valid: true });
-        const signedChildHashCalls = vi.mocked(hashCanonicalPayload).mock.calls.filter(
-          ([payload]) => Array.isArray((payload as { delegationChain?: unknown }).delegationChain),
-        );
-        expect(signedChildHashCalls).toHaveLength(2);
-    });
-
-    it('rejects delegated chains when parent VC is unavailable', async () => {
-        const vp = JSON.parse(JSON.stringify({
-          ...validVP,
-          verifiableCredential: [childVC],
-        }));
-        repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
-        didService.resolveDID.mockResolvedValue({
-            verificationMethod: [{ type: 'Ed25519', publicKeyHex: '00' }]
-        });
-        vi.mocked(verifySignature).mockResolvedValue(true);
-        vcService.findRecordByVcId.mockResolvedValue(null);
-
-        await expect(service.verifyVP(vp, 'req-1')).rejects.toThrow(VPVerificationFailedError);
-        expect(auditLogger.log).toHaveBeenCalledWith('CHAIN_REJECTED', expect.objectContaining({
-          internalReason: 'parent_vc_not_found',
-        }));
-    });
-
-    it('rejects a status-less delegated child when its parent is revoked', async () => {
-        const vp = JSON.parse(JSON.stringify({
-          ...validVP,
-          verifiableCredential: [childVC],
-        }));
-        repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
-        didService.resolveDID.mockResolvedValue({
-            verificationMethod: [{ type: 'Ed25519', publicKeyHex: '00' }]
-        });
-        vi.mocked(verifySignature).mockResolvedValue(true);
-        vcService.findRecordByVcId.mockResolvedValue({
-          vcId: 'vc-parent',
-          vc: parentVC,
-          status: 'active',
-        });
-        vcService.getStatusList.mockResolvedValue({
-          credentialSubject: { encodedList: setBit(createStatusList(), 0, 1) },
-        });
-
-        await expect(service.verifyVP(vp, 'req-1')).rejects.toThrow(VPVerificationFailedError);
-        expect(auditLogger.log).toHaveBeenCalledWith('CHAIN_REJECTED', expect.objectContaining({
-          leafVcId: 'vc-child',
-          internalReason: 'vc_revoked',
-        }));
-    });
-
-    it('issues a JWT session when requested and configured', async () => {
-        const keys = generateKeyPair();
-        service = new VPService(repository, didService, vcService, serviceRegistry, auditLogger, 300, {
-          signingKey: keys.privateKey,
-          issuerDid: 'did:helix:issuer',
-          ttlSeconds: 600,
-        });
-        const vp = JSON.parse(JSON.stringify(validVP));
-        vp.verifiableCredential[0].credentialSubject = {
-          privilegeScopes: ['read:orders', 123, 'write:orders'],
-        };
-        repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
-        didService.resolveDID.mockResolvedValue({
-            verificationMethod: [{ type: 'Ed25519', publicKeyHex: '00' }]
-        });
-        vi.mocked(verifySignature).mockResolvedValue(true);
-        vcService.getStatusList.mockResolvedValue({ credentialSubject: { encodedList: createStatusList() } });
-        repository.consumeAtomically.mockResolvedValue(true);
-
-        const res = await service.verifyVP(vp, 'req-1', { issueSession: true });
-
-        expect(res.session?.token).toBeDefined();
-        expect(res.session?.publicKeyEndpoint).toBe('/v1/sessions/public-key');
-        expect(auditLogger.log).toHaveBeenCalledWith('JWT_ISSUED', expect.objectContaining({
-          agentDid: 'did:h:1',
-          targetService: 's1',
-        }));
-    });
-
-    it('rejects session issuance when JWT options are missing', async () => {
-        repository.findByVpId.mockResolvedValue({ expiresAt: new Date(Date.now() + 10000) });
-        didService.resolveDID.mockResolvedValue({
-            verificationMethod: [{ type: 'Ed25519', publicKeyHex: '00' }]
-        });
-        vi.mocked(verifySignature).mockResolvedValue(true);
-        repository.consumeAtomically.mockResolvedValue(true);
-
-        await expect(service.verifyVP(validVP as any, 'req-1', { issueSession: true }))
-          .rejects.toThrow(VPVerificationFailedError);
-    });
+    const rejected = auditLogger.events.find(
+      (entry) => entry.event.event === AuditEvents.VP_REJECTED,
+    );
+    expect(rejected?.event['attemptedVcId']).toBe(vc.id);
+    expect(rejected?.event['attemptedParentVcId']).toBe('vc:helix:parent-1');
+    expect(rejected?.event['attemptedDelegatedFrom']).toBe('did:key:zParent');
   });
 
-  describe('mapErrorToResponse branches', () => {
-    it('returns 404 for ServiceNotFoundError', () => {
-        const res = mapErrorToResponse(new ServiceNotFoundError('s1'));
-        expect(res.statusCode).toBe(404);
-    });
+  it('still logs VP_REJECTED when the VP is too malformed to read context from', async () => {
+    const { service, auditLogger } = makeService();
 
-    it('returns 500 for generic error', () => {
-        const res = mapErrorToResponse(new Error('boom'));
-        expect(res.statusCode).toBe(500);
+    // Rejected at schema parsing, before any parsed VP exists — the enrichment
+    // must degrade to no fields rather than throw over the audit call.
+    await expect(
+      service.verifyVP({ verifiableCredential: 'not-an-array' } as never, 'req-1'),
+    ).rejects.toMatchObject({ code: 'VP_VERIFICATION_FAILED' });
+
+    const rejected = auditLogger.events.find(
+      (entry) => entry.event.event === AuditEvents.VP_REJECTED,
+    );
+    expect(rejected).toBeDefined();
+    expect(rejected?.event['attemptedVcId']).toBeUndefined();
+  });
+
+  it('throws when a session is requested but JWT options are not configured', async () => {
+    const issuer = makeActor();
+    const holder = makeActor();
+    const service = new VPService(
+      makeVcServiceStub({ [OWN_LIST_ID]: makeOwnStatusList(issuer) }),
+      new TestAuditLogger(),
+      API_BASE_URL,
+    );
+    const vc = await makeAgentVC(issuer, holder.did);
+    const vp = await buildSignedVP([vc], holder, USER_DID);
+
+    await expect(service.verifyVP(vp, 'req-1', { issueSession: true })).rejects.toMatchObject({
+      code: 'VP_VERIFICATION_FAILED',
     });
   });
 });

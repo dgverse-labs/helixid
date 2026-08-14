@@ -98,7 +98,7 @@ export async function createFreshSignedVP(
 
   const agentDid = wallet.getDID();
   const signedVP = await new VPBuilder({
-    vc,
+    credentials: [vc],
     holderDid: agentDid,
     userDid,
     targetService: options.targetService,

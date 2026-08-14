@@ -1,4 +1,11 @@
-import { AdminAuthRequiredError, AuditEvents, ErrorCode, HelixError, type IAuditLogger } from '@helixid/core';
+import {
+  AdminAuthRequiredError,
+  AuditEvents,
+  ErrorCode,
+  HelixError,
+  type AuditEventType,
+  type IAuditLogger,
+} from '@helixid/core';
 import type { FastifyPluginAsync } from 'fastify';
 import type { AuditLogRepository } from '../../repositories/audit-log.repository.js';
 
@@ -26,8 +33,82 @@ interface RecordVpVerificationBody {
   delegatedTo?: unknown;
   parentVcId?: unknown;
   delegationDepth?: unknown;
+  // Rejection-path correlation context, read off the raw unverified VP by the
+  // caller. Kept distinct from the verified delegation fields above so an
+  // unverified claim can never be mistaken for a verified one.
+  attemptedVcId?: unknown;
+  attemptedParentVcId?: unknown;
+  attemptedDelegatedFrom?: unknown;
   verifiedAt?: unknown;
   source?: unknown;
+}
+
+interface RecordConsentGrantedBody {
+  vcId?: unknown;
+  agentDid?: unknown;
+  issuer?: unknown;
+  userDid?: unknown;
+  scopes?: unknown;
+  durability?: unknown;
+  grantedAt?: unknown;
+  source?: unknown;
+}
+
+/**
+ * Event types accepted by the generic ingestion route. An allowlist rather than
+ * "any string" so an emitter cannot invent event names that downstream queries
+ * and compliance reports would silently miss.
+ */
+const INGESTIBLE_EVENTS = new Set<AuditEventType>([
+  AuditEvents.VC_ISSUED,
+  AuditEvents.VC_PRESENTED,
+  AuditEvents.VP_VERIFIED,
+  AuditEvents.VP_REJECTED,
+  AuditEvents.AUTHZ_GRANTED,
+  AuditEvents.AUTHZ_DENIED,
+  AuditEvents.TOOL_INVOKED,
+  AuditEvents.CONSENT_GRANTED,
+  AuditEvents.CONSENT_REVOKED,
+]);
+
+/**
+ * The shared activity-trail envelope. Every field is optional except the event
+ * type and a subject, because a single shape has to describe issuance,
+ * presentation, verification, authorization and invocation — but the *names*
+ * are fixed, which is what makes the trail queryable after the fact.
+ */
+interface RecordActivityEventBody {
+  event?: unknown;
+  timestamp?: unknown;
+  correlationId?: unknown;
+  agentDid?: unknown;
+  userDid?: unknown;
+  vcId?: unknown;
+  credentialType?: unknown;
+  issuer?: unknown;
+  scopes?: unknown;
+  validUntil?: unknown;
+  credentialStatus?: unknown;
+  serviceDid?: unknown;
+  serviceName?: unknown;
+  toolName?: unknown;
+  requiredScope?: unknown;
+  effectiveScopes?: unknown;
+  vpId?: unknown;
+  result?: unknown;
+  reason?: unknown;
+  resultSummary?: unknown;
+  source?: unknown;
+}
+
+function isIngestibleEvent(value: string | undefined): value is AuditEventType {
+  return value !== undefined && INGESTIBLE_EVENTS.has(value as AuditEventType);
+}
+
+function asStringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : undefined;
 }
 
 function requireAdmin(
@@ -160,10 +241,107 @@ const auditLogRoutes: FastifyPluginAsync<AuditLogRouteOptions> = async (fastify,
       delegatedTo: asString(body.delegatedTo),
       parentVcId: asString(body.parentVcId),
       delegationDepth: typeof body.delegationDepth === 'number' ? body.delegationDepth : undefined,
+      attemptedVcId: asString(body.attemptedVcId),
+      attemptedParentVcId: asString(body.attemptedParentVcId),
+      attemptedDelegatedFrom: asString(body.attemptedDelegatedFrom),
       source: asString(body.source) ?? 'sdk',
     });
 
     return reply.status(201).send({ recorded: true, eventType, timestamp });
+  });
+
+  // Agent-side consent grants (spec §2a). The agent has first-hand knowledge the
+  // moment it stores the grant VC, and already knows this API's URL — so it
+  // posts here directly, mirroring /vp-verification above.
+  fastify.post('/consent-granted', async (request, reply) => {
+    requireAdmin(options.adminApiKey, request);
+    const body = request.body as RecordConsentGrantedBody;
+    const vcId = asString(body.vcId);
+    const agentDid = asString(body.agentDid);
+    if (!vcId || !agentDid) {
+      throw new HelixError(
+        ErrorCode.VALIDATION_ERROR,
+        'vcId and agentDid must be provided for consent audit entries',
+        400,
+      );
+    }
+
+    const timestamp = asString(body.grantedAt) ?? new Date().toISOString();
+    await options.auditLogger.log({
+      event: AuditEvents.CONSENT_GRANTED,
+      timestamp,
+      requestId: request.id,
+      vcId,
+      agentDid,
+      subjectDid: agentDid,
+      issuer: asString(body.issuer),
+      userDid: asString(body.userDid),
+      scopes: Array.isArray(body.scopes)
+        ? body.scopes.filter((scope): scope is string => typeof scope === 'string')
+        : undefined,
+      durability: asString(body.durability),
+      source: asString(body.source) ?? 'sdk',
+    });
+
+    return reply.status(201).send({ recorded: true, eventType: AuditEvents.CONSENT_GRANTED, timestamp });
+  });
+
+  // Generic activity-trail ingestion. Service Providers and agents both post
+  // here; one route with a fixed envelope rather than a bespoke route per event
+  // kind, so new event types cost nothing on the API side.
+  fastify.post('/events', async (request, reply) => {
+    requireAdmin(options.adminApiKey, request);
+    const body = request.body as RecordActivityEventBody;
+    const event = asString(body.event);
+    if (!isIngestibleEvent(event)) {
+      throw new HelixError(
+        ErrorCode.VALIDATION_ERROR,
+        `event must be one of: ${[...INGESTIBLE_EVENTS].sort().join(', ')}`,
+        400,
+      );
+    }
+
+    const agentDid = asString(body.agentDid);
+    const serviceDid = asString(body.serviceDid);
+    if (!agentDid && !serviceDid) {
+      throw new HelixError(
+        ErrorCode.VALIDATION_ERROR,
+        'at least one of agentDid or serviceDid must be provided',
+        400,
+      );
+    }
+
+    const timestamp = asString(body.timestamp) ?? new Date().toISOString();
+    await options.auditLogger.log({
+      event,
+      timestamp,
+      requestId: request.id,
+      correlationId: asString(body.correlationId),
+      agentDid,
+      // Keeps the agent the queryable subject where there is one, so activity
+      // rows line up with the DID-keyed events the rest of the log already has.
+      subjectDid: agentDid ?? serviceDid,
+      userDid: asString(body.userDid),
+      vcId: asString(body.vcId),
+      credentialType: asString(body.credentialType),
+      issuer: asString(body.issuer),
+      scopes: asStringArray(body.scopes),
+      validUntil: asString(body.validUntil),
+      credentialStatus: asString(body.credentialStatus),
+      serviceDid,
+      serviceName: asString(body.serviceName),
+      targetService: serviceDid,
+      toolName: asString(body.toolName),
+      requiredScope: asString(body.requiredScope),
+      effectiveScopes: asStringArray(body.effectiveScopes),
+      vpId: asString(body.vpId),
+      result: asString(body.result),
+      reason: asString(body.reason),
+      resultSummary: asString(body.resultSummary),
+      source: asString(body.source) ?? 'service',
+    });
+
+    return reply.status(201).send({ recorded: true, eventType: event, timestamp });
   });
 
   fastify.get('', async (request, reply) => {
@@ -191,6 +369,28 @@ const auditLogRoutes: FastifyPluginAsync<AuditLogRouteOptions> = async (fastify,
         delegatedTo: getDelegatedTo(record.payload),
         parentVcId: getDelegationParentVcId(record.payload),
         delegationDepth: getDelegationDepth(record.payload),
+        // Unverified rejection context — deliberately not merged into the
+        // verified delegation fields above.
+        attemptedVcId: asString(record.payload.attemptedVcId),
+        attemptedParentVcId: asString(record.payload.attemptedParentVcId),
+        attemptedDelegatedFrom: asString(record.payload.attemptedDelegatedFrom),
+        // Consent-grant fields (CONSENT_GRANTED).
+        issuer: asString(record.payload.issuer),
+        userDid: asString(record.payload.userDid),
+        scopes: asStringArray(record.payload.scopes),
+        durability: asString(record.payload.durability),
+        // Activity-trail fields (VC_PRESENTED, AUTHZ_*, TOOL_INVOKED).
+        correlationId: asString(record.payload.correlationId),
+        credentialType: asString(record.payload.credentialType),
+        validUntil: asString(record.payload.validUntil),
+        credentialStatus: asString(record.payload.credentialStatus),
+        serviceDid: asString(record.payload.serviceDid),
+        serviceName: asString(record.payload.serviceName),
+        toolName: asString(record.payload.toolName),
+        requiredScope: asString(record.payload.requiredScope),
+        effectiveScopes: asStringArray(record.payload.effectiveScopes),
+        reason: asString(record.payload.reason) ?? asString(record.payload.internalReason),
+        resultSummary: asString(record.payload.resultSummary),
       })),
     );
   });

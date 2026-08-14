@@ -1027,6 +1027,10 @@ textarea:focus {
   background: var(--accent);
 }
 
+.audit-entry.tone-blocked::before {
+  background: var(--warning);
+}
+
 .audit-entry-top {
   display: flex;
   align-items: baseline;
@@ -1053,6 +1057,99 @@ textarea:focus {
 
 .tone-accent .audit-event-type {
   color: var(--accent-strong);
+}
+
+.tone-blocked .audit-event-type {
+  color: var(--warning);
+}
+
+.audit-mark {
+  margin-right: 6px;
+}
+
+.audit-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.audit-count {
+  font-size: 12px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The one-line story of the event, in prose rather than field names. */
+.audit-summary {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.audit-reason {
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+
+/* Structured facts. A two-column grid so keys line up down the whole entry,
+   which is what makes a long trail scannable rather than a wall of text. */
+.audit-facts {
+  display: grid;
+  grid-template-columns: minmax(72px, max-content) 1fr;
+  gap: 3px 14px;
+  margin: 9px 0 0;
+}
+
+.audit-fact {
+  display: contents;
+}
+
+.audit-facts dt {
+  font-size: 11px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.audit-facts dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  word-break: break-all;
+}
+
+.audit-subject {
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.audit-subject a {
+  color: var(--ink-faint);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--hairline-strong);
+  transition: color 0.14s ease, border-color 0.14s ease;
+}
+
+.audit-subject a:hover {
+  color: var(--accent-strong);
+  border-bottom-color: var(--accent-strong);
+}
+
+@media (max-width: 640px) {
+  .audit-facts {
+    grid-template-columns: 1fr;
+    gap: 1px;
+  }
+
+  .audit-facts dt {
+    margin-top: 6px;
+  }
 }
 
 .audit-entry time {

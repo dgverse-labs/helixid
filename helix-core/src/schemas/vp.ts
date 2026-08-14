@@ -16,10 +16,12 @@ export const unsignedVPSchema = z.object({
   type: typeSchema,
   id: z.string().regex(/^vp:helix:/),
   holder: z.string().min(1),
-  verifiableCredential: z.array(z.record(z.unknown())).min(1),
+  verifiableCredential: z.array(z.record(z.unknown())).min(1).max(2),
   nonce: z.string().regex(/^[0-9a-f]{64}$/),
   expirationDate: z.string().datetime(),
-  delegatedBy: z.string().min(1),
+  // Optional per VP doc §3.1 — when the builder gets no userDid, the key is
+  // omitted from the wire payload entirely.
+  delegatedBy: z.string().min(1).optional(),
   targetService: z.string().min(1)
 });
 

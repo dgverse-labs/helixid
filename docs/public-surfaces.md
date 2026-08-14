@@ -30,11 +30,10 @@ Base paths are mounted from `helix-api/src/server.ts`.
 | `POST` | `/v1/onboard/verify` | Onboarding step 2: verify challenge and issue VC. | `challengeId`, `signature`, optional `didCreateSignature`. | `agentDid`, `vc`, `vcId`. |
 | `POST` | `/v1/challenges` | Issue user verification challenge. | `did`, `purpose: "user_verification"`. | Challenge id, nonce, expiry. |
 | `POST` | `/v1/challenges/:challengeId/verify` | Verify user challenge signature. | Challenge id, `signature`. | Verified DID and optional VC. |
-| `GET` | `/v1/services` | List registered services. | None. | Service records. |
-| `GET` | `/v1/services/:serviceName` | Fetch registered service. | Service name. | Service record. |
-| `POST` | `/v1/services` | Register service metadata. | `serviceName`, `displayName`, `verifiedDomain`, `publicKeyMultibase`, `apiEndpoint`, `metadata`. | Created service record. |
-| `GET` | `/v1/audit-log` | List audit events. | Optional `eventType`, `since`, `limit`. | Newest-first audit summaries, including derived `delegatedFrom`, `delegatedTo`, `parentVcId`, and `delegationDepth` for VP verification events when delegation context is available. Requires `x-admin-api-key`. |
-| `POST` | `/v1/audit-log/vp-verification` | Record API-backed VP verification audit entry. | `vpId`, `agentDid`, `result`, optional `targetService`, `reason`, `delegatedFrom`, `delegatedTo`, `delegationChain`, `verifiedAt`. | Audit entry recorded. Requires `x-admin-api-key`. |
+| `GET` | `/v1/audit-log` | List audit events. | Optional `eventType`, `since`, `limit`. | Newest-first audit summaries, including derived `delegatedFrom`, `delegatedTo`, `parentVcId`, and `delegationDepth` for VP verification events when delegation context is available; `attemptedVcId`, `attemptedParentVcId`, `attemptedDelegatedFrom` for rejections; `issuer`, `userDid`, `scopes`, `durability` for consent events. Requires `x-admin-api-key`. |
+| `POST` | `/v1/audit-log/vp-verification` | Record API-backed VP verification audit entry. | `vpId`, `agentDid`, `result`, optional `targetService`, `reason`, `delegatedFrom`, `delegatedTo`, `delegationChain`, `verifiedAt`, and on rejections `attemptedVcId`, `attemptedParentVcId`, `attemptedDelegatedFrom`. | Audit entry recorded. Requires `x-admin-api-key`. |
+| `POST` | `/v1/audit-log/consent-granted` | Record an agent-side `CONSENT_GRANTED` entry when an SP-issued delegation grant lands in the wallet. | `vcId`, `agentDid`, optional `issuer`, `userDid`, `scopes`, `durability`, `grantedAt`. | Audit entry recorded. Requires `x-admin-api-key`. |
+| `POST` | `/v1/audit-log/events` | Generic activity-trail ingestion, used by Service Providers and agents to record the identity → credential → presentation → verification → authorization → action → result chain. | `event` (one of `VC_ISSUED`, `VC_PRESENTED`, `VP_VERIFIED`, `VP_REJECTED`, `AUTHZ_GRANTED`, `AUTHZ_DENIED`, `TOOL_INVOKED`, `CONSENT_GRANTED`, `CONSENT_REVOKED`) plus at least one of `agentDid`/`serviceDid`; optional `correlationId`, `userDid`, `vcId`, `credentialType`, `issuer`, `scopes`, `validUntil`, `credentialStatus`, `serviceName`, `toolName`, `requiredScope`, `effectiveScopes`, `vpId`, `result`, `reason`, `resultSummary`, `timestamp`. | Audit entry recorded. Requires `x-admin-api-key`. |
 
 ## SDK Methods
 
@@ -47,7 +46,6 @@ API-backed client. Construct with no args for SDK-only mode, or with API base UR
 | Method | Purpose |
 | --- | --- |
 | `createDID(options)` | Generate keypair and call `POST /v1/dids`. |
-| `registerService(options)` | Register service metadata through `POST /v1/services`. |
 | `resolveDID(did, options?)` | Resolve DID through API, optionally live. |
 | `addServiceEndpoint(did, endpoint)` | Add DID service endpoint. |
 | `removeServiceEndpoint(did, endpointId)` | Remove DID service endpoint. |
@@ -69,8 +67,6 @@ API-backed client. Construct with no args for SDK-only mode, or with API base UR
 | `completeOnboarding(challengeId, nonce, passphrase, path)` | Sign challenge, verify onboarding, save wallet. |
 | `requestUserChallenge(userDid)` | Request user verification challenge. |
 | `verifyUserChallenge(challengeId, signature)` | Verify user challenge signature. |
-| `listServices()` | List service registry entries. |
-| `getService(serviceName)` | Fetch one service registry entry. |
 
 ### `AgentWallet`
 
@@ -107,7 +103,7 @@ Local encrypted wallet and credential store.
 
 | Export | Purpose |
 | --- | --- |
-| `new VPBuilder({ vc, holderDid, targetService, userDid }).sign(privateKeyHex, verificationMethodId)` | Build and sign a short-lived VP for a target service. |
+| `new VPBuilder({ credentials, holderDid, targetService, userDid? }).sign(privateKeyHex, verificationMethodId)` | Build and sign a short-lived VP for a target service. `credentials` carries 1–2 entries: exactly one agent-authority VC, plus at most one consent grant VC. `userDid` is optional; when omitted, `delegatedBy` is absent from the payload. |
 | `verifyVP(vp, options?)` | Verify VP signature, VC signature, expiry, revocation, target service, and delegation chain. |
 | `delegate(options, wallet)` | Create delegated VC from wallet credential with scoped-down privileges. |
 | `checkScope(result, requiredScope)` | Boolean scope check on `VerifyVPResult`. |
@@ -146,13 +142,36 @@ Options:
 - `AttachHelixVPOptions`: `walletPassphrase`, `walletFilePath`, `targetService`, optional `userDid`.
 - `MCPMiddlewareOptions`: optional `requiredScopes`, optional `allowSelfSigned`.
 
+## Consent Widget
+
+Package: `@helixid/widget`. Two entry points — the server module must not be
+bundled into the browser.
+
+| Export | Entry point | Purpose |
+| --- | --- | --- |
+| `resolveConsentScopes(options)` | `@helixid/widget/server` | Resolves the SP's full grantable-scope catalog: curated fallback ∪ MCP `tools/list` scopes ∪ `accept-terms`. Takes no requested-scope or agent input. |
+| `humanizeScope(scope)` | `@helixid/widget/server` | Last-resort label for a scope neither source describes (`book:flights` → `book flights`). |
+| `createConsentController(props)` | `@helixid/widget` | Headless consent-selection state: scope checkboxes with required handling, durability choice, fetch/error state, `onAccept`/`onDecline`. |
+| `DEFAULT_DURABILITY_OPTIONS` | `@helixid/widget` | The two durability choices offered by default. |
+
+Options and types:
+
+- `ResolveConsentScopesOptions`: optional `mcpServerUrl`, `curatedFallback` (SP-owned).
+- `HelixConsentWidgetProps`: `agentDid`, `agentName`, `userIdentifier`, `serviceDid`, exactly one of `scopeOptions`/`scopesEndpoint`, optional `agentAvatarUrl`, `durabilityOptions`, `defaultDurability`, plus `onAccept`/`onDecline`.
+- `ConsentSelection`: `scopes`, `durability`.
+
+The SP owns the scope-resolution route itself (HelixID ships only its
+contract): `GET <scopesEndpoint>?agentDid=<did>` → `{ scopeOptions }`, running
+under the consent page's own session auth. `agentDid` is carried for audit
+correlation only and must not change the returned catalog.
+
 ## CLI Commands
 
 Binary: `helix`.
 
 | Command | Purpose | Required options | Optional options |
 | --- | --- | --- | --- |
-| `helix did create` | Create DID and encrypted wallet. | `--method <web|hedera|key>`, `--wallet <path>` | `--domain <domain>`, `--network <testnet|previewnet|mainnet>` |
+| `helix did create` | Create DID and encrypted wallet. For `--method web`, also creates the SP's initial status list by default. | `--method <web|hedera|key>`, `--wallet <path>` | `--domain <domain>`, `--network <testnet|previewnet|mainnet>`, `--no-status-list`, `--status-list-length <bits>`, `--status-list-output <path>`, `--status-list-base-url <url>` |
 | `helix issuer init` | Validate issuer wallet readiness. | `--wallet <path>` | None. |
 | `helix status-list create` | Create signed BitstringStatusList credential file. | `--length <bits>`, `--output <path>`, `--base-url <url>`, `--wallet <path>` | None. |
 | `helix vc issue` | Issue `HelixAgentCredential` to agent DID. | `--agent-did <did>`, `--scopes <csv>`, `--expires <duration>`, `--status-list <path>`, `--base-url <url>`, `--wallet <path>` | `--output <path>`, `--max-delegation-depth <depth>` |

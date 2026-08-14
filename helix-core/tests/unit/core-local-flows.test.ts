@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildDIDDocument,
   buildDelegationVC,
+  buildStatusListCredential,
   clearDIDCache,
   createStatusList,
   generateKeyPair,
@@ -29,6 +30,12 @@ function mockJsonResponse(body: unknown, ok = true, status = 200): Response {
     status,
     json: async () => body,
   } as Response;
+}
+
+// Fetched status lists are schema-validated before use, so mocks must serve
+// the full StatusListCredential shape, not just an encodedList.
+function statusListBody(encodedList: string): unknown {
+  return buildStatusListCredential('list-1', encodedList, 'did:helix:issuer', 'https://issuer.example');
 }
 
 async function issuerSignedVC(
@@ -194,7 +201,7 @@ describe('VP builder and verifier', () => {
     );
 
     const vp = await new VPBuilder({
-      vc,
+      credentials: [vc],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -221,13 +228,11 @@ describe('VP builder and verifier', () => {
       holderDid,
     );
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      mockJsonResponse({
-        credentialSubject: { encodedList: createStatusList(8) },
-      }),
+      mockJsonResponse(statusListBody(createStatusList(8))),
     );
 
     const vp = await new VPBuilder({
-      vc,
+      credentials: [vc],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -255,12 +260,10 @@ describe('VP builder and verifier', () => {
       },
     );
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      mockJsonResponse({
-        credentialSubject: { encodedList: createStatusList(8) },
-      }),
+      mockJsonResponse(statusListBody(createStatusList(8))),
     );
     const vp = await new VPBuilder({
-      vc,
+      credentials: [vc],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -279,18 +282,55 @@ describe('VP builder and verifier', () => {
       holderDid,
     );
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      mockJsonResponse({
-        credentialSubject: { encodedList: setBit(createStatusList(8), 0, 1) },
-      }),
+      mockJsonResponse(statusListBody(setBit(createStatusList(8), 0, 1))),
     );
     expect(getBit(setBit(createStatusList(8), 0, 1), 0)).toBe(1);
     const vp = await new VPBuilder({
-      vc,
+      credentials: [vc],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
     }).sign(holder.privateKey, `${holderDid}#key-1`);
 
+    await expect(verifyVP(vp)).rejects.toMatchObject({ code: 'VC_REVOKED' });
+  });
+
+  it('treats a fetched status list that fails schema validation as revoked (fail closed)', async () => {
+    const holder = generateKeyPair();
+    const issuer = generateKeyPair();
+    const holderDid = didKey(holder.publicKey);
+    const issuerDid = didKey(issuer.publicKey);
+    const vc = await issuerSignedVC(
+      { did: issuerDid, privateKeyHex: issuer.privateKey },
+      holderDid,
+    );
+    const vp = await new VPBuilder({
+      credentials: [vc],
+      holderDid,
+      targetService: 'orders',
+      userDid: 'did:web:user.example',
+    }).sign(holder.privateKey, `${holderDid}#key-1`);
+
+    // Shape that predates validation: bare encodedList without the credential envelope.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockJsonResponse({ credentialSubject: { encodedList: createStatusList(8) } }),
+    );
+    await expect(verifyVP(vp)).rejects.toMatchObject({ code: 'VC_REVOKED' });
+
+    // Wrong statusPurpose inside an otherwise complete envelope.
+    const wrongPurpose = statusListBody(createStatusList(8)) as Record<string, unknown>;
+    (wrongPurpose['credentialSubject'] as Record<string, unknown>)['statusPurpose'] = 'suspension';
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(mockJsonResponse(wrongPurpose));
+    await expect(verifyVP(vp)).rejects.toMatchObject({ code: 'VC_REVOKED' });
+
+    // Response body that is not JSON at all.
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new SyntaxError('Unexpected token < in JSON');
+      },
+    } as unknown as Response);
     await expect(verifyVP(vp)).rejects.toMatchObject({ code: 'VC_REVOKED' });
   });
 
@@ -302,7 +342,7 @@ describe('VP builder and verifier', () => {
       { did: holderDid, privateKeyHex: holder.privateKey },
     );
     const vp = await new VPBuilder({
-      vc,
+      credentials: [vc],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -329,7 +369,7 @@ describe('VP builder and verifier', () => {
       },
     );
     const vp = await new VPBuilder({
-      vc,
+      credentials: [vc],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -344,15 +384,19 @@ describe('VP builder and verifier', () => {
     await expect(
       verifyVP({ ...vp, proof: { ...vp.proof, proofValue: base58btcEncode(new Uint8Array(64)) } }),
     ).rejects.toMatchObject({ code: 'VP_SIGNATURE_INVALID' });
+    // The builder now validates credential types up front, so an unsigned VC
+    // needs a well-typed shell to reach verifyVP's proof check.
     const unsignedVcVp = await new VPBuilder({
-      vc: { id: 'vc:unsigned' } as SignedVC,
+      credentials: [
+        { id: 'vc:unsigned', type: ['VerifiableCredential', 'HelixAgentCredential'] } as SignedVC,
+      ],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
     }).sign(holder.privateKey, `${holderDid}#key-1`);
     await expect(verifyVP(unsignedVcVp)).rejects.toMatchObject({ code: 'VP_INVALID_STRUCTURE' });
     const targetMismatchVp = await new VPBuilder({
-      vc: { ...vc, targetService: 'payments' } as SignedVC,
+      credentials: [{ ...vc, targetService: 'payments' } as SignedVC],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -385,20 +429,20 @@ describe('VP builder and verifier', () => {
       },
     );
     const vp = await new VPBuilder({
-      vc,
+      credentials: [vc],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
     }).sign(holder.privateKey, `${holderDid}#key-1`);
     const futureVp = await new VPBuilder({
-      vc: futureVC,
+      credentials: [futureVC],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
     }).sign(holder.privateKey, `${holderDid}#key-1`);
 
     const badVcSignatureVp = await new VPBuilder({
-      vc: { ...vc, proof: { ...vc.proof, proofValue: base58btcEncode(new Uint8Array(64)) } },
+      credentials: [{ ...vc, proof: { ...vc.proof, proofValue: base58btcEncode(new Uint8Array(64)) } }],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -424,7 +468,7 @@ describe('VP builder and verifier', () => {
     );
     const prefixedVC = { ...vc, proof: { ...vc.proof, proofValue: `z${vc.proof.proofValue}` } };
     const vp = await new VPBuilder({
-      vc: prefixedVC,
+      credentials: [prefixedVC],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -443,7 +487,7 @@ describe('VP builder and verifier', () => {
       holderDid,
     );
     const vp = await new VPBuilder({
-      vc,
+      credentials: [vc],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -453,9 +497,7 @@ describe('VP builder and verifier', () => {
     await expect(verifyVP(vp)).rejects.toMatchObject({ code: 'VC_REVOKED' });
 
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
-      mockJsonResponse({
-        credentialSubject: { encodedList: createStatusList(8) },
-      }),
+      mockJsonResponse(statusListBody(createStatusList(8))),
     );
     const badIndexVC = await issuerSignedVC(
       { did: issuerDid, privateKeyHex: issuer.privateKey },
@@ -472,7 +514,7 @@ describe('VP builder and verifier', () => {
       },
     );
     const badIndexVP = await new VPBuilder({
-      vc: badIndexVC,
+      credentials: [badIndexVC],
       holderDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -502,7 +544,7 @@ describe('VP builder and verifier', () => {
     );
 
     const vp = await new VPBuilder({
-      vc: child,
+      credentials: [child],
       holderDid: delegateDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -536,13 +578,11 @@ describe('VP builder and verifier', () => {
     );
     expect(child.credentialStatus).toBeUndefined();
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      mockJsonResponse({
-        credentialSubject: { encodedList: setBit(createStatusList(8), 0, 1) },
-      }),
+      mockJsonResponse(statusListBody(setBit(createStatusList(8), 0, 1))),
     );
 
     const vp = await new VPBuilder({
-      vc: child,
+      credentials: [child],
       holderDid: delegateDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -565,7 +605,7 @@ describe('VP builder and verifier', () => {
       { did: holderDid, privateKeyHex: holder.privateKey },
     );
     const vp = await new VPBuilder({
-      vc: child,
+      credentials: [child],
       holderDid: delegateDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -581,7 +621,7 @@ describe('VP builder and verifier', () => {
       proof: await createEd25519Proof(missingChainPayload, holder.privateKey, `${holderDid}#key-1`),
     } as SignedVC;
     const missingChainVp = await new VPBuilder({
-      vc: missingChainChild,
+      credentials: [missingChainChild],
       holderDid: delegateDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',
@@ -631,7 +671,7 @@ describe('VP builder and verifier', () => {
         proof: await createEd25519Proof(basePayload, signer.privateKey, `${signerDid}#key-1`),
       } as SignedVC;
       const vp = await new VPBuilder({
-        vc: brokenChild,
+        credentials: [brokenChild],
         holderDid: delegateDid,
         targetService: 'orders',
         userDid: 'did:web:user.example',
@@ -763,7 +803,7 @@ describe('delegation and self-issued VC helpers', () => {
     });
 
     const vp = await new VPBuilder({
-      vc: child,
+      credentials: [child],
       holderDid: delegateDid,
       targetService: 'orders',
       userDid: 'did:web:user.example',

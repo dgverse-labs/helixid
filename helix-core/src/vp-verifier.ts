@@ -1,7 +1,10 @@
 import { getBit, type StatusListCredential } from './status-list/index.js';
+import { StatusListCredentialSchema } from './status-list/schema.js';
 import { resolveDID } from './did-resolver.js';
 import { verifyEd25519Proof } from './proof.js';
 import {
+  ConsentGrantInvalidError,
+  ConsentGrantSubjectMismatchError,
   DelegationChainInvalidError,
   SelfSignedVCNotAllowedError,
   VCExpiredError,
@@ -12,19 +15,35 @@ import {
   VPInvalidStructureError,
   VPSignatureInvalidError,
 } from './errors/HelixError.js';
+import { DelegationGrantVCSchema, type DelegationGrantVC } from './schemas/delegation-grant.js';
 import type { DelegationLink } from './delegation.js';
 import type { SignedVC } from './schemas/vc.js';
 import type { SignedVP } from './schemas/vp.js';
 
+/**
+ * Resolves a status-list URL to its credential JSON. The default resolver
+ * fetches over HTTP; helix-api injects one that reads its own locally-hosted
+ * lists from its repository and falls back to HTTP for everything else.
+ * Whatever the resolver returns is still schema-validated before use.
+ */
+export type StatusListResolver = (statusListUrl: string) => Promise<StatusListCredential>;
+
 export interface VerifyVPOptions {
   expectedTargetService?: string;
   allowSelfSigned?: boolean;
+  statusListResolver?: StatusListResolver;
 }
 
 export interface VerifyVPResult {
   valid: boolean;
   agentDid: string;
   privilegeScopes: string[];
+  /**
+   * Enforcement scopes: equals privilegeScopes when no consent grant is
+   * present; the intersection of privilegeScopes and the grant's scopes when
+   * one is. checkScope()/requireScope() read this field.
+   */
+  effectiveScopes: string[];
   vpId: string;
   delegationChain: DelegationLink[];
   warning?: string;
@@ -43,9 +62,19 @@ type AgentSignedVC = SignedVC & {
   targetService?: string;
 };
 
+type GrantSignedVC = DelegationGrantVC & { proof: NonNullable<DelegationGrantVC['proof']> };
+
 function withoutProof<T extends { proof?: unknown }>(value: T): Omit<T, 'proof'> {
   const { proof, ...payload } = value;
   return payload;
+}
+
+function isAgentAuthorityType(vc: SignedVC): boolean {
+  return Array.isArray(vc.type) && (vc.type as string[]).includes('HelixAgentCredential');
+}
+
+function isGrantType(vc: SignedVC): boolean {
+  return Array.isArray(vc.type) && (vc.type as string[]).includes('DelegationGrantCredential');
 }
 
 function assertAgentVC(vc: SignedVC): asserts vc is AgentSignedVC {
@@ -55,12 +84,31 @@ function assertAgentVC(vc: SignedVC): asserts vc is AgentSignedVC {
   }
 }
 
+function assertGrantVC(vc: SignedVC): asserts vc is GrantSignedVC {
+  // Structural validation runs BEFORE the signature check (§9.3 G12) — a
+  // malformed grant must never reach DID resolution or proof verification.
+  const parsed = DelegationGrantVCSchema.safeParse(vc);
+  if (!parsed.success) {
+    throw new ConsentGrantInvalidError();
+  }
+  // proof is optional in the zod schema (pre-existing pattern) — an unsigned
+  // grant is structurally invalid for verification purposes.
+  if (!vc.proof) {
+    throw new ConsentGrantInvalidError('Consent grant credential is missing its proof');
+  }
+}
+
 function assertSubset(parentScopes: string[], childScopes: string[]): void {
   const parent = new Set(parentScopes);
   const denied = childScopes.find((scope) => !parent.has(scope));
   if (denied) {
     throw new DelegationChainInvalidError(`scope escalation: ${denied}`);
   }
+}
+
+function intersect(left: string[], right: string[]): string[] {
+  const rightSet = new Set(right);
+  return left.filter((scope) => rightSet.has(scope));
 }
 
 function toDelegationLink(vc: AgentSignedVC): DelegationLink {
@@ -95,19 +143,62 @@ function verifyValidityWindow(vc: SignedVC): void {
   }
 }
 
-async function verifyRevocation(vc: SignedVC): Promise<void> {
-  // Delegated children normally omit credentialStatus and inherit revocation
-  // from the status-bearing ancestors verified as part of their chain.
-  if (!vc.credentialStatus) return;
-  const response = await fetch(vc.credentialStatus.statusListCredential, {
+/**
+ * The default resolver: plain HTTP fetch. Exported so injected resolvers
+ * (helix-api's local-repo fast path) can delegate to it for URLs they do not
+ * own.
+ */
+export async function fetchStatusList(statusListUrl: string): Promise<StatusListCredential> {
+  const response = await fetch(statusListUrl, {
     headers: { accept: 'application/vc+json, application/json' },
   });
   if (!response.ok) {
     throw new VCRevokedError('Unable to verify credential revocation status');
   }
-  const statusList = await response.json() as StatusListCredential;
+  try {
+    return (await response.json()) as StatusListCredential;
+  } catch {
+    throw new VCRevokedError('Status list response is not valid JSON');
+  }
+}
+
+async function verifyRevocation(vc: SignedVC, options: VerifyVPOptions): Promise<void> {
+  // Delegated children normally omit credentialStatus and inherit revocation
+  // from the status-bearing ancestors verified as part of their chain.
+  if (!vc.credentialStatus) return;
+
+  const resolveStatusList = options.statusListResolver ?? fetchStatusList;
+  let raw: unknown;
+  try {
+    raw = await resolveStatusList(vc.credentialStatus.statusListCredential);
+  } catch (error) {
+    // Fail closed regardless of how the resolver failed; preserve the
+    // revocation-path error class callers already handle.
+    throw error instanceof VCRevokedError
+      ? error
+      : new VCRevokedError('Unable to verify credential revocation status');
+  }
+
+  // Fail closed: a list that does not match the shared StatusListCredential
+  // shape is treated as revoked/untrusted, never trusted for getBit(). This
+  // applies identically to the default HTTP path and any injected resolver.
+  const parsed = StatusListCredentialSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new VCRevokedError('Status list credential failed schema validation');
+  }
   const index = Number(vc.credentialStatus.statusListIndex);
-  if (!Number.isInteger(index) || getBit(statusList.credentialSubject.encodedList, index) === 1) {
+  if (!Number.isInteger(index)) {
+    throw new VCRevokedError();
+  }
+  let bit: 0 | 1;
+  try {
+    bit = getBit(parsed.data.credentialSubject.encodedList, index);
+  } catch {
+    // Unreadable encodedList (bad base64/gzip, index out of bounds) — fail
+    // closed instead of letting a plain Error escape verifyVP().
+    throw new VCRevokedError('Status list entry could not be read');
+  }
+  if (bit === 1) {
     throw new VCRevokedError();
   }
 }
@@ -121,7 +212,7 @@ async function verifyCredential(vc: SignedVC, options: VerifyVPOptions): Promise
     throw new SelfSignedVCNotAllowedError();
   }
   if (!selfSigned || vc.credentialStatus) {
-    await verifyRevocation(vc);
+    await verifyRevocation(vc, options);
   }
   return selfSigned ? 'self-signed credential, not trusted in production' : undefined;
 }
@@ -197,7 +288,24 @@ export async function verifyVP(
     throw new VPSignatureInvalidError();
   }
 
-  const vc = vp.verifiableCredential[0] as SignedVC | undefined;
+  const entries = vp.verifiableCredential as SignedVC[];
+  if (entries.length < 1 || entries.length > 2) {
+    throw new VPInvalidStructureError('VP must carry 1 or 2 credentials');
+  }
+
+  const agentEntries = entries.filter(isAgentAuthorityType);
+  const grantEntries = entries.filter(isGrantType);
+  if (
+    agentEntries.length !== 1 ||
+    grantEntries.length > 1 ||
+    agentEntries.length + grantEntries.length !== entries.length
+  ) {
+    throw new VPInvalidStructureError(
+      'VP credential array must contain exactly one agent-authority credential and at most one consent grant',
+    );
+  }
+
+  const vc = agentEntries[0] as SignedVC;
   if (!vc?.proof) {
     throw new VPInvalidStructureError('VP does not contain a signed VC');
   }
@@ -214,10 +322,31 @@ export async function verifyVP(
     : await verifyCredential(vc, options);
   const delegationChain = await verifyDelegationChain(vc, options);
 
+  let effectiveScopes = vc.credentialSubject.privilegeScopes;
+
+  if (grantEntries.length === 1) {
+    const grant = grantEntries[0] as SignedVC;
+    assertGrantVC(grant);
+    await verifyCredential(grant, options);
+
+    const chainDids = delegationChain.map((link) => link.subject);
+    const agentMatches =
+      grant.credentialSubject.id === vp.holder || chainDids.includes(grant.credentialSubject.id);
+    // Plain string equality — DID or email, either form (§2.6). A VP with no
+    // delegatedBy at all can never satisfy the user-match rule (§9.3 G6).
+    const userMatches = grant.credentialSubject.userDid === vp.delegatedBy;
+    if (!agentMatches || !userMatches) {
+      throw new ConsentGrantSubjectMismatchError();
+    }
+
+    effectiveScopes = intersect(effectiveScopes, grant.credentialSubject.scopes);
+  }
+
   const result: VerifyVPResult = {
     valid: true,
     agentDid: vc.credentialSubject.id,
     privilegeScopes: vc.credentialSubject.privilegeScopes,
+    effectiveScopes,
     vpId: vp.id,
     delegationChain,
   };

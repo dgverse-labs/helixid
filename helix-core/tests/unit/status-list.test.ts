@@ -88,7 +88,10 @@ describe('BitstringStatusList', () => {
     const list = createStatusList(100);
     const cred = buildStatusListCredential('list-1', list, 'did:helix:issuer', 'http://api.test');
     
-    expect(cred['@context']).toContain('https://www.w3.org/ns/credentials/status/v1');
+    expect(cred['@context']).toEqual([
+      'https://www.w3.org/ns/credentials/v2',
+      'https://helixid.io/contexts/v1',
+    ]);
     expect(cred.type).toContain('BitstringStatusListCredential');
     expect(cred.credentialSubject.encodedList).toBe(list);
   });

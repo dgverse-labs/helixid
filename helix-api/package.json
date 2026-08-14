@@ -28,7 +28,7 @@
     "@fastify/sensible": "^6.0.0",
     "@fastify/swagger": "^9.7.0",
     "@fastify/swagger-ui": "^5.2.6",
-    "@helixid/core": "^0.1.0",
+    "@helixid/core": "workspace:^",
     "@helixid/did-hedera": "^0.1.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.7.0",

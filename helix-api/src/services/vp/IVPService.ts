@@ -1,23 +1,9 @@
-import type { SignedVP, UnsignedVP } from '@helixid/core';
-
-export interface VPTemplateParams {
-  agentDid: string;
-  userDid: string;
-  targetService: string;
-  vcType: string;
-  vcId?: string;
-}
-
-export interface VPTemplateResult {
-  unsignedVP: UnsignedVP;
-  vpId: string;
-  expiresAt: string;
-}
+import type { SignedVP } from '@helixid/core';
 
 export interface VPVerificationResult {
   valid: true;
   agentDid: string;
-  userDid: string;
+  userDid?: string;
   targetService: string;
   verifiedAt: string;
   session?: {
@@ -28,6 +14,5 @@ export interface VPVerificationResult {
 }
 
 export interface IVPService {
-  generateVPTemplate(params: VPTemplateParams, requestId: string): Promise<VPTemplateResult>;
   verifyVP(signedVP: SignedVP, requestId: string, options?: { issueSession?: boolean }): Promise<VPVerificationResult>;
 }

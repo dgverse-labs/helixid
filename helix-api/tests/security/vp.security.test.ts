@@ -1,265 +1,252 @@
-import { describe, expect, it, beforeEach, afterAll, beforeAll } from 'vitest';
-import { randomBytes } from 'node:crypto';
-import Fastify, { FastifyInstance } from 'fastify';
-import { getPublicKey } from '@noble/ed25519';
-import { base58btcEncode, hashCanonicalPayload, signBytes, type AuditEvent, type AuditEventType } from '@helixid/core';
+// Copyright 2026 DgVerse LLP
+// §9.4 A1: the G1–G12 grant matrix run against POST /v1/vp/verify, confirming
+// the route is a genuine thin wrapper over core verifyVP() — same accept/
+// reject outcomes, with the API's uniform opaque failure envelope.
 
-import { VPRepository, type VpIdRecord } from '../../src/repositories/vp.repository.js';
-import { ServiceRegistryRepository } from '../../src/repositories/service-registry.repository.js';
-import { AgentRepository } from '../../src/repositories/agent.repository.js';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import Fastify, { type FastifyInstance } from 'fastify';
+import { buildDelegationVC, type SignedVP } from '@helixid/core';
 import { VPService } from '../../src/services/vp/vp.service.js';
-import { MockDIDService } from '../mocks/MockDIDService.js';
-import { MockVCService } from '../mocks/MockVCService.js';
 import vpRoutes from '../../src/routes/vp/index.js';
+import { TestAuditLogger } from '../utils/TestAuditLogger.js';
+import {
+  API_BASE_URL,
+  OWN_LIST_ID,
+  SP_LIST_URL,
+  USER_DID,
+  buildSignedVP,
+  makeActor,
+  makeAgentVC,
+  makeGrant,
+  makeOwnStatusList,
+  makeSpStatusList,
+  makeVcServiceStub,
+  signVC,
+  stubFetch,
+  type Actor,
+} from '../utils/vp-fixtures.js';
 
-class TestAuditLogger {
-  public readonly events: Array<{ event: AuditEvent; payload: Record<string, unknown> }> = [];
+const USER_EMAIL = 'user@example.com';
 
-  log(event: AuditEvent): void;
-  log(event: AuditEventType, payload: Record<string, unknown> & { requestId: string; timestamp?: string }): void;
-  log(
-    event: AuditEvent | AuditEventType,
-    payload?: Record<string, unknown> & { requestId: string; timestamp?: string },
-  ): void {
-    if (typeof event === 'string') {
-      this.events.push({
-        event: {
-          event,
-          timestamp: payload?.timestamp ?? new Date().toISOString(),
-          requestId: payload?.requestId ?? 'test-request',
-          ...payload,
-        },
-        payload: payload ?? {},
-      });
-      return;
-    }
-    this.events.push({ event, payload: event });
-  }
-}
-
-class InMemoryVPRepository extends VPRepository {
-  private readonly records = new Map<string, VpIdRecord>();
-
-  override async create(data: Omit<VpIdRecord, 'consumedAt'>): Promise<VpIdRecord> {
-    const record = { ...data, consumedAt: null };
-    this.records.set(record.vpId, record);
-    return record;
-  }
-
-  override async findByVpId(vpId: string): Promise<VpIdRecord | null> {
-    return this.records.get(vpId) ?? null;
-  }
-
-  override async consumeAtomically(vpId: string): Promise<boolean> {
-    const record = this.records.get(vpId);
-    if (!record || record.consumedAt) return false;
-    record.consumedAt = new Date();
-    return true;
-  }
-
-  expire(vpId: string): void {
-    const record = this.records.get(vpId);
-    if (record) record.expiresAt = new Date(Date.now() - 1000);
-  }
-
-  clear(): void {
-    this.records.clear();
-  }
-}
-
-describe('VP security API', () => {
+describe('POST /v1/vp/verify — grant matrix (§9.4 A1)', () => {
   let app: FastifyInstance;
-  let didService: MockDIDService;
-  let vcService: MockVCService;
-  let auditLogger: TestAuditLogger;
-  let repository: InMemoryVPRepository;
-  let service: VPService;
-
-  const privateKeyHex = randomBytes(32).toString('hex');
-  const wrongPrivateKeyHex = randomBytes(32).toString('hex');
-  let publicKeyHex = '';
-  const defaultDid = 'did:hedera:testnet:agent-sec';
+  let issuer: Actor;
 
   beforeAll(async () => {
-    publicKeyHex = Buffer.from(await getPublicKey(privateKeyHex)).toString('hex');
+    issuer = makeActor();
     app = Fastify({ logger: false });
-    
-    didService = new MockDIDService({
-      id: defaultDid,
-      verificationMethod: [{ id: `${defaultDid}#key-1`, type: 'Ed25519VerificationKey2020', publicKeyHex }]
-    });
-    vcService = new MockVCService();
-    auditLogger = new TestAuditLogger();
-    repository = new InMemoryVPRepository();
-    const agentRepository = new AgentRepository();
-    await agentRepository.createService({
-      serviceName: 'amazon',
-      displayName: 'Amazon',
-      verifiedDomain: 'https://amazon.com',
-      publicKeyMultibase: 'z123',
-      apiEndpoint: 'https://api.amazon.com/helix/verify',
-      metadata: '{}',
-    });
-
-    service = new VPService(
-      repository,
-      didService,
-      vcService,
-      new ServiceRegistryRepository(agentRepository),
-      auditLogger,
-      300,
-      { signingKey: privateKeyHex, issuerDid: defaultDid, ttlSeconds: 600 }
+    const service = new VPService(
+      makeVcServiceStub({ [OWN_LIST_ID]: makeOwnStatusList(issuer) }),
+      new TestAuditLogger(),
+      API_BASE_URL,
+      { signingKey: issuer.privateKeyHex, issuerDid: issuer.did, ttlSeconds: 600 },
     );
     await app.register(vpRoutes, { prefix: '/v1/vp', vpService: service });
     await app.ready();
-    repository.clear();
   });
 
   afterAll(async () => {
     await app.close();
   });
 
-  beforeEach(async () => {
-    auditLogger.events.length = 0;
-    didService.setShouldThrow(false);
-    vcService.setStatus('active');
-    vcService.setActiveVC(await signTestVC({
-      id: 'vc:test:sec1',
-      type: ['VerifiableCredential', 'HelixAgentCredential'],
-      issuer: defaultDid,
-      validUntil: new Date(Date.now() + 60_000).toISOString(),
-      credentialStatus: {
-        statusListCredential: 'http://localhost:3000/v1/status-list/helix-status-list-1',
-        statusListIndex: '0',
-      },
-      credentialSubject: { privilegeScopes: ['read'] }
-    }));
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
-  async function signTestVC(vc: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const signatureHex = await signBytes(hashCanonicalPayload(vc), privateKeyHex);
-    return {
-      ...vc,
-      proof: {
-        type: 'Ed25519Signature2020',
-        created: new Date().toISOString(),
-        verificationMethod: `${defaultDid}#key-1`,
-        proofPurpose: 'assertionMethod',
-        proofValue: base58btcEncode(Buffer.from(signatureHex, 'hex')),
-      },
-    };
+  async function post(signedVP: SignedVP, session = false) {
+    return app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session } });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const getSignedVP = async (mutateTmpl?: (t: any) => any, useWrongKey = false): Promise<any> => {
-    const template = await service.generateVPTemplate(
-      {
-        agentDid: defaultDid,
-        userDid: 'did:hedera:testnet:user1',
-        targetService: 'amazon',
-        vcType: 'HelixAgentCredential',
-      },
-      'req_security',
-    );
-    let tmpl = template.unsignedVP;
-    if (mutateTmpl) tmpl = mutateTmpl(tmpl);
-    
-    const signatureHex = await signBytes(hashCanonicalPayload(tmpl), useWrongKey ? wrongPrivateKeyHex : privateKeyHex);
-    return {
-      ...tmpl,
-      proof: {
-        type: 'Ed25519Signature2020',
-        created: new Date().toISOString(),
-        verificationMethod: `${defaultDid}#key-1`,
-        proofPurpose: 'assertionMethod',
-        proofValue: base58btcEncode(Buffer.from(signatureHex, 'hex')),
-      },
-    };
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const expectOpaqueFailure = (response: any): void => {
+  function expectOpaqueFailure(response: { statusCode: number; json: () => { error: { code: string } } }): void {
     expect(response.statusCode).toBe(400);
     expect(response.json().error.code).toBe('VP_VERIFICATION_FAILED');
-  };
+  }
 
-  it('rejects replay same signed VP twice (first 200, second 400)', async () => {
-    const signedVP = await getSignedVP();
+  it('G1: valid agent+grant passes with 200', async () => {
+    const holder = makeActor();
+    const sp = makeActor();
+    const spList = makeSpStatusList(sp);
+    stubFetch({ [SP_LIST_URL]: spList });
+    const vc = await makeAgentVC(issuer, holder.did, ['read:orders', 'book:flights']);
+    const grant = await makeGrant(sp, holder.did, USER_DID, ['book:flights'], spList);
 
-    const res1 = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } });
-    expect(res1.statusCode).toBe(200);
-
-    const res2 = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } });
-    expectOpaqueFailure(res2);
+    const response = await post(await buildSignedVP([vc, grant], holder, USER_DID));
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ valid: true, agentDid: holder.did });
   });
 
-  it('handles concurrent replay reliably (Promise.all -> one 200, one 400)', async () => {
-    const signedVP = await getSignedVP();
+  it('G2: grant issued to an ancestor DID passes for the delegated sub-agent', async () => {
+    const parent = makeActor();
+    const sub = makeActor();
+    const sp = makeActor();
+    const spList = makeSpStatusList(sp);
+    stubFetch({ [SP_LIST_URL]: spList });
+    const parentVC = await makeAgentVC(issuer, parent.did, ['book:flights']);
+    const childVC = await buildDelegationVC(
+      { to: sub.did, scopes: ['book:flights'], expiresIn: 3600, fromVC: parentVC },
+      parent,
+    );
+    const grant = await makeGrant(sp, parent.did, USER_DID, ['book:flights'], spList);
 
-    const [res1, res2] = await Promise.all([
-      app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } }),
-      app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } })
-    ]);
-
-    const statuses = [res1.statusCode, res2.statusCode].sort((a,b) => a - b);
-    expect(statuses).toEqual([200, 400]);
-
-    if (res1.statusCode === 400) expectOpaqueFailure(res1);
-    if (res2.statusCode === 400) expectOpaqueFailure(res2);
+    const response = await post(await buildSignedVP([childVC, grant], sub, USER_DID));
+    expect(response.statusCode).toBe(200);
   });
 
-  it('rejects tampered VP payload', async () => {
-    const signedVP = await getSignedVP();
-    signedVP.targetService = 'tampered'; // Modify after sign
-    
-    const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } });
-    expectOpaqueFailure(res);
+  it('G3: grant for an unrelated agent DID is rejected', async () => {
+    const holder = makeActor();
+    const stranger = makeActor();
+    const sp = makeActor();
+    const spList = makeSpStatusList(sp);
+    stubFetch({ [SP_LIST_URL]: spList });
+    const vc = await makeAgentVC(issuer, holder.did);
+    const grant = await makeGrant(sp, stranger.did, USER_DID, ['book:flights'], spList);
+
+    expectOpaqueFailure(await post(await buildSignedVP([vc, grant], holder, USER_DID)));
   });
 
-  it('rejects wrong private key signature', async () => {
-    const signedVP = await getSignedVP(undefined, true);
-    const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } });
-    expectOpaqueFailure(res);
+  it('G4: user-match failure is rejected', async () => {
+    const holder = makeActor();
+    const sp = makeActor();
+    const spList = makeSpStatusList(sp);
+    stubFetch({ [SP_LIST_URL]: spList });
+    const vc = await makeAgentVC(issuer, holder.did);
+    const grant = await makeGrant(sp, holder.did, 'did:web:other-user.example', ['book:flights'], spList);
+
+    expectOpaqueFailure(await post(await buildSignedVP([vc, grant], holder, USER_DID)));
   });
 
-  it('rejects expired VP (DB expiry forced)', async () => {
-    const signedVP = await getSignedVP();
-    repository.expire(signedVP.id);
+  it('G5: email-form user identifier matches on both sides', async () => {
+    const holder = makeActor();
+    const sp = makeActor();
+    const spList = makeSpStatusList(sp);
+    stubFetch({ [SP_LIST_URL]: spList });
+    const vc = await makeAgentVC(issuer, holder.did);
+    const grant = await makeGrant(sp, holder.did, USER_EMAIL, ['book:flights'], spList);
 
-    const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } });
-    expectOpaqueFailure(res);
+    const response = await post(await buildSignedVP([vc, grant], holder, USER_EMAIL));
+    expect(response.statusCode).toBe(200);
   });
 
-  it('rejects revoked VC (mock status)', async () => {
-    const signedVP = await getSignedVP();
-    vcService.setStatus('revoked');
+  it('G6: grant present but no delegatedBy on the VP is rejected', async () => {
+    const holder = makeActor();
+    const sp = makeActor();
+    const spList = makeSpStatusList(sp);
+    stubFetch({ [SP_LIST_URL]: spList });
+    const vc = await makeAgentVC(issuer, holder.did);
+    const grant = await makeGrant(sp, holder.did, USER_DID, ['book:flights'], spList);
 
-    const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } });
-    expectOpaqueFailure(res);
+    expectOpaqueFailure(await post(await buildSignedVP([vc, grant], holder)));
   });
 
-  it('rejects expired VC validUntil', async () => {
-    vcService.setActiveVC(await signTestVC({
-      id: 'vc:test:expired',
-      type: ['VerifiableCredential', 'HelixAgentCredential'],
-      issuer: defaultDid,
-      validUntil: new Date(Date.now() - 60_000).toISOString(),
-      credentialStatus: {
-        statusListCredential: 'http://localhost:3000/v1/status-list/helix-status-list-1',
-        statusListIndex: '0',
+  it('G7: expired grant rejects the whole VP', async () => {
+    const holder = makeActor();
+    const sp = makeActor();
+    const spList = makeSpStatusList(sp);
+    stubFetch({ [SP_LIST_URL]: spList });
+    const vc = await makeAgentVC(issuer, holder.did);
+    const grant = await makeGrant(sp, holder.did, USER_DID, ['book:flights'], spList);
+    const { proof: _p, ...payload } = grant;
+    const expired = await signVC(
+      { ...payload, validUntil: new Date(Date.now() - 1000).toISOString() },
+      sp,
+    );
+
+    expectOpaqueFailure(await post(await buildSignedVP([vc, expired], holder, USER_DID)));
+  });
+
+  it('G8: revoked grant rejects the whole VP', async () => {
+    const holder = makeActor();
+    const sp = makeActor();
+    const spList = makeSpStatusList(sp);
+    const vc = await makeAgentVC(issuer, holder.did);
+    const grant = await makeGrant(sp, holder.did, USER_DID, ['book:flights'], spList);
+    const { revokeGrant } = await import('@helixid/core');
+    const revokedList = await revokeGrant(spList, sp, { vc: grant });
+    stubFetch({ [SP_LIST_URL]: revokedList });
+
+    expectOpaqueFailure(await post(await buildSignedVP([vc, grant], holder, USER_DID)));
+  });
+
+  it('G9: tampered grant signature rejects the whole VP', async () => {
+    const holder = makeActor();
+    const sp = makeActor();
+    const spList = makeSpStatusList(sp);
+    stubFetch({ [SP_LIST_URL]: spList });
+    const vc = await makeAgentVC(issuer, holder.did);
+    const grant = await makeGrant(sp, holder.did, USER_DID, ['book:flights'], spList);
+    const tampered = {
+      ...grant,
+      credentialSubject: {
+        ...(grant.credentialSubject as Record<string, unknown>),
+        scopes: ['admin:everything'],
       },
-      credentialSubject: { privilegeScopes: ['read'] },
-    }));
-    const signedVP = await getSignedVP();
+    };
 
-    const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } });
-    expectOpaqueFailure(res);
+    expectOpaqueFailure(await post(await buildSignedVP([vc, tampered as never], holder, USER_DID)));
   });
 
-  it('rejects unknown vpId', async () => {
-    const signedVP = await getSignedVP((t) => ({ ...t, id: 'vp:helix:fake123' }));
-    
-    const res = await app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session: true } });
-    expectOpaqueFailure(res);
+  it('G10/G11: session scopes reflect the intersection in both directions', async () => {
+    const holder = makeActor();
+    const sp = makeActor();
+    const spList = makeSpStatusList(sp);
+    stubFetch({ [SP_LIST_URL]: spList });
+
+    // G10: grant superset — agent ceiling applies.
+    const narrowVC = await makeAgentVC(issuer, holder.did, ['book:flights']);
+    const wideGrant = await makeGrant(sp, holder.did, USER_DID, ['book:flights', 'admin:everything'], spList);
+    const supersetResponse = await post(await buildSignedVP([narrowVC, wideGrant], holder, USER_DID), true);
+    expect(supersetResponse.statusCode).toBe(200);
+    const supersetToken = supersetResponse.json().session.token as string;
+    const supersetScopes = JSON.parse(
+      Buffer.from(supersetToken.split('.')[1] ?? '', 'base64url').toString('utf8'),
+    )['scopes'];
+    expect(supersetScopes).toEqual(['book:flights']);
+
+    // G11: grant narrower — grant is the ceiling.
+    const wideVC = await makeAgentVC(issuer, holder.did, ['read:orders', 'book:flights']);
+    const narrowGrant = await makeGrant(sp, holder.did, USER_DID, ['book:flights'], spList);
+    const subsetResponse = await post(await buildSignedVP([wideVC, narrowGrant], holder, USER_DID), true);
+    expect(subsetResponse.statusCode).toBe(200);
+    const subsetToken = subsetResponse.json().session.token as string;
+    const subsetScopes = JSON.parse(
+      Buffer.from(subsetToken.split('.')[1] ?? '', 'base64url').toString('utf8'),
+    )['scopes'];
+    expect(subsetScopes).toEqual(['book:flights']);
+  });
+
+  it('G12: structurally malformed grant is rejected', async () => {
+    const holder = makeActor();
+    const sp = makeActor();
+    stubFetch({});
+    const vc = await makeAgentVC(issuer, holder.did);
+    const malformed = await signVC(
+      {
+        '@context': ['https://www.w3.org/ns/credentials/v2', 'https://helixid.io/contexts/v1'],
+        id: 'vc:helix:grant:malformed',
+        type: ['VerifiableCredential', 'DelegationGrantCredential'],
+        issuer: sp.did,
+        validFrom: new Date(Date.now() - 60_000).toISOString(),
+        validUntil: new Date(Date.now() + 60_000).toISOString(),
+        credentialSubject: {
+          id: holder.did,
+          type: 'DelegationGrant',
+          userDid: USER_DID,
+          durability: 'standing',
+        },
+      },
+      sp,
+    );
+
+    expectOpaqueFailure(await post(await buildSignedVP([vc, malformed], holder, USER_DID)));
+  });
+
+  it('failure responses stay opaque for non-grant failures too (expired VP)', async () => {
+    const holder = makeActor();
+    const vc = await makeAgentVC(issuer, holder.did);
+    const vp = await buildSignedVP([vc], holder, USER_DID);
+
+    expectOpaqueFailure(
+      await post({ ...vp, expirationDate: new Date(Date.now() - 1000).toISOString() }),
+    );
   });
 });

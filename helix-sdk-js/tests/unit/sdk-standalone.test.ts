@@ -23,6 +23,7 @@ describe('standalone SDK exports', () => {
       valid: true,
       agentDid: 'did:key:zAgent',
       privilegeScopes: ['read:orders'],
+      effectiveScopes: ['read:orders'],
       vpId: 'vp:helix:test',
       delegationChain: [],
     };
@@ -30,6 +31,12 @@ describe('standalone SDK exports', () => {
     expect(checkScope(result, 'read:orders')).toBe(true);
     expect(checkScope(result, 'write:orders')).toBe(false);
     expect(() => requireScope(result, 'write:orders')).toThrow('Required scope: write:orders');
+
+    // Enforcement reads effectiveScopes: a grant intersection narrower than
+    // privilegeScopes must gate the scope check (§2.7).
+    const narrowed: VerifyVPResult = { ...result, effectiveScopes: [] };
+    expect(checkScope(narrowed, 'read:orders')).toBe(false);
+    expect(() => requireScope(narrowed, 'read:orders')).toThrow('Required scope: read:orders');
   });
 
   it('delegates from wallet.credentials[0] by default', async () => {

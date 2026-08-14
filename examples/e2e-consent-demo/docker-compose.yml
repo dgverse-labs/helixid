@@ -1,0 +1,177 @@
+# examples/e2e-consent-demo — two independent Service Providers, one agent,
+# and a standing grant that survives to the second booking.
+#
+#   cp .env.example .env
+#   docker compose up --build
+#
+# Then open:
+#   Airline consent : http://localhost:4101/consent
+#   Hotel consent   : http://localhost:4102/consent
+#   Console (audit) : http://localhost:8080   (login admin / admin)
+#
+# Reset everything (fresh wallets + DB):  docker compose down -v
+#
+# Startup order: helix-api -> seed -> sp-airline + sp-hotel -> agent
+name: helixid-consent-demo
+
+x-node-service: &node-service
+  build:
+    context: ../..
+    dockerfile: examples/e2e-consent-demo/docker/node.Dockerfile
+  restart: unless-stopped
+  working_dir: /repo/examples/e2e-consent-demo
+
+services:
+  # ── HelixID API — issues the agent's authority credential ────────────────
+  # DID_METHOD=key so the platform issuer DID resolves offline in every
+  # container. The two SPs are did:web and resolve over the compose network.
+  helix-api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: "3000"
+      HELIX_STORAGE_ADAPTER: sqlite
+      HELIX_SQLITE_PATH: /app/data/helixid.sqlite
+      API_BASE_URL: http://helix-api:3000
+      DID_METHOD: key
+      HELIX_ISSUER_DID: did:key:z6MkgHKqmKyCQroyo3RVx3gM1LXwUNwzZkynmsqwhYNqNjdn
+      HELIX_SIGNING_KEY: 11deb8f4b8f2e1c0a9d7c6b5a4938271605f4e3d2c1b0a998877665544332211
+      HELIX_ADMIN_API_KEY: ${HELIX_ADMIN_API_KEY:-dev-admin-key-change-in-production}
+      AUDIT_LOG_DESTINATION: both
+    volumes:
+      - helix_data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # ── Console (audit UI) ───────────────────────────────────────────────────
+  console:
+    build:
+      context: ../..
+      dockerfile: examples/e2e-travel-concierge/docker/console.Dockerfile
+    ports:
+      - "8080:80"
+    environment:
+      API_BASE_URL: http://localhost:8080
+      ADMIN_API_KEY: ${HELIX_ADMIN_API_KEY:-dev-admin-key-change-in-production}
+      CONSOLE_USERNAME: admin
+      CONSOLE_PASSWORD: admin
+    depends_on:
+      helix-api:
+        condition: service_healthy
+
+  # ── Seeder: provisions both SP did:web identities + status lists, then
+  #    enrolls the Travel Planner Agent. Runs once and exits 0. ─────────────
+  seed:
+    <<: *node-service
+    restart: "no"
+    command: ["pnpm", "run", "setup"]
+    environment:
+      HELIX_API_URL: http://helix-api:3000
+      HELIX_ADMIN_API_KEY: ${HELIX_ADMIN_API_KEY:-dev-admin-key-change-in-production}
+      WALLETS_DIR: /wallets
+      WALLET_PASSPHRASE: ${WALLET_PASSPHRASE:-demo-passphrase}
+      DEMO_HOST: ${DEMO_HOST:-localhost}
+      CONSOLE_URL: http://localhost:8080
+    volumes:
+      - wallets:/wallets
+    depends_on:
+      helix-api:
+        condition: service_healthy
+
+  # ── Airline SP: book:flights, modify:booking ─────────────────────────────
+  sp-airline:
+    <<: *node-service
+    command: ["pnpm", "run", "sp:airline"]
+    ports:
+      - "4101:4101"
+    environment:
+      # Where this SP reports its own verification/authorization decisions.
+      # Best-effort: unreachable audit never fails a tool call.
+      HELIX_API_URL: http://helix-api:3000
+      HELIX_ADMIN_API_KEY: ${HELIX_ADMIN_API_KEY:-dev-admin-key-change-in-production}
+      WALLETS_DIR: /wallets
+      WALLET_PASSPHRASE: ${WALLET_PASSPHRASE:-demo-passphrase}
+      DEMO_HOST: ${DEMO_HOST:-localhost}
+      AIRLINE_PORT: "4101"
+    volumes:
+      - wallets:/wallets
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4101/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+
+  # ── Hotel SP: book:hotel. Entirely independent of the Airline. ───────────
+  sp-hotel:
+    <<: *node-service
+    command: ["pnpm", "run", "sp:hotel"]
+    ports:
+      - "4102:4102"
+    environment:
+      HELIX_API_URL: http://helix-api:3000
+      HELIX_ADMIN_API_KEY: ${HELIX_ADMIN_API_KEY:-dev-admin-key-change-in-production}
+      WALLETS_DIR: /wallets
+      WALLET_PASSPHRASE: ${WALLET_PASSPHRASE:-demo-passphrase}
+      DEMO_HOST: ${DEMO_HOST:-localhost}
+      HOTEL_PORT: "4102"
+    volumes:
+      - wallets:/wallets
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4102/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+
+  # ── Travel Planner Agent ─────────────────────────────────────────────────
+  agent:
+    <<: *node-service
+    command: ["pnpm", "run", "agent"]
+    ports:
+      - "4100:4100"
+    environment:
+      HELIX_API_URL: http://helix-api:3000
+      # Lets the agent's wallet post CONSENT_GRANTED to helix-api's audit log
+      # when a grant lands. Best-effort: the demo runs fine without it.
+      HELIX_ADMIN_API_KEY: ${HELIX_ADMIN_API_KEY:-dev-admin-key-change-in-production}
+      WALLETS_DIR: /wallets
+      WALLET_PASSPHRASE: ${WALLET_PASSPHRASE:-demo-passphrase}
+      DEMO_HOST: ${DEMO_HOST:-localhost}
+      AGENT_PORT: "4100"
+      AIRLINE_URL: http://sp-airline:4101
+      HOTEL_URL: http://sp-hotel:4102
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+    volumes:
+      - wallets:/wallets
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4100/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    depends_on:
+      sp-airline:
+        condition: service_healthy
+      sp-hotel:
+        condition: service_healthy
+
+volumes:
+  helix_data:
+  wallets:

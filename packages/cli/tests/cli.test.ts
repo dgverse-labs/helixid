@@ -60,6 +60,36 @@ describe('helix CLI', () => {
     expect(stdout.some((line) => line.includes('"id": "did:web:example.com"'))).toBe(true);
   });
 
+  it('helix did create --method web produces both the DID document and a status list by default', async () => {
+    const walletPath = join(tempDir, 'sp-issuer.enc');
+
+    await runDidCreate({ method: 'web', domain: 'sp.example.com', wallet: walletPath });
+
+    const statusListPath = join(tempDir, 'status-list.json');
+    const statusList = JSON.parse(await readFile(statusListPath, 'utf8'));
+    expect(statusList.id).toBe('https://sp.example.com/.well-known/helix-status-list.json');
+    expect(statusList.issuer).toBe('did:web:sp.example.com');
+    expect(statusList.proof?.proofValue).toBeTruthy();
+    expect(stdout.some((line) => line.includes('StatusList created'))).toBe(true);
+    expect(stdout.some((line) => line.includes('Host both on your domain'))).toBe(true);
+  });
+
+  it('helix did create --method web --no-status-list produces only the DID document', async () => {
+    const walletPath = join(tempDir, 'sp-issuer-optout.enc');
+
+    await runDidCreate({
+      method: 'web',
+      domain: 'sp.example.com',
+      wallet: walletPath,
+      statusList: false,
+    });
+
+    const saved = JSON.parse(await readFile(walletPath, 'utf8'));
+    expect(saved.did).toBe('did:web:sp.example.com');
+    await expect(readFile(join(tempDir, 'status-list.json'), 'utf8')).rejects.toThrow();
+    expect(stdout.some((line) => line.includes('StatusList created'))).toBe(false);
+  });
+
   it('helix did create --method key creates did:key wallet', async () => {
     const walletPath = join(tempDir, 'agent.enc');
     await runDidCreate({ method: 'key', wallet: walletPath });

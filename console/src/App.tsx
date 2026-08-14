@@ -12,7 +12,6 @@ import { AppLayout } from './components/layout/AppLayout';
 import { LoginPage } from './pages/LoginPage';
 import { AgentsPage } from './pages/AgentsPage';
 import { EnrollPage } from './pages/EnrollPage';
-import { ServicesPage } from './pages/ServicesPage';
 import { AuditPage } from './pages/AuditPage';
 
 export function App() {
@@ -26,7 +25,6 @@ export function App() {
               <Route path="/" element={<Navigate to="/agents" replace />} />
               <Route path="/agents" element={<AgentsPage />} />
               <Route path="/enroll" element={<EnrollPage />} />
-              <Route path="/services" element={<ServicesPage />} />
               <Route path="/audit" element={<AuditPage />} />
             </Route>
           </Route>

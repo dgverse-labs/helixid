@@ -28,6 +28,7 @@ describe('helixidMCPMiddleware', () => {
       valid: true,
       agentDid: 'did:agent',
       privilegeScopes: ['read:orders'],
+      effectiveScopes: ['read:orders'],
       vpId: 'vp:helix:test',
       delegationChain: [],
     });
@@ -50,6 +51,7 @@ describe('helixidMCPMiddleware', () => {
       valid: false,
       agentDid: '',
       privilegeScopes: [],
+      effectiveScopes: [],
       vpId: '',
       delegationChain: [],
       error: 'bad signature',
@@ -69,6 +71,7 @@ describe('helixidMCPMiddleware', () => {
       valid: true,
       agentDid: 'did:agent',
       privilegeScopes: ['read:orders'],
+      effectiveScopes: ['read:orders'],
       vpId: 'vp:helix:test',
       delegationChain: [],
     });
