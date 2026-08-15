@@ -22,3 +22,8 @@ tmp/
 
 # OS and editor files
 .DS_Store
+
+# Local-only working material — agent instructions and epic specs.
+# Kept on disk for local development, deliberately not published.
+CLAUDE.md
+specs/
