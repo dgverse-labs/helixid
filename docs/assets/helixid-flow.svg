@@ -1,0 +1,101 @@
+<svg viewBox="0 0 1320 690" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrowDark" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#1C1917"/>
+    </marker>
+    <marker id="arrowOrange" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#E8823C"/>
+    </marker>
+    <marker id="arrowGray" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#8A8375"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1320" height="690" fill="#FDFBF7"/>
+
+  <!-- Setup: two credentials, two issuers -->
+  <rect x="260" y="24" width="240" height="92" rx="10" fill="#F3EDE3" stroke="#E5DFD2"/>
+  <rect x="260" y="24" width="4" height="92" fill="#E8823C"/>
+  <text x="380" y="48" font-size="13" font-weight="700" fill="#1C1917" text-anchor="middle">HELIXID ISSUER</text>
+  <text x="380" y="64" font-size="11" fill="#8A8375" text-anchor="middle">platform, onboarding</text>
+  <text x="380" y="90" font-size="13" font-weight="700" fill="#B5651D" text-anchor="middle">① Agent-Authority VC</text>
+  <text x="380" y="106" font-size="10" fill="#8A8375" text-anchor="middle">one-time, sets the scope ceiling</text>
+
+  <rect x="520" y="24" width="240" height="92" rx="10" fill="#F3EDE3" stroke="#E5DFD2"/>
+  <rect x="520" y="24" width="4" height="92" fill="#E8823C"/>
+  <text x="640" y="48" font-size="13" font-weight="700" fill="#1C1917" text-anchor="middle">SERVICE PROVIDER</text>
+  <text x="640" y="64" font-size="11" fill="#8A8375" text-anchor="middle">client party, e.g. Airline SP</text>
+  <text x="640" y="90" font-size="13" font-weight="700" fill="#B5651D" text-anchor="middle">② Delegated Grant VC</text>
+  <text x="640" y="106" font-size="10" fill="#8A8375" text-anchor="middle">user logs in with the SP, then consents</text>
+
+  <!-- Clean orthogonal merge into the wallet lane -->
+  <path d="M 380,116 L 380,134 L 490,134" fill="none" stroke="#E8823C" stroke-width="1.5" stroke-dasharray="3,3"/>
+  <path d="M 640,116 L 640,134 L 490,134" fill="none" stroke="#E8823C" stroke-width="1.5" stroke-dasharray="3,3"/>
+  <circle cx="490" cy="134" r="3" fill="#E8823C"/>
+  <line x1="490" y1="134" x2="490" y2="154" stroke="#E8823C" stroke-width="2" marker-end="url(#arrowOrange)"/>
+  <text x="502" y="130" font-size="10.5" fill="#8A8375" font-style="italic">both stored in the wallet</text>
+
+  <!-- Lane headers -->
+  <g>
+    <rect x="50" y="156" width="240" height="56" rx="10" fill="#1C1917"/>
+    <text x="170" y="181" font-size="15" font-weight="700" fill="#FDFBF7" text-anchor="middle">AGENT</text>
+    <text x="170" y="199" font-size="12" fill="#C9C2B4" text-anchor="middle">task runtime</text>
+  </g>
+  <g>
+    <rect x="370" y="156" width="240" height="56" rx="10" fill="#1C1917"/>
+    <text x="490" y="181" font-size="15" font-weight="700" fill="#FDFBF7" text-anchor="middle">AGENT WALLET</text>
+    <text x="490" y="199" font-size="12" fill="#C9C2B4" text-anchor="middle">SDK, local</text>
+  </g>
+  <g>
+    <rect x="690" y="156" width="240" height="56" rx="10" fill="#1C1917"/>
+    <text x="810" y="181" font-size="15" font-weight="700" fill="#FDFBF7" text-anchor="middle">MCP SERVER</text>
+    <text x="810" y="199" font-size="12" fill="#C9C2B4" text-anchor="middle">target service / SP</text>
+  </g>
+  <g>
+    <rect x="1010" y="156" width="240" height="56" rx="10" fill="#1C1917"/>
+    <text x="1130" y="181" font-size="15" font-weight="700" fill="#FDFBF7" text-anchor="middle">AUDIT LOG</text>
+    <text x="1130" y="199" font-size="12" fill="#C9C2B4" text-anchor="middle">HelixID API</text>
+  </g>
+
+  <!-- Lifelines -->
+  <line x1="170" y1="212" x2="170" y2="626" stroke="#D8D2C4" stroke-width="1.5" stroke-dasharray="4,4"/>
+  <line x1="490" y1="212" x2="490" y2="626" stroke="#D8D2C4" stroke-width="1.5" stroke-dasharray="4,4"/>
+  <line x1="810" y1="212" x2="810" y2="626" stroke="#D8D2C4" stroke-width="1.5" stroke-dasharray="4,4"/>
+  <line x1="1130" y1="212" x2="1130" y2="626" stroke="#D8D2C4" stroke-width="1.5" stroke-dasharray="4,4"/>
+
+  <!-- Step 1: Agent -> Wallet -->
+  <text x="330" y="244" font-size="14" font-weight="700" fill="#1C1917" text-anchor="middle">1. Request VP — agent-authority VC + grant VC</text>
+  <line x1="170" y1="256" x2="486" y2="256" stroke="#1C1917" stroke-width="2" marker-end="url(#arrowDark)"/>
+
+  <!-- Step 2: Wallet -> Agent (return) -->
+  <text x="330" y="306" font-size="14" font-weight="700" fill="#B5651D" text-anchor="middle">2. Signed VP returned</text>
+  <line x1="490" y1="318" x2="174" y2="318" stroke="#E8823C" stroke-width="2.5" marker-end="url(#arrowOrange)"/>
+
+  <!-- Step 3: Agent -> MCP Server -->
+  <text x="490" y="368" font-size="14" font-weight="700" fill="#1C1917" text-anchor="middle">3. Tool call, with _helixVP attached</text>
+  <line x1="170" y1="380" x2="806" y2="380" stroke="#1C1917" stroke-width="2" marker-end="url(#arrowDark)"/>
+
+  <!-- Step 4: self-loop on MCP Server -->
+  <text x="810" y="430" font-size="14" font-weight="700" fill="#B5651D" text-anchor="middle">4. Verify — signature, expiry, revocation, scopes</text>
+  <text x="810" y="448" font-size="11.5" fill="#8A8375" text-anchor="middle">in-process, no network hop — ~1–6ms cached</text>
+  <path d="M 810,460 L 950,460 L 950,500 L 814,500" fill="none" stroke="#E8823C" stroke-width="2.5" marker-end="url(#arrowOrange)"/>
+
+  <!-- Step 5: MCP Server -> Agent (result) -->
+  <text x="490" y="540" font-size="14" font-weight="700" fill="#1C1917" text-anchor="middle">5. Allow → execute tool  /  Deny → error</text>
+  <line x1="810" y1="552" x2="174" y2="552" stroke="#1C1917" stroke-width="2" marker-end="url(#arrowDark)"/>
+
+  <!-- Step 6: Agent Wallet -> Audit Log -->
+  <text x="810" y="592" font-size="14" font-weight="700" fill="#5B5548" text-anchor="middle">6. Log VP_VERIFIED / VP_REJECTED</text>
+  <text x="810" y="608" font-size="11.5" fill="#8A8375" text-anchor="middle">agent SDK reports the outcome, async</text>
+  <line x1="490" y1="618" x2="1126" y2="618" stroke="#8A8375" stroke-width="2" stroke-dasharray="6,5" marker-end="url(#arrowGray)"/>
+
+  <!-- Legend -->
+  <line x1="40" y1="652" x2="80" y2="652" stroke="#1C1917" stroke-width="2"/>
+  <text x="88" y="656" font-size="12.5" fill="#1C1917">MCP protocol message</text>
+
+  <line x1="320" y1="652" x2="360" y2="652" stroke="#E8823C" stroke-width="2.5"/>
+  <text x="368" y="656" font-size="12.5" fill="#1C1917">HelixID VP / credential message</text>
+
+  <line x1="680" y1="652" x2="720" y2="652" stroke="#8A8375" stroke-width="2" stroke-dasharray="6,5"/>
+  <text x="728" y="656" font-size="12.5" fill="#1C1917">Audit / out-of-band</text>
+</svg>
