@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nicedigverse/helixid/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
+  <a href="https://github.com/dgverse-labs/helixid/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
   <a href="https://www.w3.org/TR/vc-data-model-2.0/"><img src="https://img.shields.io/badge/W3C-VC%202.0-green.svg" alt="W3C VC 2.0"></a>
   <a href="https://www.w3.org/TR/did-core/"><img src="https://img.shields.io/badge/W3C-DID%201.0-green.svg" alt="W3C DID 1.0"></a>
 </p>
@@ -26,17 +26,80 @@ This breaks in predictable ways:
 
 HelixID fixes this by giving every AI agent a cryptographic identity — a portable, verifiable, revocable credential that works across organizational boundaries without requiring the parties to know each other in advance.
 
+## How It Works
+
+In one sentence: **an agent carries signed credentials proving what it may do, the
+service it calls verifies them locally before acting, and every decision is
+recorded.**
+
+Two credentials matter, and they come from different parties:
+
+1. **Agent-Authority VC** — issued once by the HelixID issuer when the agent is
+   onboarded. This is the agent's *ceiling*: the most it could ever be allowed
+   to do.
+2. **Delegated Grant VC** — issued by the service provider after the **user**
+   logs in and consents. This is what the user actually approved, for that one
+   service.
+
+Authority is the **intersection** of the two. A grant can never widen what the
+issuer gave the agent, and the agent can never act beyond what the user
+approved. Both credentials live in the agent's local wallet — private keys never
+leave the agent process.
+
+![HelixID flow — agent requests a VP from its wallet, presents it to the MCP server, the server verifies it locally, and the outcome is written to the audit log](docs/assets/helixid-flow.svg)
+
+Walking the diagram:
+
+| Step | What happens |
+| --- | --- |
+| **1–2** | The agent asks its wallet for a Verifiable Presentation (VP). The wallet bundles the credentials and signs — locally, no network call. |
+| **3** | The agent makes its normal tool call, with the signed VP attached. |
+| **4** | The service verifies signature, expiry, revocation, and scopes **in-process** — it never calls the issuer to ask whether this particular request is allowed. |
+| **5** | Allowed → the tool runs. Denied → an error, and the action never happens. |
+| **6** | The outcome is written to the audit log either way — approvals *and* refusals. |
+
+Step 4 is what makes this usable on a hot path and across organizations that
+have no prior integration with each other. It's also the claim most worth
+stating precisely.
+
+### What "offline verification" means here
+
+The property is: **no synchronous call to the issuer asking it to vouch for this
+specific request.** No token introspection, no authorization endpoint, nothing on
+the issuer's side that has to be awake and reasoning about this call. That is the
+real contrast with routing every request through a token-minting bridge.
+
+It does not mean literally zero network. With `did:web`, verification may make
+two HTTP reads — both static, cacheable documents, neither of them a question
+about your request:
+
+- **DID resolution** — `GET https://<issuer-domain>/.well-known/did.json` for the
+  public key. The same document every time until the key rotates; cached
+  in-process for 5 minutes.
+- **Revocation** — fetch the status list and read one bit. A single bitstring
+  covers every credential that issuer has ever signed, so it is a shared static
+  file, not a per-credential lookup.
+
+Everything else — VP and VC signatures, expiry, the delegation chain, scope
+intersection — is computed from data already inside the presentation. Zero
+network.
+
+Anchor the DID on a ledger and even those reads leave the issuer out of it:
+`did:key` carries the public key inside the identifier itself, and `did:hedera`
+(via the optional `@helixid/did-hedera` package) reads the DID document from a
+public Hedera mirror node — the issuer's own domain is never contacted.
+
 ## What HelixID Does
 
 HelixID is a **5-layer trust stack** for AI agents, not just an identity library:
 
 | Layer              | What It Does                                                                                                     | How                                                   |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| **1. Identity**    | Every agent gets a DID (Decentralized Identifier) bound to a cryptographic keypair                               | W3C DID (`did:web` default, `did:key` local) |
+| **1. Identity**    | Every agent gets a DID (Decentralized Identifier) bound to a cryptographic keypair                               | W3C DID (`did:web` default, `did:key` local, `did:hedera` optional) |
 | **2. Authority**   | Scoped, time-bound credentials that prove what an agent is allowed to do                                         | W3C Verifiable Credentials with delegation chains     |
 | **3. Enforcement** | Runtime verification and authorization checks at execution boundaries                                              | SDK/core verification + verifier-owned policy checks  |
-| **4. Audit**       | Operational record of issuance, verification/session bridge, revocation, and lifecycle events                    | Adapter-based `audit_log` store + structured stdout/file |
-| **5. Revocation**  | Decentralized, cacheable revocation that works offline                                                           | Bitstring Status List |
+| **4. Audit**       | Ordered record of the whole chain — issuance, consent, presentation, verification, authorization, action, result | Adapter-based `audit_log` store + structured stdout/file |
+| **5. Revocation**  | Decentralized revocation read as a static, cacheable document — no per-credential call to the issuer             | Bitstring Status List |
 
 ## Roles
 
@@ -92,7 +155,7 @@ const childVC = await delegate(
 
 ### Service Provider
 
-The verifier never needs the issuer's API at runtime. `verifyVP()` is fully local — one HTTPS fetch for the StatusList (cached after first hit), everything else resolved offline.
+The verifier never calls the issuer's API to authorize a request. `verifyVP()` computes signatures, expiry, delegation chain, and scopes from the presentation itself; the only outbound reads are static documents — the DID document (cached in-process) and, when the VC carries a `credentialStatus`, the status list. See [what "offline verification" means here](#what-offline-verification-means-here).
 
 ```typescript
 import { verifyVP, SessionManager } from '@helixid/sdk-js'
@@ -180,20 +243,40 @@ real-time agent interactions — never touches the ledger.
 | Revocation check | ~0.01 ms (cached) | 50-200 ms (introspection) | Not supported |
 | Full verification (warm) | ~1-6 ms | 1-5 ms | ~0.1 ms |
 
+"Warm" means the DID document and status list are already cached. Cold, each is
+a single static-document fetch — see the caching notes below. Even then, nothing
+in the path asks the issuer to authorize the request; contrast the 50-200 ms
+introspection call, which cannot be cached because its whole purpose is to be
+asked fresh every time.
+
 **Context:** A single LLM inference call takes 500ms-5s. HelixID verification
 at ~5ms is noise in that budget. You get the same verification speed as JWT,
 backed by cryptographic trust that JWT can never provide.
 
 **Caching architecture:**
-- **L1:** In-process memory cache (default for current runs) — DID documents
-  and status lists
-- **External sources:** DID/status lookups may still read external sources
-  as needed
+- **DID documents:** cached in-process automatically — 5 minutes for `did:web`,
+  15 minutes for `did:hedera`. No configuration needed.
+- **Status lists:** fetched per verification by default. The bitstring is a
+  static document shared by every credential from that issuer, so it caches
+  well — pass a `statusListResolver` to `verifyVP()` to serve it from your own
+  cache, CDN, or local storage. `helix-api` already does this for the list it
+  hosts.
 - **Session token bridge:** For high-frequency scenarios (1000+ RPS), verify
   the VC once (~5ms), issue an ephemeral JWT for subsequent calls (~0.1ms).
   Best of both worlds.
 
 ## Quick Start
+
+Three ways in, depending on what you want to see. All run locally.
+
+| Path | Time | Needs | Best for |
+| --- | --- | --- | --- |
+| **[5-minute path](#5-minute-path-no-infrastructure)** | 5 min | Node only | Seeing the VP build/verify cycle in code, no infra at all |
+| **[Consent demo](#demo-a--user-consent-across-two-services)** | ~10 min | Docker | Watching a **user** grant consent and following the full audit trail — the best overview of what HelixID is for |
+| **[Travel Concierge demo](#demo-b--llm-agent-with-a-protected-mcp-tool)** | ~10 min | Docker + LLM key | A real LLM agent calling a protected MCP tool, plus revocation and delegation |
+
+New here? Run the **consent demo** — it needs no API key and shows the whole
+identity → consent → verification → action → audit story end to end.
 
 ### 5-minute path (no infrastructure)
 
@@ -259,11 +342,61 @@ enrollment so the root VC is signed by the trusted issuer.
 
 ---
 
-### Full Demo (self-hosted, Travel Concierge)
+### Demo A — user consent across two services
+
+This is the diagram above, running. A travel agent books a flight and a hotel
+from **two independent service providers**, each with its own `did:web`
+identity, its own status list, and its own consent grant. No LLM API key
+required — the agent falls back to a scripted planner if you don't set one.
+
+```bash
+git clone https://github.com/dgverse-labs/helixid.git
+cd helixid/examples/e2e-consent-demo
+cp .env.example .env
+docker compose up --build
+```
+
+| URL | What |
+| --- | --- |
+| **http://localhost:4100** | Travel Planner chat — sign in `traveler` / `demo123` |
+| **http://localhost:8080** | HelixID Console — sign in `admin` / `admin`, then open **Audit** |
+| http://localhost:4101 | Airline SP (Helix Air) |
+| http://localhost:4102 | Hotel SP (Helix Stay) |
+
+**What to watch, in order:**
+
+| Step | What happens | Why it matters |
+| --- | --- | --- |
+| 1 | Search for a flight | **No consent prompt** — search is read-only and carries no required scope |
+| 2 | Try to book it | The airline refuses: it has never seen this agent, so it asks the **user** directly, on its own page |
+| 3 | Approve the scopes | The airline signs a Delegated Grant VC, scoped to exactly what was approved |
+| 4 | Booking completes | The agent presents a VP; the airline checks issuer trust, validity, and scope before acting |
+| 5 | Book a hotel | A **different** SP, so it asks again — nothing the airline approved carries over |
+| 6 | Book a return flight | **No prompt this time** — the airline's standing grant is reused |
+
+Then open **Console → Audit**. Every step above is there in order: credential
+issued, consent granted, credential presented, verification result,
+authorization result, action performed, and the booking reference it produced.
+A refusal is recorded just as clearly as an approval — that's the point.
+
+Step 6 is covered by an automated regression test that asserts on prompt
+*counts*, not just "the booking worked":
+
+```bash
+pnpm --filter @helixid/example-e2e-consent-demo test
+```
+
+Reset everything with `docker compose down -v`. Full walkthrough:
+[`examples/e2e-consent-demo`](examples/e2e-consent-demo).
+
+---
+
+### Demo B — LLM agent with a protected MCP tool
 
 See a real LLM travel agent enroll with HelixID, receive a scoped credential,
 and call a protected MCP booking tool. The booking runs only after
 `@helixid/mcp` verifies the agent's presentation against the live HelixID API.
+This demo also covers **revocation** and **agent-to-agent delegation**.
 
 <!-- Prefer a guided walkthrough? **[Try it on our website →](https://dgverse.in/helixid/try-it-out)**
 Same demo, no local setup. -->
@@ -494,7 +627,7 @@ const result = await verifyVP(signedVP, {
 console.log(result.valid, result.agentDid, result.privilegeScopes);
 ```
 
-`verifyVP()` runs locally (no API call): VP signature, VC signature, validity window, revocation (when credentialStatus exists), target-service checks, and delegation-chain integrity. `vpId` is returned for caller-managed replay protection. If you need a session JWT bridge, call `POST /v1/vp/verify` with `session: true`.
+`verifyVP()` runs in-process, with no call to the issuer's authorization logic: VP signature, VC signature, validity window, revocation (when `credentialStatus` exists), target-service checks, and delegation-chain integrity. Only DID resolution and the status-list read go over the network, and both are static-document fetches — pass `statusListResolver` to serve the list from your own cache or storage. `vpId` is returned for caller-managed replay protection. If you need a session JWT bridge, call `POST /v1/vp/verify` with `session: true`.
 
 #### Delegate Authority (SDK-local, agent-signed child)
 
@@ -565,7 +698,7 @@ const outboundCall = await attachHelixVP(
 
 ### "OAuth/JWT already does this"
 
-OAuth authenticates users to services. It was not designed for autonomous agents that spawn sub-agents, cross organizational boundaries, and need offline-verifiable delegation chains. JWT claims are opaque and custom per system — there's no standard way for Service C to verify that Agent B was delegated authority from Agent A by Organization X without calling Organization X's token server. HelixID credentials are self-verifiable with no issuer availability required.
+OAuth authenticates users to services. It was not designed for autonomous agents that spawn sub-agents, cross organizational boundaries, and need offline-verifiable delegation chains. JWT claims are opaque and custom per system — there's no standard way for Service C to verify that Agent B was delegated authority from Agent A by Organization X without calling Organization X's token server. A HelixID credential carries its own proof: verifying it needs the issuer's public key and its revocation bitstring — two static documents that cache or sit on a CDN — never a live call to the issuer asking whether this request should go through.
 
 ### "API keys + RBAC is fine"
 
@@ -594,7 +727,7 @@ HelixID builds on established and converging standards:
 
 HelixID is fully self-hostable. The current open-source stack covers:
 
-- DID methods: `did:web` (default) and `did:key` (local)
+- DID methods: `did:web` (default), `did:key` (local), and `did:hedera` (optional, via `@helixid/did-hedera`)
 - API-backed enrollment with local SDK key ownership
 - SDK-local VP build/verify and SDK-local delegation
 - VC issuance and revocation with Bitstring Status List hosting
@@ -658,19 +791,23 @@ helixid/
 ├── helix-core/           # Core crypto, schemas, resolver, VP/delegation/self-signed primitives
 ├── helix-api/            # Fastify API: enrollment, VC lifecycle, status list, did:web, session bridge
 ├── helix-sdk-js/         # SDK: AgentWallet, VPBuilder, verifyVP, delegate, HelixClient (enrollment/API ops)
+├── console/              # Operator web console — agents, enrollment, and the audit trail
 ├── packages/
 │   ├── mcp/              # MCP middleware
 │   ├── langchain/        # LangChain/LangGraph integration
-│   └── cli/              # CLI workflows
+│   ├── cli/              # CLI workflows
+│   ├── did-hedera/       # Hedera DID method resolver
+│   └── widget/           # Embeddable user-consent widget
 ├── examples/
-│   ├── e2e-travel-concierge/   # Dockerized travel-concierge demo
+│   ├── e2e-consent-demo/       # User consent across two independent SPs (Demo A)
+│   ├── e2e-travel-concierge/   # LLM agent + protected MCP tool (Demo B)
 │   ├── framework-middleware/   # Live LangChain and MCP middleware examples
 │   ├── verify-vp.ts
 │   ├── scope-check.ts
 │   ├── self-verify.ts
 │   └── revocation-check.ts
 ├── e2e/                  # End-to-end test package
-├── docs/                 # Agent playbook, decisions, story docs, testing guides
+├── docs/                 # Architecture flows, decisions, public surfaces, testing guides
 ├── scripts/              # Setup and helper scripts
 └── docker-compose.yml    # Local API stack (sqlite+memory+did:web default)
 ```
@@ -687,8 +824,8 @@ Key areas where help is needed:
 
 ## Community
 
-- [GitHub Discussions](https://github.com/nicedigverse/helixid/discussions) — questions, ideas, and show-and-tell
-- [GitHub Issues](https://github.com/nicedigverse/helixid/issues) — bug reports and feature requests
+- [GitHub Discussions](https://github.com/dgverse-labs/helixid/discussions) — questions, ideas, and show-and-tell
+- [GitHub Issues](https://github.com/dgverse-labs/helixid/issues) — bug reports and feature requests
 
 ## License
 
