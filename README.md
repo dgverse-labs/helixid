@@ -54,13 +54,40 @@ Walking the diagram:
 | --- | --- |
 | **1–2** | The agent asks its wallet for a Verifiable Presentation (VP). The wallet bundles the credentials and signs — locally, no network call. |
 | **3** | The agent makes its normal tool call, with the signed VP attached. |
-| **4** | The service verifies signature, expiry, revocation, and scopes **in-process**. No callback to an issuer, so no runtime dependency on the issuer being reachable. |
+| **4** | The service verifies signature, expiry, revocation, and scopes **in-process** — it never calls the issuer to ask whether this particular request is allowed. |
 | **5** | Allowed → the tool runs. Denied → an error, and the action never happens. |
 | **6** | The outcome is written to the audit log either way — approvals *and* refusals. |
 
-The important property: step 4 needs no network hop to HelixID. Verification is
-offline and local, which is what makes this usable on a hot path and across
-organizations that have no prior integration with each other.
+Step 4 is what makes this usable on a hot path and across organizations that
+have no prior integration with each other. It's also the claim most worth
+stating precisely.
+
+### What "offline verification" means here
+
+The property is: **no synchronous call to the issuer asking it to vouch for this
+specific request.** No token introspection, no authorization endpoint, nothing on
+the issuer's side that has to be awake and reasoning about this call. That is the
+real contrast with routing every request through a token-minting bridge.
+
+It does not mean literally zero network. With `did:web`, verification may make
+two HTTP reads — both static, cacheable documents, neither of them a question
+about your request:
+
+- **DID resolution** — `GET https://<issuer-domain>/.well-known/did.json` for the
+  public key. The same document every time until the key rotates; cached
+  in-process for 5 minutes.
+- **Revocation** — fetch the status list and read one bit. A single bitstring
+  covers every credential that issuer has ever signed, so it is a shared static
+  file, not a per-credential lookup.
+
+Everything else — VP and VC signatures, expiry, the delegation chain, scope
+intersection — is computed from data already inside the presentation. Zero
+network.
+
+Anchor the DID on a ledger and even those reads leave the issuer out of it:
+`did:key` carries the public key inside the identifier itself, and `did:hedera`
+(via the optional `@helixid/did-hedera` package) reads the DID document from a
+public Hedera mirror node — the issuer's own domain is never contacted.
 
 ## What HelixID Does
 
@@ -68,11 +95,11 @@ HelixID is a **5-layer trust stack** for AI agents, not just an identity library
 
 | Layer              | What It Does                                                                                                     | How                                                   |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| **1. Identity**    | Every agent gets a DID (Decentralized Identifier) bound to a cryptographic keypair                               | W3C DID (`did:web` default, `did:key` local) |
+| **1. Identity**    | Every agent gets a DID (Decentralized Identifier) bound to a cryptographic keypair                               | W3C DID (`did:web` default, `did:key` local, `did:hedera` optional) |
 | **2. Authority**   | Scoped, time-bound credentials that prove what an agent is allowed to do                                         | W3C Verifiable Credentials with delegation chains     |
 | **3. Enforcement** | Runtime verification and authorization checks at execution boundaries                                              | SDK/core verification + verifier-owned policy checks  |
 | **4. Audit**       | Ordered record of the whole chain — issuance, consent, presentation, verification, authorization, action, result | Adapter-based `audit_log` store + structured stdout/file |
-| **5. Revocation**  | Decentralized, cacheable revocation that works offline                                                           | Bitstring Status List |
+| **5. Revocation**  | Decentralized revocation read as a static, cacheable document — no per-credential call to the issuer             | Bitstring Status List |
 
 ## Roles
 
@@ -128,7 +155,7 @@ const childVC = await delegate(
 
 ### Service Provider
 
-The verifier never needs the issuer's API at runtime. `verifyVP()` is fully local — one HTTPS fetch for the StatusList (cached after first hit), everything else resolved offline.
+The verifier never calls the issuer's API to authorize a request. `verifyVP()` computes signatures, expiry, delegation chain, and scopes from the presentation itself; the only outbound reads are static documents — the DID document (cached in-process) and, when the VC carries a `credentialStatus`, the status list. See [what "offline verification" means here](#what-offline-verification-means-here).
 
 ```typescript
 import { verifyVP, SessionManager } from '@helixid/sdk-js'
@@ -216,15 +243,24 @@ real-time agent interactions — never touches the ledger.
 | Revocation check | ~0.01 ms (cached) | 50-200 ms (introspection) | Not supported |
 | Full verification (warm) | ~1-6 ms | 1-5 ms | ~0.1 ms |
 
+"Warm" means the DID document and status list are already cached. Cold, each is
+a single static-document fetch — see the caching notes below. Even then, nothing
+in the path asks the issuer to authorize the request; contrast the 50-200 ms
+introspection call, which cannot be cached because its whole purpose is to be
+asked fresh every time.
+
 **Context:** A single LLM inference call takes 500ms-5s. HelixID verification
 at ~5ms is noise in that budget. You get the same verification speed as JWT,
 backed by cryptographic trust that JWT can never provide.
 
 **Caching architecture:**
-- **L1:** In-process memory cache (default for current runs) — DID documents
-  and status lists
-- **External sources:** DID/status lookups may still read external sources
-  as needed
+- **DID documents:** cached in-process automatically — 5 minutes for `did:web`,
+  15 minutes for `did:hedera`. No configuration needed.
+- **Status lists:** fetched per verification by default. The bitstring is a
+  static document shared by every credential from that issuer, so it caches
+  well — pass a `statusListResolver` to `verifyVP()` to serve it from your own
+  cache, CDN, or local storage. `helix-api` already does this for the list it
+  hosts.
 - **Session token bridge:** For high-frequency scenarios (1000+ RPS), verify
   the VC once (~5ms), issue an ephemeral JWT for subsequent calls (~0.1ms).
   Best of both worlds.
@@ -591,7 +627,7 @@ const result = await verifyVP(signedVP, {
 console.log(result.valid, result.agentDid, result.privilegeScopes);
 ```
 
-`verifyVP()` runs locally (no API call): VP signature, VC signature, validity window, revocation (when credentialStatus exists), target-service checks, and delegation-chain integrity. `vpId` is returned for caller-managed replay protection. If you need a session JWT bridge, call `POST /v1/vp/verify` with `session: true`.
+`verifyVP()` runs in-process, with no call to the issuer's authorization logic: VP signature, VC signature, validity window, revocation (when `credentialStatus` exists), target-service checks, and delegation-chain integrity. Only DID resolution and the status-list read go over the network, and both are static-document fetches — pass `statusListResolver` to serve the list from your own cache or storage. `vpId` is returned for caller-managed replay protection. If you need a session JWT bridge, call `POST /v1/vp/verify` with `session: true`.
 
 #### Delegate Authority (SDK-local, agent-signed child)
 
@@ -662,7 +698,7 @@ const outboundCall = await attachHelixVP(
 
 ### "OAuth/JWT already does this"
 
-OAuth authenticates users to services. It was not designed for autonomous agents that spawn sub-agents, cross organizational boundaries, and need offline-verifiable delegation chains. JWT claims are opaque and custom per system — there's no standard way for Service C to verify that Agent B was delegated authority from Agent A by Organization X without calling Organization X's token server. HelixID credentials are self-verifiable with no issuer availability required.
+OAuth authenticates users to services. It was not designed for autonomous agents that spawn sub-agents, cross organizational boundaries, and need offline-verifiable delegation chains. JWT claims are opaque and custom per system — there's no standard way for Service C to verify that Agent B was delegated authority from Agent A by Organization X without calling Organization X's token server. A HelixID credential carries its own proof: verifying it needs the issuer's public key and its revocation bitstring — two static documents that cache or sit on a CDN — never a live call to the issuer asking whether this request should go through.
 
 ### "API keys + RBAC is fine"
 
@@ -691,7 +727,7 @@ HelixID builds on established and converging standards:
 
 HelixID is fully self-hostable. The current open-source stack covers:
 
-- DID methods: `did:web` (default) and `did:key` (local)
+- DID methods: `did:web` (default), `did:key` (local), and `did:hedera` (optional, via `@helixid/did-hedera`)
 - API-backed enrollment with local SDK key ownership
 - SDK-local VP build/verify and SDK-local delegation
 - VC issuance and revocation with Bitstring Status List hosting
