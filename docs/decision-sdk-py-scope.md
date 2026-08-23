@@ -44,6 +44,32 @@ well-bounded set of primitives plus a REST client.
 - Sessions
 - Audit logging
 
+## Versioning
+
+`helix-sdk-py` tracks `helix-sdk-js`'s version, not an independent semver
+line — same version number means same feature/API surface across both.
+
+## Error handling
+
+Typed exceptions in `helix-sdk-py`, mirroring `helix-sdk-js`'s error
+classes (`HelixError`, `ErrorCode`, and the specific typed errors) rather
+than surfacing raw non-2xx responses. Same error taxonomy on both SDKs, not
+just the same HTTP status codes.
+
+## Duplicated-file sync (crypto primitives, per `proposal-retire-core-package.md`)
+
+No tooling or checklist — keeping the duplicated copy in `helix-sdk-js` (and
+eventually `helix-sdk-py`'s own port) in sync with the canonical copy in
+`helix-api` is the responsibility of whoever edits the canonical file.
+Golden vector CI is the safety net that catches a missed sync, not a
+process that prevents one.
+
+## CI / publish pipeline
+
+Deferred — TestPyPI → PyPI flow and GitHub Actions setup for
+`helix-sdk-py` will be decided closer to when the repo is actually being
+built, not now.
+
 ## What this means for sequencing
 
 No change to `next-steps-sequencing.md` / `work-order.md` — Item #4 still

@@ -68,6 +68,18 @@ opaque bytes:**
 - **VC issuance / renewal payload construction** — same pattern, same
   reasoning.
 
+**Prepare-endpoint auth and idempotency (decided, applies to all
+`/prepare`-style endpoints above).** The unsigned payload returned by a
+`prepare` call must be short-lived and single-use:
+- Response includes a server-generated, expiring token (short TTL, e.g.
+  minutes not hours) bound to that specific unsigned payload.
+- The finalize call (submitting the signature) must include that token;
+  the server rejects finalize attempts after expiry or after the token has
+  already been consumed once.
+- This prevents a stale or replayed prepare response from being finalized
+  later against a payload the caller no longer intends to sign, and stops
+  a captured unsigned-payload response from being reused.
+
 **Moves to the API — no local implementation needed in any SDK, ever:**
 
 - `verifyVP()` — signature check, delegation-chain walk, expiry, target
