@@ -108,9 +108,29 @@ deferred, not designed here — marked as a fast-follow.**
 - `GET /accounts/:accountId/did.json` — public DID Document resolution
 
 **Still explicitly open before implementation:**
-1. **Abuse / rate limiting** — a free public instance is a target for spam
-   enrollment and volume VC issuance. Being scoped as the next discussion.
-2. **Data retention / ownership** — HelixID retains all data created via
-   the hosted instance; explicit retention/deletion policy still needed.
-3. **KMS-backed key custody and rotation** — deferred by design, see above.
+1. **Abuse / rate limiting** — see
+   [`proposal-hosted-rate-limiting.md`](./proposal-hosted-rate-limiting.md).
+2. **KMS-backed key custody and rotation** — deferred by design, see above.
+
+## Decided: data retention & ownership
+
+- **Ownership.** The account holder owns their data; HelixID custodies it
+  (same framing as private key custody above) — not "HelixID owns
+  everything created on the hosted instance."
+- **Default on account deletion.** Personal account fields (`email`,
+  `passwordHash`, `googleId`) are cleared. DIDs, issued VCs, and status
+  lists are **not** purged by default and VCs remain active/verifiable —
+  deleting these would break the core promise that a VC stays resolvable
+  and checkable by third parties long after issuance, regardless of what
+  the issuing account later does.
+- **User-initiated full purge is a separate, explicit action.** Clearing
+  personal fields is the default outcome of "delete my account." Beyond
+  that, the account holder can separately request either:
+  - full deletion of their data from the hosted database, or
+  - revocation of all VCs they've issued (via the existing status-list
+    revocation mechanism, not deletion — a revoked VC is still resolvable,
+    it just verifies as revoked)
+
+  These are opt-in, user-initiated actions, not something triggered
+  automatically by account deletion.
 
