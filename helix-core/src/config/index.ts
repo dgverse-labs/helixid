@@ -19,10 +19,22 @@ const BooleanEnvSchema = z.preprocess((value) => {
   return value;
 }, z.boolean());
 
+/**
+ * Placeholder hosted API base URL used when API_BASE_URL is not explicitly
+ * configured. This intentionally resolves to nothing (`.invalid` is an
+ * IANA-reserved, guaranteed-unresolvable TLD) so it fails loudly instead of
+ * silently pointing at a real service.
+ *
+ * TODO(#1 - enterprise hosted solution): replace with the real hosted
+ * default URL once the enterprise hosting architecture is decided, and
+ * update all call sites below that reference this constant.
+ */
+export const DEFAULT_HOSTED_API_BASE_URL = 'https://hosted.helixid.invalid';
+
 export const ConfigSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  API_BASE_URL: z.string().url(),
+  API_BASE_URL: z.string().url().default(DEFAULT_HOSTED_API_BASE_URL),
   HELIX_STORAGE_ADAPTER: z.enum(['sqlite', 'postgres']).default('sqlite'),
   DATABASE_URL: z.string().min(1).optional(),
   HELIX_SQLITE_PATH: z.string().min(1).default('./data/helixid.sqlite'),

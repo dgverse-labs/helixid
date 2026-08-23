@@ -60,6 +60,19 @@ describe('Config', () => {
     expect(config.HELIX_CACHE_ADAPTER).toBe('memory');
   });
 
+  it('falls back to the hosted default when API_BASE_URL is unset', async () => {
+    process.env.DID_DOMAIN = 'example.com';
+    process.env.HELIX_SIGNING_KEY = 'a'.repeat(64);
+    process.env.HELIX_ADMIN_API_KEY = 'test-admin-key-0001';
+    process.env.NODE_ENV = 'test';
+
+    const { loadConfigFromEnv, DEFAULT_HOSTED_API_BASE_URL } = await import(
+      '../../src/config/index.js'
+    );
+    const config = loadConfigFromEnv();
+    expect(config.API_BASE_URL).toBe(DEFAULT_HOSTED_API_BASE_URL);
+  });
+
   it('defaults to did:web and derives the issuer DID from DID_DOMAIN', async () => {
     process.env.API_BASE_URL = 'https://api.test.com';
     process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
