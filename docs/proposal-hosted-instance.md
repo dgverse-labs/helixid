@@ -32,36 +32,85 @@ shared, open, hosted endpoint.
   control-plane authorization model needs to be built.**
 - **Console** works the same way against the hosted instance as it does
   self-hosted — same admin API key model, same enrollment UI, just pointed
-  at a different `API_BASE_URL`.
+  at a different `API_BASE_URL`. It gets a "use HelixID hosted" option that
+  sets `apiBaseUrl` to the hosted default instead of requiring
+  `VITE_API_BASE_URL` to be set.
 
-## Open questions (need real answers before implementation)
+## Decided: accounts, login, and DID/key custody
 
-1. **Multi-tenancy / isolation.** Today's data model (DIDs, VCs, enrollment
-   tokens, audit log) has no tenant/owner boundary — it assumes one operator
-   per deployment. A shared public instance means many unrelated
-   users/agents landing in the same database. Do we need:
-   - a `tenantId`/`ownerId` column across the relevant tables, or
-   - full logical isolation per account (separate DB or schema per tenant)?
-2. **Admin API key model doesn't scale to "available for all."**
-   `HELIX_ADMIN_API_KEY` is currently a single shared secret per deployment.
-   A public hosted instance needs per-user/per-account credentials instead.
-   This likely means a real user/account system, which doesn't exist yet.
-3. **Abuse / rate limiting.** A free public instance is a target for abuse
-   (spam enrollment, VC issuance at volume, etc.). Needs a rate-limiting and
-   quota story before going live.
-4. **Issuer DID.** Self-hosted deployments each mint their own issuer DID
-   (`did:web:<their-domain>`). On a shared hosted instance, whose DID signs
-   issued VCs — HelixID's, or does each account get its own issuer DID
-   namespaced under the hosted domain (e.g. `did:web:hosted.helixid.io:<accountId>`)?
-5. **Data retention / ownership.** Who owns data created via the free hosted
-   instance, and what are the retention/deletion guarantees?
+The hosted instance needs a real account system (self-hosted deployments
+don't, since `HELIX_ADMIN_API_KEY` covers a single operator). Decided
+approach — deliberately kept as a regular app login rather than anything
+DID-specific, since there's no W3C standard for accounts/sessions and
+inventing one adds complexity for no benefit here:
 
-## Recommended next step
+**Account model.** Plain `Account` table: `id`, `email` (unique),
+`passwordHash` (nullable — null if Google-only), `googleId` (nullable),
+`createdAt`. Password hashing via argon2id.
 
-(1)–(4) above are the real blockers, and they're product/business decisions
-as much as engineering ones (in particular #2 and #4 imply a minimal account
-system needs to exist before "available for all" is safe to ship). Suggest
-resolving those before writing enrollment or console code specifically for
-the hosted case — until then, item #2's config-level fallback is the safe,
-buildable slice, and this doc's job is to make sure item #1 doesn't get
-implemented against a stale ("licensed control plane") mental model.
+**Google login.** Standard OAuth2/OIDC. Match an incoming Google sign-in to
+an existing account by `googleId` first, falling back to a match on
+(Google-verified) email. A user who registered with a password and later
+uses "Sign in with Google" on the same email lands on the same account —
+no separate confirmation step required, since Google guarantees the email
+is verified.
+
+**DID auto-provisioning.** On first account creation (whichever path —
+password or Google), auto-provision one issuer DID server-side:
+- `did:web:hosted.helixid.io:accounts:<accountId>` (Option B from the
+  earlier discussion — per-account path-based DID under HelixID's own
+  domain, no setup required from the user).
+- Keypair generated server-side; the user never sees or handles it.
+- **The DID Document lives in the hosted database**, served dynamically at
+  `GET /accounts/:accountId/did.json` — this matches the `did:web` spec
+  directly (a DID with path segments resolves straight to that path).
+
+**Private key storage (interim, pre-KMS).** New `IssuerKeyRecord` table:
+`accountId`, `did`, `encryptedPrivateKey`, `iv`, `authTag`, `algorithm`,
+`createdAt`. AES-256-GCM, one master key from an env var (same pattern as
+today's `HELIX_SIGNING_KEY`) encrypting every row. This is explicitly an
+**interim, single-shared-key model** — anyone with that one env var can
+decrypt every account's key. Accepted trade-off for now, not a hidden gap.
+
+To avoid this being a bigger lift later: all encrypt/decrypt/sign
+operations go through a small internal interface
+(`encrypt` / `decrypt` / `sign`) rather than being called directly at each
+call site. Swapping in real KMS + per-tenant envelope encryption and key
+rotation later becomes a one-file change instead of a hunt-and-replace
+across the codebase. **KMS-backed custody and key rotation are explicitly
+deferred, not designed here — marked as a fast-follow.**
+
+**Sessions: access + refresh tokens.**
+- **Access token** — short-lived JWT (~15 min), signed with a server
+  secret, carries `accountId` + scope. Sent as `Authorization: Bearer
+  <token>`. Stateless — verified per-request, nothing stored server-side.
+- **Refresh token** — long-lived (~30 days), an opaque random string
+  (not a JWT), stored **hashed** in a `RefreshToken` table: `id`,
+  `accountId`, `tokenHash`, `expiresAt`, `revokedAt`,
+  `replacedByTokenId`, `createdAt`. Mirrors the existing
+  `hashToken`-style pattern already used for enrollment tokens in
+  `agent.service.ts`.
+- `POST /v1/auth/refresh` validates the refresh token hash, issues a new
+  access token, and **rotates** the refresh token (old one marked
+  `revokedAt`, pointing at the new one via `replacedByTokenId`).
+- **Reuse detection**: if an already-revoked refresh token is presented
+  again, treat it as a compromise signal — revoke all refresh tokens for
+  that account, forcing re-login everywhere.
+- Logout revokes the current refresh token.
+
+**Rough endpoint list:**
+- `POST /v1/auth/register` — email + password → creates `Account`, then
+  auto-provisions DID/key → returns access + refresh tokens
+- `POST /v1/auth/login` — email + password → access + refresh tokens
+- `GET /v1/auth/google` / `GET /v1/auth/google/callback` — OAuth flow →
+  find-or-create `Account` → access + refresh tokens
+- `POST /v1/auth/refresh` — rotate refresh token, issue new access token
+- `GET /accounts/:accountId/did.json` — public DID Document resolution
+
+**Still explicitly open before implementation:**
+1. **Abuse / rate limiting** — a free public instance is a target for spam
+   enrollment and volume VC issuance. Being scoped as the next discussion.
+2. **Data retention / ownership** — HelixID retains all data created via
+   the hosted instance; explicit retention/deletion policy still needed.
+3. **KMS-backed key custody and rotation** — deferred by design, see above.
+
