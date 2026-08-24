@@ -19,11 +19,13 @@ export async function createEd25519Proof(
   payload: Record<string, unknown>,
   privateKeyHex: string,
   verificationMethod: string,
+  /** Test-only: overrides `created` instead of `new Date()`, for deterministic golden vectors. */
+  createdAt?: Date,
 ): Promise<LinkedDataProof> {
   const signatureHex = await signBytes(hashCanonicalPayload(payload), privateKeyHex);
   return {
     type: 'Ed25519Signature2020',
-    created: new Date().toISOString(),
+    created: (createdAt ?? new Date()).toISOString(),
     verificationMethod,
     proofPurpose: 'assertionMethod',
     proofValue: base58btcEncode(Buffer.from(signatureHex, 'hex')),

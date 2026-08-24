@@ -1,0 +1,273 @@
+{
+  "generated_from": "helix-core",
+  "generator": "scripts/generate-golden-vectors.ts",
+  "note": "Regenerate whenever helix-core/src/crypto/vp.ts, crypto/keys.ts, proof.ts, or vp-builder.ts change. Every SDK asserts byte-for-byte equality against these fixtures — do not hand-edit.",
+  "vectors": [
+    {
+      "name": "single_agent_credential_no_user",
+      "input": {
+        "credentials": [
+          {
+            "@context": [
+              "https://www.w3.org/ns/credentials/v2",
+              "https://helixid.io/contexts/v1"
+            ],
+            "id": "vc:helix:agent:00000000-0000-4000-8000-000000000001",
+            "type": [
+              "VerifiableCredential",
+              "HelixAgentCredential"
+            ],
+            "issuer": "did:key:z6MkIssuerExample",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2026-12-31T23:59:59.000Z",
+            "credentialSubject": {
+              "id": "did:key:z6MkAgentExample",
+              "type": "HelixAgent",
+              "privilegeScopes": [
+                "read:calendar",
+                "read:email"
+              ],
+              "agentName": "golden-vector-test-agent"
+            },
+            "proof": {
+              "type": "Ed25519Signature2020",
+              "created": "2026-01-01T00:00:00.000Z",
+              "verificationMethod": "did:key:z6MkTestGoldenVectorKey#key-1",
+              "proofPurpose": "assertionMethod",
+              "proofValue": "zGoldenVectorPlaceholderProofValue"
+            }
+          }
+        ],
+        "holderDid": "did:key:z6MkHolderExample",
+        "targetService": "https://api.example.invalid/v1/tools/lookup"
+      },
+      "overrides": {
+        "id": "vp:helix:00000000-0000-4000-8000-0000000000ff",
+        "nonce": "abababababababababababababababababababababababababababababababab",
+        "expiresAt": "2026-01-01T00:05:00.000Z",
+        "proofCreatedAt": "2026-01-01T00:00:00.000Z"
+      },
+      "private_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+      "verification_method": "did:key:z6MkTestGoldenVectorKey#key-1",
+      "signed_vp": {
+        "@context": [
+          "https://www.w3.org/ns/credentials/v2"
+        ],
+        "type": [
+          "VerifiablePresentation"
+        ],
+        "id": "vp:helix:00000000-0000-4000-8000-0000000000ff",
+        "holder": "did:key:z6MkHolderExample",
+        "verifiableCredential": [
+          {
+            "@context": [
+              "https://www.w3.org/ns/credentials/v2",
+              "https://helixid.io/contexts/v1"
+            ],
+            "id": "vc:helix:agent:00000000-0000-4000-8000-000000000001",
+            "type": [
+              "VerifiableCredential",
+              "HelixAgentCredential"
+            ],
+            "issuer": "did:key:z6MkIssuerExample",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2026-12-31T23:59:59.000Z",
+            "credentialSubject": {
+              "id": "did:key:z6MkAgentExample",
+              "type": "HelixAgent",
+              "privilegeScopes": [
+                "read:calendar",
+                "read:email"
+              ],
+              "agentName": "golden-vector-test-agent"
+            },
+            "proof": {
+              "type": "Ed25519Signature2020",
+              "created": "2026-01-01T00:00:00.000Z",
+              "verificationMethod": "did:key:z6MkTestGoldenVectorKey#key-1",
+              "proofPurpose": "assertionMethod",
+              "proofValue": "zGoldenVectorPlaceholderProofValue"
+            }
+          }
+        ],
+        "nonce": "abababababababababababababababababababababababababababababababab",
+        "expirationDate": "2026-01-01T00:05:00.000Z",
+        "targetService": "https://api.example.invalid/v1/tools/lookup",
+        "proof": {
+          "type": "Ed25519Signature2020",
+          "created": "2026-01-01T00:00:00.000Z",
+          "verificationMethod": "did:key:z6MkTestGoldenVectorKey#key-1",
+          "proofPurpose": "assertionMethod",
+          "proofValue": "2dJf2yDYtHYQR5zhpRtxXGxFGspzMrsNn7PcEpZjgWtTrAGARwHPvgVNXkjf4exDPBKhCgY5KvLcw8isWKAZ59WW"
+        }
+      }
+    },
+    {
+      "name": "agent_plus_delegation_grant_with_user",
+      "input": {
+        "credentials": [
+          {
+            "@context": [
+              "https://www.w3.org/ns/credentials/v2",
+              "https://helixid.io/contexts/v1"
+            ],
+            "id": "vc:helix:agent:00000000-0000-4000-8000-000000000001",
+            "type": [
+              "VerifiableCredential",
+              "HelixAgentCredential"
+            ],
+            "issuer": "did:key:z6MkIssuerExample",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2026-12-31T23:59:59.000Z",
+            "credentialSubject": {
+              "id": "did:key:z6MkAgentExample",
+              "type": "HelixAgent",
+              "privilegeScopes": [
+                "read:calendar",
+                "read:email"
+              ],
+              "agentName": "golden-vector-test-agent"
+            },
+            "proof": {
+              "type": "Ed25519Signature2020",
+              "created": "2026-01-01T00:00:00.000Z",
+              "verificationMethod": "did:key:z6MkTestGoldenVectorKey#key-1",
+              "proofPurpose": "assertionMethod",
+              "proofValue": "zGoldenVectorPlaceholderProofValue"
+            }
+          },
+          {
+            "@context": [
+              "https://www.w3.org/ns/credentials/v2",
+              "https://helixid.io/contexts/v1"
+            ],
+            "id": "vc:helix:grant:00000000-0000-4000-8000-000000000002",
+            "type": [
+              "VerifiableCredential",
+              "DelegationGrantCredential"
+            ],
+            "issuer": "did:key:z6MkIssuerExample",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2026-12-31T23:59:59.000Z",
+            "credentialSubject": {
+              "id": "did:key:z6MkAgentExample",
+              "type": "HelixAgent",
+              "privilegeScopes": [
+                "read:calendar"
+              ],
+              "agentName": "golden-vector-test-agent",
+              "delegatedFrom": "did:key:z6MkParentAgentExample",
+              "delegationDepth": 1,
+              "maxDelegationDepth": 2,
+              "parentVcId": "vc:helix:agent:00000000-0000-4000-8000-000000000001"
+            },
+            "proof": {
+              "type": "Ed25519Signature2020",
+              "created": "2026-01-01T00:00:00.000Z",
+              "verificationMethod": "did:key:z6MkTestGoldenVectorKey#key-1",
+              "proofPurpose": "assertionMethod",
+              "proofValue": "zGoldenVectorPlaceholderProofValue"
+            }
+          }
+        ],
+        "holderDid": "did:key:z6MkHolderExample",
+        "targetService": "https://api.example.invalid/v1/tools/calendar",
+        "userDid": "did:key:z6MkUserExample"
+      },
+      "overrides": {
+        "id": "vp:helix:00000000-0000-4000-8000-0000000000ff",
+        "nonce": "abababababababababababababababababababababababababababababababab",
+        "expiresAt": "2026-01-01T00:05:00.000Z",
+        "proofCreatedAt": "2026-01-01T00:00:00.000Z"
+      },
+      "private_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+      "verification_method": "did:key:z6MkTestGoldenVectorKey#key-1",
+      "signed_vp": {
+        "@context": [
+          "https://www.w3.org/ns/credentials/v2"
+        ],
+        "type": [
+          "VerifiablePresentation"
+        ],
+        "id": "vp:helix:00000000-0000-4000-8000-0000000000ff",
+        "holder": "did:key:z6MkHolderExample",
+        "verifiableCredential": [
+          {
+            "@context": [
+              "https://www.w3.org/ns/credentials/v2",
+              "https://helixid.io/contexts/v1"
+            ],
+            "id": "vc:helix:agent:00000000-0000-4000-8000-000000000001",
+            "type": [
+              "VerifiableCredential",
+              "HelixAgentCredential"
+            ],
+            "issuer": "did:key:z6MkIssuerExample",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2026-12-31T23:59:59.000Z",
+            "credentialSubject": {
+              "id": "did:key:z6MkAgentExample",
+              "type": "HelixAgent",
+              "privilegeScopes": [
+                "read:calendar",
+                "read:email"
+              ],
+              "agentName": "golden-vector-test-agent"
+            },
+            "proof": {
+              "type": "Ed25519Signature2020",
+              "created": "2026-01-01T00:00:00.000Z",
+              "verificationMethod": "did:key:z6MkTestGoldenVectorKey#key-1",
+              "proofPurpose": "assertionMethod",
+              "proofValue": "zGoldenVectorPlaceholderProofValue"
+            }
+          },
+          {
+            "@context": [
+              "https://www.w3.org/ns/credentials/v2",
+              "https://helixid.io/contexts/v1"
+            ],
+            "id": "vc:helix:grant:00000000-0000-4000-8000-000000000002",
+            "type": [
+              "VerifiableCredential",
+              "DelegationGrantCredential"
+            ],
+            "issuer": "did:key:z6MkIssuerExample",
+            "validFrom": "2026-01-01T00:00:00.000Z",
+            "validUntil": "2026-12-31T23:59:59.000Z",
+            "credentialSubject": {
+              "id": "did:key:z6MkAgentExample",
+              "type": "HelixAgent",
+              "privilegeScopes": [
+                "read:calendar"
+              ],
+              "agentName": "golden-vector-test-agent",
+              "delegatedFrom": "did:key:z6MkParentAgentExample",
+              "delegationDepth": 1,
+              "maxDelegationDepth": 2,
+              "parentVcId": "vc:helix:agent:00000000-0000-4000-8000-000000000001"
+            },
+            "proof": {
+              "type": "Ed25519Signature2020",
+              "created": "2026-01-01T00:00:00.000Z",
+              "verificationMethod": "did:key:z6MkTestGoldenVectorKey#key-1",
+              "proofPurpose": "assertionMethod",
+              "proofValue": "zGoldenVectorPlaceholderProofValue"
+            }
+          }
+        ],
+        "nonce": "abababababababababababababababababababababababababababababababab",
+        "expirationDate": "2026-01-01T00:05:00.000Z",
+        "delegatedBy": "did:key:z6MkUserExample",
+        "targetService": "https://api.example.invalid/v1/tools/calendar",
+        "proof": {
+          "type": "Ed25519Signature2020",
+          "created": "2026-01-01T00:00:00.000Z",
+          "verificationMethod": "did:key:z6MkTestGoldenVectorKey#key-1",
+          "proofPurpose": "assertionMethod",
+          "proofValue": "5as6LQwpNTjenr3w8HfMUjhJ6sxLGUomHpMoUwtCNDhbzgH7j6W2wMbpVowjWuP6z14hok2K1DyLmbUhcBF3apnk"
+        }
+      }
+    }
+  ]
+}

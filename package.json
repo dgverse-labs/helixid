@@ -13,6 +13,7 @@
     "test:e2e": "turbo run test --filter=@helixid/e2e",
     "typecheck": "turbo run typecheck",
     "format": "prettier --write \"**/*.{ts,json,md}\" --ignore-path .gitignore",
+    "generate:golden-vectors": "pnpm --filter @helixid/api exec tsx ../scripts/generate-golden-vectors.ts",
     "setup": "pnpm --filter @helixid/api exec tsx ../scripts/setup.ts",
     "setup:hedera": "pnpm --filter @helixid/api exec tsx ../scripts/setup-hedera.ts",
     "example:verify-vp": "pnpm --filter @helixid/api exec tsx ../examples/verify-vp.ts",

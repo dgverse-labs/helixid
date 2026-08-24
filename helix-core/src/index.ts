@@ -26,7 +26,7 @@ export type {
   SignedStatusListCredential,
 } from './grant.js';
 export { selfIssueVC } from './self-signed.js';
-export type { VPBuilderOptions } from './vp-builder.js';
+export type { VPBuilderOptions, VPBuilderSignOverrides } from './vp-builder.js';
 export type { StatusListResolver, VerifyVPOptions, VerifyVPResult } from './vp-verifier.js';
 export type { DelegateOptions, DelegationLink } from './delegation.js';
 export type { SelfIssueOptions } from './self-signed.js';

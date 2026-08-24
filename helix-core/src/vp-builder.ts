@@ -13,6 +13,24 @@ export interface VPBuilderOptions {
   userDid?: string;
 }
 
+/**
+ * Test-only override hooks for `VPBuilder.sign()`. Never used in production
+ * call sites: omitting these preserves the existing random `id`/`nonce`/
+ * `expirationDate` behavior exactly. These exist so golden-vector generators
+ * (and SDK ports of this file) can produce deterministic, byte-for-byte
+ * reproducible signed VPs for cross-language fixture testing.
+ */
+export interface VPBuilderSignOverrides {
+  /** Overrides the `vp:helix:<uuid>` id instead of calling randomUUID(). */
+  id?: string;
+  /** Overrides the hex nonce instead of calling randomBytes(32). */
+  nonce?: string;
+  /** Overrides the computed expiration instead of Date.now() + 5min. */
+  expiresAt?: Date;
+  /** Overrides the proof's `created` timestamp instead of `new Date()`. */
+  proofCreatedAt?: Date;
+}
+
 function isAgentAuthorityType(vc: SignedVC): boolean {
   return Array.isArray(vc.type) && vc.type.includes('HelixAgentCredential');
 }
@@ -40,15 +58,19 @@ export class VPBuilder {
     }
   }
 
-  async sign(privateKeyHex: string, verificationMethodId: string): Promise<SignedVP> {
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+  async sign(
+    privateKeyHex: string,
+    verificationMethodId: string,
+    overrides?: VPBuilderSignOverrides,
+  ): Promise<SignedVP> {
+    const expiresAt = overrides?.expiresAt ?? new Date(Date.now() + 5 * 60 * 1000);
     const payload = {
       '@context': ['https://www.w3.org/ns/credentials/v2'],
       type: ['VerifiablePresentation'],
-      id: `vp:helix:${randomUUID()}`,
+      id: overrides?.id ?? `vp:helix:${randomUUID()}`,
       holder: this.options.holderDid,
       verifiableCredential: this.options.credentials,
-      nonce: randomBytes(32).toString('hex'),
+      nonce: overrides?.nonce ?? randomBytes(32).toString('hex'),
       expirationDate: expiresAt.toISOString(),
       // "No user" is one semantic state with one wire shape: the key is absent,
       // never serialized as null/undefined.
@@ -58,7 +80,7 @@ export class VPBuilder {
 
     return {
       ...payload,
-      proof: await createEd25519Proof(payload, privateKeyHex, verificationMethodId),
+      proof: await createEd25519Proof(payload, privateKeyHex, verificationMethodId, overrides?.proofCreatedAt),
     };
   }
 }

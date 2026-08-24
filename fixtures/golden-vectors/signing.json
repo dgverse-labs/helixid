@@ -1,0 +1,147 @@
+{
+  "generated_from": "helix-core",
+  "generator": "scripts/generate-golden-vectors.ts",
+  "note": "Regenerate whenever helix-core/src/crypto/vp.ts, crypto/keys.ts, proof.ts, or vp-builder.ts change. Every SDK asserts byte-for-byte equality against these fixtures — do not hand-edit.",
+  "vectors": [
+    {
+      "name": "empty_object",
+      "input": {},
+      "private_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+      "public_key_hex": "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664",
+      "hash_hex": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "signature_hex": "afbbad75b2eeb47a30a9707405e54c959d3f658bf5d3aebb9530f404d83d181bdd9095d687fab4d2fda8ba677954537c300b3e4dc9f97d01ad64f088ed02b309",
+      "verifies": true
+    },
+    {
+      "name": "flat_object_unordered_keys",
+      "input": {
+        "zeta": 1,
+        "alpha": 2,
+        "mid": 3
+      },
+      "private_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+      "public_key_hex": "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664",
+      "hash_hex": "16de8b2404930fba509f84e9f243a0e340d785f301eeb4d9b4d688f8852310f3",
+      "signature_hex": "e6a6456bbf8839c39b4672e2dc0d6cd085d112190f6de647add3f4517c862d282a778f2e163f8ab278c469ce39b7b3db1cdbaa81ed0e0fb42998060283441809",
+      "verifies": true
+    },
+    {
+      "name": "nested_object",
+      "input": {
+        "outer": {
+          "z": 1,
+          "a": {
+            "deep": true,
+            "arr": [
+              3,
+              1,
+              2
+            ]
+          }
+        },
+        "top": "value"
+      },
+      "private_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+      "public_key_hex": "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664",
+      "hash_hex": "59ba6250338d29be29498119e8582ca2f11e89c6c27e5c46ff0a41aff9dcee86",
+      "signature_hex": "95bbdf88b5583bb6053b6b64d2455435bf04790f6214553cdd899b2a7770bc922f9a8fad5dd97d73bab771ac987f664fd53b887f1eedac1cabccc259701c440a",
+      "verifies": true
+    },
+    {
+      "name": "array_of_primitives",
+      "input": [
+        3,
+        1,
+        2,
+        "b",
+        "a",
+        true,
+        false,
+        null
+      ],
+      "private_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+      "public_key_hex": "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664",
+      "hash_hex": "60e4578effcbe725253826535127eaa04fd1d91d647b0c5ebb7039635a1fc506",
+      "signature_hex": "c2532c129d1195ce726fa78916c32591dd5dbf1a43b1754518aa675a80e17258c6671bfe07d4f91c777660925bedbda83ab1352999f05f080bd3b5e5bdc21c06",
+      "verifies": true
+    },
+    {
+      "name": "array_of_objects",
+      "input": [
+        {
+          "b": 1,
+          "a": 2
+        },
+        {
+          "d": 3,
+          "c": 4
+        }
+      ],
+      "private_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+      "public_key_hex": "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664",
+      "hash_hex": "b7674d3bc235a66d417357c0c4e21e834e6d899b1535ccdd3c988e9ce73d2c3d",
+      "signature_hex": "28fa3a3670f9971da40481d997926fa4d3eeb697a5589e908a89dd607266130c39e01b3adf27a26b99d05ce471fc1dbb070e62da79dc94853bbbd8869ad8c203",
+      "verifies": true
+    },
+    {
+      "name": "unicode_strings",
+      "input": {
+        "name": "héllo wörld 你好 🎉",
+        "emoji": "🔑✨"
+      },
+      "private_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+      "public_key_hex": "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664",
+      "hash_hex": "54a57465c7351a7a6d0a8395eb39140b86bd1ade23f3d918862cb24ee80e7706",
+      "signature_hex": "6d5c5b639c6a3529d5927329c23f7bc4beab7915fa13793a86a2e5094c0f258666e772f8f5d10512c8e691cc46ff83ab44dccab810b6541a825d5df04529b702",
+      "verifies": true
+    },
+    {
+      "name": "numeric_edge_cases",
+      "input": {
+        "zero": 0,
+        "negative": -42,
+        "float": 3.14159,
+        "large": 9007199254740991,
+        "negZeroCheck": 0
+      },
+      "private_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+      "public_key_hex": "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664",
+      "hash_hex": "9546be21edbf3f3eca2ab04578fc5ffe18474bd680d596ef1aebc2f8dcfb7a5c",
+      "signature_hex": "6ca59d024fd5b3fc411ee58e21c1fc1ca9903a754bb152b179589d567792046e0a353a762bf07161575c1d5a2590c5cf0a68c9a07c032bdbcea1b0dbda699704",
+      "verifies": true
+    },
+    {
+      "name": "null_and_booleans",
+      "input": {
+        "isNull": null,
+        "isTrue": true,
+        "isFalse": false
+      },
+      "private_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+      "public_key_hex": "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664",
+      "hash_hex": "65c476f836c27a7e42ba87a39ce81010b2c3e5385a316cff63030aa064ccf726",
+      "signature_hex": "54e5a218df7194e85ac7e484a33973a5680518ef2fe0cb3882db40deb5846e9252431606cb389f18f7cfb226ae5762343a417902002bdb194bfbe1a441cdde0d",
+      "verifies": true
+    },
+    {
+      "name": "realistic_vp_like_payload",
+      "input": {
+        "@context": [
+          "https://www.w3.org/ns/credentials/v2"
+        ],
+        "type": [
+          "VerifiablePresentation"
+        ],
+        "id": "vp:helix:00000000-0000-4000-8000-000000000000",
+        "holder": "did:key:z6MkHolderExample",
+        "nonce": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        "targetService": "https://api.example.invalid/v1/tools/lookup"
+      },
+      "private_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+      "public_key_hex": "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664",
+      "hash_hex": "adba9732b2607586f6d3c149109d868d5f0ad698463dcf81b33285b3fe44da0d",
+      "signature_hex": "da253213b7da593b32b0d38ef7e07e95cf0260519ff7cd115d995b9618a84d91ecf5c71f67c0a2eb0f7b698a2625452891f059e6c7cb8adf0bd0d3edb5cbda0d",
+      "verifies": true
+    }
+  ]
+}
