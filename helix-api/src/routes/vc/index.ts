@@ -84,6 +84,13 @@ const vcRoutes: FastifyPluginAsync<VcRouteOptions> = async (fastify, options) =>
     return reply.send(result);
   });
 
+  // GET /v1/vcs/:vcId/status - Get VC status only (active/revoked/expired)
+  fastify.get('/:vcId/status', async (request, reply) => {
+    const { vcId } = request.params as VCParams;
+    const status = await vcService.getVCStatus(vcId);
+    return reply.send({ vcId, status });
+  });
+
   // POST /v1/vcs/:vcId/revoke - Revoke a VC
   fastify.post('/:vcId/revoke', async (request, reply) => {
     requireAdmin(request);

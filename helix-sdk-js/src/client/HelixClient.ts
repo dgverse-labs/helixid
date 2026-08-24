@@ -1,10 +1,8 @@
 import {
   AuditEvents,
   generateKeyPair,
-  getBit,
   HelixError,
   SDKOnlyModeNoAPIError,
-  verifyVP as coreVerifyVP,
   verifyJWT,
   signBytes,
   signData,
@@ -39,53 +37,24 @@ interface PendingKeyPair {
   didCreateSigningPayloadHex?: string | undefined;
 }
 
-interface VPVerificationAuditEntry {
-  vpId: string;
-  agentDid: string;
-  targetService?: string;
-  result: 'success' | 'rejected';
-  reason?: string;
-  delegationChain?: VerifyVPResult['delegationChain'];
-  delegatedFrom?: string;
-  delegatedTo?: string;
-  parentVcId?: string;
-  delegationDepth?: number;
-  // Rejection path only. Read off the raw, unverified VP because verification
-  // threw before any `result` existed — best-effort correlation context, never
-  // a trust claim about the presented credential.
-  attemptedVcId?: string;
-  attemptedParentVcId?: string;
-  attemptedDelegatedFrom?: string;
-  verifiedAt: string;
-  source: 'sdk';
-}
-
-type AttemptedVPContext = Pick<
-  VPVerificationAuditEntry,
-  'attemptedVcId' | 'attemptedParentVcId' | 'attemptedDelegatedFrom'
->;
-
 /**
- * Pulls identifying fields off a raw, unverified VP so a rejection can still be
- * correlated to the credential that caused it. Nothing here is validated — the
- * VP is malformed or hostile often enough that every read is guarded, and the
- * whole thing degrades to `{}` rather than throwing out of the audit call.
+ * Full response from `POST /v1/vp/verify` — see docs/proposal-sdk-api-only.md.
+ * Superset of core's `VerifyVPResult` (same verification fields — parity is
+ * enforced server-side, see helix-api's IVPService) plus the fields only the
+ * API call itself can produce (targetService, verifiedAt, an optional
+ * session). The server logs VP_VERIFIED/VP_REJECTED on every call, so unlike
+ * the old local-verification path, the SDK does not need its own audit call
+ * here.
  */
-function readAttemptedVPContext(vp: SignedVP): AttemptedVPContext {
-  const context: AttemptedVPContext = {};
-  try {
-    const credential = vp?.verifiableCredential?.[0] as Record<string, unknown> | undefined;
-    const subject = credential?.['credentialSubject'] as Record<string, unknown> | undefined;
-    const vcId = credential?.['id'];
-    if (typeof vcId === 'string') context.attemptedVcId = vcId;
-    const parentVcId = subject?.['parentVcId'];
-    if (typeof parentVcId === 'string') context.attemptedParentVcId = parentVcId;
-    const delegatedFrom = subject?.['delegatedFrom'];
-    if (typeof delegatedFrom === 'string') context.attemptedDelegatedFrom = delegatedFrom;
-  } catch {
-    // Correlation fields are optional by design; a garbage VP just yields none.
-  }
-  return context;
+export interface VerifyVPApiResult extends VerifyVPResult {
+  targetService: string;
+  verifiedAt: string;
+  userDid?: string;
+  session?: {
+    token: string;
+    expiresAt: string;
+    publicKeyEndpoint: string;
+  };
 }
 
 /**
@@ -207,6 +176,72 @@ export interface SessionPublicKeyResponse {
 
 export interface HelixClientOptions {
   adminApiKey?: string;
+}
+
+// -- prepare/finalize (see docs/proposal-sdk-api-only.md) -----------------
+// Mirrors helix-api's IPreparedPayloadService types. Duplicated here rather
+// than imported, since helix-api is a server-only package the SDK doesn't
+// (and shouldn't) depend on — only the wire shape needs to match.
+
+export interface PrepareDelegationInput {
+  /** DID of the delegator — becomes `issuer` and `credentialSubject.delegatedFrom`. */
+  delegatorDid: string;
+  /** The delegator's own currently-held agent-authority VC. */
+  fromVC: SignedVC;
+  to: string;
+  scopes: string[];
+  expiresIn: number;
+}
+
+export interface PrepareResult {
+  token: string;
+  unsignedPayload: Record<string, unknown>;
+  canonicalHash: string;
+  expiresAt: string;
+}
+
+export interface PrepareGrantInput {
+  /** SP's own issuer DID — becomes `issuer` of the grant VC. */
+  issuerDid: string;
+  agentDid: string;
+  userDid: string;
+  scopes: string[];
+  durability: 'standing' | 'session';
+  serviceDid?: string;
+  /** Current status list credential, unmodified — caller (SP) owns storage. */
+  statusList: { credentialSubject: { encodedList: string } };
+  statusListCredentialUrl: string;
+}
+
+export interface PrepareAgentRenewalInput {
+  /**
+   * The agent's current (soon-to-expire or already-expired-within-grace) VC.
+   * Must carry a `credentialStatus` entry — renewal can't check revocation
+   * without one. Renewal is signed by whoever signed this VC (`issuer`).
+   */
+  currentVC: SignedVC;
+  /**
+   * Status list the currentVC's credentialStatus entry lives on, unmodified.
+   * Caller owns storage, same as PrepareGrantInput.statusList.
+   */
+  statusList: { credentialSubject: { encodedList: string } };
+  statusListCredentialUrl: string;
+  expiresIn: number;
+  /**
+   * Optional narrower scope set for the renewed VC. Must be a subset of
+   * currentVC's scopes — renewal can only narrow, never widen. Omit to keep
+   * the same scopes.
+   */
+  scopes?: string[];
+}
+
+export interface FinalizeInput {
+  token: string;
+  verificationMethod: string;
+  /** Hex-encoded raw Ed25519 signature over the hash returned by prepare(). */
+  signatureHex: string;
+  /** Optional; defaults to now if omitted. */
+  proofCreatedAt?: string;
 }
 
 export interface CreateStatusListOptions {
@@ -356,6 +391,34 @@ export class HelixClient {
     return this.http.post(`/v1/vcs/${encodeURIComponent(vcId)}/renew`, overrides);
   }
 
+  // -- prepare/finalize: see docs/proposal-sdk-api-only.md. prepare() returns
+  // an unsigned payload + hash; the caller signs the hash locally (private
+  // key never leaves the client) and finalize() attaches the signature.
+
+  async prepareDelegation(input: PrepareDelegationInput): Promise<PrepareResult> {
+    return this.http.post('/v1/vcs/delegation/prepare', input);
+  }
+
+  async finalizeDelegation(input: FinalizeInput): Promise<SignedVC> {
+    return this.http.post('/v1/vcs/delegation/finalize', input);
+  }
+
+  async prepareGrant(input: PrepareGrantInput): Promise<PrepareResult> {
+    return this.http.post('/v1/vcs/grant/prepare', input);
+  }
+
+  async finalizeGrant(input: FinalizeInput): Promise<SignedVC> {
+    return this.http.post('/v1/vcs/grant/finalize', input);
+  }
+
+  async prepareAgentRenewal(input: PrepareAgentRenewalInput): Promise<PrepareResult> {
+    return this.http.post('/v1/vcs/agent-renewal/prepare', input);
+  }
+
+  async finalizeAgentRenewal(input: FinalizeInput): Promise<SignedVC> {
+    return this.http.post('/v1/vcs/agent-renewal/finalize', input);
+  }
+
   async getStatusList(listId: string): Promise<StatusListCredentialResponse> {
     if (!this.http.get) throw new Error('GET not implemented by adapter');
     return this.http.get(`/v1/status-list/${encodeURIComponent(listId)}`);
@@ -379,56 +442,28 @@ export class HelixClient {
     );
   }
 
-  async verifyVP(vp: SignedVP, options: VerifyVPOptions = {}): Promise<VerifyVPResult> {
-    try {
-      const result = await coreVerifyVP(vp, options);
-      const successAudit: VPVerificationAuditEntry = {
-        vpId: result.vpId,
-        agentDid: result.agentDid,
-        targetService: vp.targetService,
-        result: 'success',
-        delegationChain: result.delegationChain,
-        delegationDepth: Math.max(result.delegationChain.length - 1, 0),
-        verifiedAt: new Date().toISOString(),
-        source: 'sdk',
-      };
-      const delegatedFrom = result.delegationChain.at(-2)?.subject;
-      if (delegatedFrom !== undefined) successAudit.delegatedFrom = delegatedFrom;
-      const delegatedTo = result.delegationChain.at(-1)?.subject;
-      if (delegatedTo !== undefined) successAudit.delegatedTo = delegatedTo;
-      const parentVcId = result.delegationChain.at(-2)?.vcId;
-      if (parentVcId !== undefined) successAudit.parentVcId = parentVcId;
-      await this.recordVPVerificationAudit(successAudit);
-      return result;
-    } catch (error) {
-      await this.recordVPVerificationAudit({
-        vpId: vp.id,
-        agentDid: vp.holder,
-        targetService: vp.targetService,
-        result: 'rejected',
-        reason: this.describeVerificationFailure(error),
-        ...readAttemptedVPContext(vp),
-        verifiedAt: new Date().toISOString(),
-        source: 'sdk',
-      });
-      throw error;
-    }
+  async verifyVP(vp: SignedVP, options: VerifyVPOptions = {}): Promise<VerifyVPApiResult> {
+    // Verification, audit logging (VP_VERIFIED/VP_REJECTED), and session
+    // issuance all happen server-side (see docs/proposal-sdk-api-only.md) —
+    // no local verifyVP() call, no separate SDK-side audit write. Note
+    // `statusListResolver` isn't forwarded: it's a function (not
+    // serializable) and only ever used as helix-api's own internal
+    // same-origin-list fast path, never by an external caller.
+    return this.http.post<VerifyVPApiResult>('/v1/vp/verify', {
+      signedVP: vp,
+      ...(options.expectedTargetService !== undefined
+        ? { expectedTargetService: options.expectedTargetService }
+        : {}),
+      ...(options.allowSelfSigned !== undefined ? { allowSelfSigned: options.allowSelfSigned } : {}),
+    });
   }
 
   async checkVCStatus(vc: SignedVC): Promise<'active' | 'revoked' | 'expired'> {
-    const credential = vc as unknown as { validUntil?: string; expirationDate?: string };
-    const validUntil = credential.validUntil ?? credential.expirationDate;
-    if (validUntil && new Date(validUntil).getTime() <= Date.now()) {
-      return 'expired';
-    }
-    if (!vc.credentialStatus) {
-      throw new Error('VC has no credentialStatus');
-    }
-    const { statusListCredential, statusListIndex } = vc.credentialStatus;
     if (!this.http.get) throw new Error('GET not implemented by adapter');
-    const listCredential = await this.http.get<StatusListCredentialResponse>(statusListCredential);
-    const encodedList = listCredential.credentialSubject.encodedList;
-    return getBit(encodedList, Number(statusListIndex)) === 1 ? 'revoked' : 'active';
+    const response = await this.http.get<{ vcId: string; status: 'active' | 'revoked' | 'expired' }>(
+      `/v1/vcs/${encodeURIComponent(vc.id)}/status`,
+    );
+    return response.status;
   }
 
   async fetchSessionPublicKey(): Promise<string> {
@@ -561,22 +596,6 @@ export class HelixClient {
     }
   }
 
-  private async recordVPVerificationAudit(entry: VPVerificationAuditEntry): Promise<void> {
-    if (!this.apiAuditEnabled) {
-      return;
-    }
-
-    try {
-      await this.http.post('/v1/audit-log/vp-verification', {
-        ...entry,
-        subjectDid: entry.agentDid,
-        eventType: entry.result === 'success' ? AuditEvents.VP_VERIFIED : AuditEvents.VP_REJECTED,
-      });
-    } catch {
-      // Audit writes are best-effort. Verification result remains authoritative.
-    }
-  }
-
   private async signPendingDidCreatePayload(_challengeId: string): Promise<string | undefined> {
     void _challengeId;
     if (!this.pendingKeyPair?.didCreateSigningPayloadHex) {
@@ -586,16 +605,6 @@ export class HelixClient {
       Buffer.from(this.pendingKeyPair.didCreateSigningPayloadHex, 'hex'),
       this.pendingKeyPair.privateKey,
     );
-  }
-
-  private describeVerificationFailure(error: unknown): string {
-    if (error instanceof HelixError) {
-      return error.code;
-    }
-    if (error instanceof Error) {
-      return error.message;
-    }
-    return String(error);
   }
 
   private assertAPIConfigured(): void {

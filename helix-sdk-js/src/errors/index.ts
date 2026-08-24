@@ -34,7 +34,30 @@ import {
   DelegationScopeEscalationError,
   DelegationChainInvalidError,
   DelegationParentVCNotFoundError,
-  DelegationParentVCRevokedError
+  DelegationParentVCRevokedError,
+  MaxDelegationDepthExceededError,
+  ScopeEscalationDeniedError,
+  PreparedPayloadNotFoundError,
+  PreparedPayloadExpiredError,
+  PreparedPayloadAlreadyConsumedError,
+  PreparedPayloadSignatureInvalidError,
+  PreparedPayloadPurposeMismatchError,
+  VCRevokedError,
+  VCMissingCredentialStatusError,
+  RenewalWindowNotOpenError,
+  RenewalWindowExpiredError,
+  MaxRenewalCountExceededError,
+  VCExpiredError,
+  VCNotYetValidError,
+  VCSignatureInvalidError,
+  SelfSignedVCNotAllowedError,
+  VPMissingError,
+  VPExpiredError,
+  VPVerificationFailedError,
+  VPSignatureInvalidError,
+  VPInvalidStructureError,
+  ConsentGrantSubjectMismatchError,
+  ConsentGrantInvalidError
 } from '@helixid/core';
 
 /**
@@ -92,6 +115,52 @@ export function mapApiError(body: unknown): HelixError {
       return new DelegationParentVCNotFoundError(message);
     case ErrorCode.DELEGATION_PARENT_VC_REVOKED:
       return new DelegationParentVCRevokedError(message);
+    case ErrorCode.MAX_DELEGATION_DEPTH_EXCEEDED:
+      return new MaxDelegationDepthExceededError(message);
+    case ErrorCode.SCOPE_ESCALATION_DENIED:
+      return new ScopeEscalationDeniedError(message);
+    case ErrorCode.PREPARED_PAYLOAD_NOT_FOUND:
+      return new PreparedPayloadNotFoundError(message);
+    case ErrorCode.PREPARED_PAYLOAD_EXPIRED:
+      return new PreparedPayloadExpiredError(message);
+    case ErrorCode.PREPARED_PAYLOAD_ALREADY_CONSUMED:
+      return new PreparedPayloadAlreadyConsumedError(message);
+    case ErrorCode.PREPARED_PAYLOAD_SIGNATURE_INVALID:
+      return new PreparedPayloadSignatureInvalidError(message);
+    case ErrorCode.PREPARED_PAYLOAD_PURPOSE_MISMATCH:
+      return new PreparedPayloadPurposeMismatchError(message);
+    case ErrorCode.VC_REVOKED:
+      return new VCRevokedError(message);
+    case ErrorCode.VC_MISSING_CREDENTIAL_STATUS:
+      return new VCMissingCredentialStatusError(message);
+    case ErrorCode.RENEWAL_WINDOW_NOT_OPEN:
+      return new RenewalWindowNotOpenError(message);
+    case ErrorCode.RENEWAL_WINDOW_EXPIRED:
+      return new RenewalWindowExpiredError(message);
+    case ErrorCode.MAX_RENEWAL_COUNT_EXCEEDED:
+      return new MaxRenewalCountExceededError(message);
+    case ErrorCode.VC_EXPIRED:
+      return new VCExpiredError(message);
+    case ErrorCode.VC_NOT_YET_VALID:
+      return new VCNotYetValidError(message);
+    case ErrorCode.VC_SIGNATURE_INVALID:
+      return new VCSignatureInvalidError(message);
+    case ErrorCode.SELF_SIGNED_VC_NOT_ALLOWED:
+      return new SelfSignedVCNotAllowedError(message);
+    case ErrorCode.VP_MISSING:
+      return new VPMissingError(message);
+    case ErrorCode.VP_EXPIRED:
+      return new VPExpiredError(message);
+    case ErrorCode.VP_VERIFICATION_FAILED:
+      return new VPVerificationFailedError(message);
+    case ErrorCode.VP_SIGNATURE_INVALID:
+      return new VPSignatureInvalidError(message);
+    case ErrorCode.VP_INVALID_STRUCTURE:
+      return new VPInvalidStructureError(message);
+    case ErrorCode.CONSENT_GRANT_SUBJECT_MISMATCH:
+      return new ConsentGrantSubjectMismatchError(message);
+    case ErrorCode.CONSENT_GRANT_INVALID:
+      return new ConsentGrantInvalidError(message);
     default:
       // Fallback to base HelixError for unknown codes
       return new HelixError(

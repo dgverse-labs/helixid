@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import {
   AuditEvents,
+  HelixError,
   VPInvalidStructureError,
   VPVerificationFailedError,
   fetchStatusList,
@@ -89,7 +90,7 @@ export class VPService implements IVPService {
   async verifyVP(
     signedVP: SignedVP,
     requestId: string,
-    options: { issueSession?: boolean } = {},
+    options: { issueSession?: boolean; expectedTargetService?: string; allowSelfSigned?: boolean } = {},
   ): Promise<VPVerificationResult> {
     let vpId = 'unknown';
     try {
@@ -104,6 +105,12 @@ export class VPService implements IVPService {
       // revocation — happens inside core's verifyVP().
       const result: VerifyVPResult = await verifyVPCore(parsed.data as SignedVP, {
         statusListResolver: this.statusListResolver,
+        ...(options.expectedTargetService !== undefined
+          ? { expectedTargetService: options.expectedTargetService }
+          : {}),
+        ...(options.allowSelfSigned !== undefined
+          ? { allowSelfSigned: options.allowSelfSigned }
+          : {}),
       });
 
       const verifiedAt = new Date().toISOString();
@@ -137,6 +144,11 @@ export class VPService implements IVPService {
         agentDid: result.agentDid,
         targetService: parsed.data.targetService,
         verifiedAt,
+        privilegeScopes: result.privilegeScopes,
+        effectiveScopes: result.effectiveScopes,
+        vpId: result.vpId,
+        delegationChain: result.delegationChain,
+        ...(result.warning !== undefined ? { warning: result.warning } : {}),
       };
       if (parsed.data.delegatedBy !== undefined) {
         response.userDid = parsed.data.delegatedBy;
@@ -193,6 +205,14 @@ export class VPService implements IVPService {
         ...readAttemptedVPContext(signedVP),
         timestamp: new Date().toISOString(),
       });
+      // Preserve the specific failure (expired, revoked, signature invalid,
+      // wrong target service, etc.) for the caller — parity with local
+      // verifyVP(), which throws these directly. Only genuinely unexpected
+      // (non-HelixError) failures collapse to the generic error, so we don't
+      // leak internals we don't recognize as a stable, intentional error type.
+      if (error instanceof HelixError) {
+        throw error;
+      }
       throw new VPVerificationFailedError();
     }
   }

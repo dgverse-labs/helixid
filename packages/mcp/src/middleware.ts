@@ -9,7 +9,7 @@ export function helixidMCPMiddleware(options: MCPMiddlewareOptions) {
       throw new VPMissingError();
     }
 
-    const result = await verifyVP(vp, {
+    const result = await verifyVP(vp, options.client, {
       allowSelfSigned: options.allowSelfSigned ?? false,
     });
 
