@@ -461,6 +461,67 @@ export class AgentAlreadyOnboardedError extends HelixError {
   }
 }
 
+export class PreparedPayloadNotFoundError extends HelixError {
+  constructor(message = 'Prepared payload was not found') {
+    super('PREPARED_PAYLOAD_NOT_FOUND', message, 404);
+  }
+}
+
+export class PreparedPayloadExpiredError extends HelixError {
+  constructor(message = 'Prepared payload has expired') {
+    super('PREPARED_PAYLOAD_EXPIRED', message, 410);
+  }
+}
+
+export class PreparedPayloadAlreadyConsumedError extends HelixError {
+  constructor(message = 'Prepared payload was already consumed') {
+    super('PREPARED_PAYLOAD_ALREADY_CONSUMED', message, 409);
+  }
+}
+
+export class PreparedPayloadSignatureInvalidError extends HelixError {
+  constructor(message = 'Prepared payload signature is invalid') {
+    super('PREPARED_PAYLOAD_SIGNATURE_INVALID', message, 400);
+  }
+}
+
+export class PreparedPayloadPurposeMismatchError extends HelixError {
+  constructor(message = 'Prepared payload purpose does not match finalize endpoint') {
+    super('PREPARED_PAYLOAD_PURPOSE_MISMATCH', message, 400);
+  }
+}
+
+// -- Agent VC renewal (see docs/proposal-sdk-api-only.md, "renewal" scope) --
+// Renewal is issuance-repeated-on-a-timer, signed by the same identity that
+// signed the original VC (see PreparedPayloadService.prepareAgentRenewal()).
+// These enforce standard credential-renewal hygiene: no renewing a revoked
+// credential, no renewing outside the intended window, and no unbounded
+// renewal chains that drift indefinitely from the original issuance.
+
+export class RenewalWindowNotOpenError extends HelixError {
+  constructor(message = 'VC is not yet within its renewal window') {
+    super('RENEWAL_WINDOW_NOT_OPEN', message, 400);
+  }
+}
+
+export class RenewalWindowExpiredError extends HelixError {
+  constructor(message = 'VC renewal grace period has passed; a fresh issuance is required') {
+    super('RENEWAL_WINDOW_EXPIRED', message, 400);
+  }
+}
+
+export class MaxRenewalCountExceededError extends HelixError {
+  constructor(message = 'VC has reached its maximum renewal count; a fresh issuance is required') {
+    super('MAX_RENEWAL_COUNT_EXCEEDED', message, 400);
+  }
+}
+
+export class VCMissingCredentialStatusError extends HelixError {
+  constructor(message = 'VC has no credentialStatus entry; revocation cannot be checked') {
+    super('VC_MISSING_CREDENTIAL_STATUS', message, 400);
+  }
+}
+
 export class ServiceNotFoundError extends HelixError {
   constructor(message = 'Service was not found') {
     super('SERVICE_NOT_FOUND', message, 404);

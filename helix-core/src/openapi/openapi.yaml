@@ -180,6 +180,141 @@ paths:
       responses:
         "201":
           description: VC renewed
+  /v1/vcs/delegation/prepare:
+    post:
+      summary: Prepare an unsigned delegation VC payload
+      description: >
+        See docs/proposal-sdk-api-only.md. Builds the delegation VC skeleton
+        and its canonical hash server-side; the caller signs the hash locally
+        with the delegator's own private key (never sent to the API) and
+        submits the signature to /v1/vcs/delegation/finalize. The returned
+        token expires after 5 minutes and is single-use.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrepareDelegationRequest"
+      responses:
+        "201":
+          description: Unsigned delegation payload and hash to sign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrepareResponse"
+        "400":
+          description: Scope escalation or delegation depth exceeded
+  /v1/vcs/delegation/finalize:
+    post:
+      summary: Finalize a prepared delegation VC with the caller's signature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinalizeRequest"
+      responses:
+        "200":
+          description: Fully signed delegation VC
+        "400":
+          description: Signature invalid, or verificationMethod does not match the prepared signer
+        "404":
+          description: Prepared payload not found
+        "409":
+          description: Prepared payload already consumed, or wrong purpose for this endpoint
+        "410":
+          description: Prepared payload expired
+  /v1/vcs/grant/prepare:
+    post:
+      summary: Prepare an unsigned consent grant VC payload
+      description: >
+        Same pattern as delegation/prepare, for the Service Provider's own
+        consent grant VC (see helix-core/src/grant.ts issueGrant()). The SP
+        continues to own status list storage — this endpoint only builds the
+        unsigned payload and claims a status list index.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrepareGrantRequest"
+      responses:
+        "201":
+          description: Unsigned grant payload and hash to sign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrepareResponse"
+  /v1/vcs/grant/finalize:
+    post:
+      summary: Finalize a prepared consent grant VC with the caller's signature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinalizeRequest"
+      responses:
+        "200":
+          description: Fully signed grant VC
+        "400":
+          description: Signature invalid, or verificationMethod does not match the prepared signer
+        "404":
+          description: Prepared payload not found
+        "409":
+          description: Prepared payload already consumed, or wrong purpose for this endpoint
+        "410":
+          description: Prepared payload expired
+  /v1/vcs/agent-renewal/prepare:
+    post:
+      summary: Prepare an unsigned renewed agent VC payload
+      description: >
+        Renewal is issuance repeated on a timer: signed by whoever signed
+        currentVC, same subject, optionally-narrower scopes, fresh validity
+        window. Enforces standard renewal hygiene before returning a payload
+        to sign: currentVC must not be revoked, requested scopes must not
+        exceed currentVC's scopes, the request must fall inside the renewal
+        window (opens at 80% of currentVC's validity elapsed, closes 24h
+        after currentVC.validUntil), and currentVC must not have already hit
+        the maximum renewal count — outside any of these, a fresh issuance
+        is required instead of renewal.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrepareAgentRenewalRequest"
+      responses:
+        "201":
+          description: Unsigned renewed VC payload and hash to sign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrepareResponse"
+        "400":
+          description: >
+            Revoked, scope escalation, renewal window not yet open or
+            expired, renewal count exceeded, or missing credentialStatus
+  /v1/vcs/agent-renewal/finalize:
+    post:
+      summary: Finalize a prepared agent VC renewal with the caller's signature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinalizeRequest"
+      responses:
+        "200":
+          description: Fully signed renewed VC
+        "400":
+          description: Signature invalid, or verificationMethod does not match the prepared signer
+        "404":
+          description: Prepared payload not found
+        "409":
+          description: Prepared payload already consumed, or wrong purpose for this endpoint
+        "410":
+          description: Prepared payload expired
   /v1/status-list/{listId}:
     get:
       summary: Get StatusList2021 credential
@@ -403,3 +538,111 @@ components:
           minimum: 0
           maximum: 5
           default: 0
+    PrepareDelegationRequest:
+      type: object
+      required: [delegatorDid, fromVC, to, scopes, expiresIn]
+      properties:
+        delegatorDid:
+          type: string
+          description: DID of the delegator; becomes the new VC's issuer.
+        fromVC:
+          type: object
+          description: The delegator's own currently-held signed agent-authority VC.
+        to:
+          type: string
+          description: DID of the agent being delegated to.
+        scopes:
+          type: array
+          items:
+            type: string
+        expiresIn:
+          type: integer
+          description: Validity window of the new delegation VC, in seconds.
+    PrepareGrantRequest:
+      type: object
+      required:
+        - issuerDid
+        - agentDid
+        - userDid
+        - scopes
+        - durability
+        - statusList
+        - statusListCredentialUrl
+      properties:
+        issuerDid:
+          type: string
+          description: SP's own issuer DID; becomes the grant VC's issuer.
+        agentDid:
+          type: string
+        userDid:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        durability:
+          type: string
+          enum: [standing, session]
+        serviceDid:
+          type: string
+        statusList:
+          type: object
+          description: Current status list credential, unmodified. Caller owns storage.
+        statusListCredentialUrl:
+          type: string
+    PrepareResponse:
+      type: object
+      required: [token, unsignedPayload, canonicalHash, expiresAt]
+      properties:
+        token:
+          type: string
+          description: Single-use, 5-minute-TTL token to submit to the matching finalize endpoint.
+        unsignedPayload:
+          type: object
+          description: The VC skeleton, without a `proof` field.
+        canonicalHash:
+          type: string
+          description: Hex SHA-256 of the canonical JSON of unsignedPayload. Sign this locally.
+        expiresAt:
+          type: string
+          format: date-time
+    FinalizeRequest:
+      type: object
+      required: [token, verificationMethod, signatureHex]
+      properties:
+        token:
+          type: string
+        verificationMethod:
+          type: string
+          description: "Format: `${did}#fragment`. The DID must match who the payload was prepared for."
+        signatureHex:
+          type: string
+          description: Hex-encoded raw Ed25519 signature over the canonicalHash bytes from prepare().
+        proofCreatedAt:
+          type: string
+          format: date-time
+          description: Optional; defaults to now if omitted.
+    PrepareAgentRenewalRequest:
+      type: object
+      required: [currentVC, statusList, statusListCredentialUrl, expiresIn]
+      properties:
+        currentVC:
+          type: object
+          description: >
+            The agent's current signed VC, including its credentialStatus
+            entry. Renewal is signed by whoever signed this VC (its issuer).
+        statusList:
+          type: object
+          description: >
+            Status list credential currentVC's credentialStatus entry lives
+            on, unmodified. Caller owns storage.
+        statusListCredentialUrl:
+          type: string
+        expiresIn:
+          type: integer
+          description: Validity window of the renewed VC, in seconds.
+        scopes:
+          type: array
+          items:
+            type: string
+          description: Optional narrower scope set. Must be a subset of currentVC's scopes.

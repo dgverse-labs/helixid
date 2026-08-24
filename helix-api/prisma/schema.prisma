@@ -124,6 +124,27 @@ model Challenge {
   @@map("challenges")
 }
 
+model PreparedPayload {
+  id                String    @id @default(cuid())
+  token             String    @unique
+  // 'delegation' | 'grant' — see docs/proposal-sdk-api-only.md. One purpose
+  // per row; the finalize endpoint for a given purpose rejects tokens
+  // prepared for a different one (PreparedPayloadPurposeMismatchError).
+  purpose           String
+  // Canonical JSON of the unsigned VC skeleton (no `proof` field). This is
+  // exactly what hashCanonicalPayload() was run over to produce canonicalHash.
+  unsignedPayload    String
+  canonicalHash      String
+  // DID whose signature finalize() must accept over canonicalHash. Prevents
+  // a captured prepare response from being finalized with a different key.
+  expectedSignerDid  String
+  expiresAt          DateTime
+  consumedAt         DateTime?
+  createdAt          DateTime  @default(now())
+
+  @@map("prepared_payloads")
+}
+
 model ServiceRegistry {
   id                 String   @id @default(cuid())
   serviceName        String   @unique

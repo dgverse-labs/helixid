@@ -26,12 +26,14 @@ import { VcRepository } from './repositories/vc.repository.js';
 import { AuditLogRepository } from './repositories/audit-log.repository.js';
 import { AgentRepository } from './repositories/agent.repository.js';
 import { ServiceRegistryRepository } from './repositories/service-registry.repository.js';
+import { PreparedPayloadRepository } from './repositories/prepared-payload.repository.js';
 import { createDidCache, createStatusListCache } from './cache/cacheFactory.js';
 import { extractEd25519PublicKeyHexFromDIDDocument } from './services/did/publicKey.js';
 import { DIDService } from './services/did/did.service.js';
 import { VCService } from './services/vc/vc.service.js';
 import { VPService } from './services/vp/vp.service.js';
 import { AgentService } from './services/agent/agent.service.js';
+import { PreparedPayloadService } from './services/prepared-payload/index.js';
 import didRoutes from './routes/did/index.js';
 import didWebRoutes from './routes/did-web/index.js';
 import vcRoutes from './routes/vc/index.js';
@@ -40,6 +42,7 @@ import vpRoutes from './routes/vp/index.js';
 import agentRoutes from './routes/agent/index.js';
 import auditLogRoutes from './routes/audit-log/index.js';
 import sessionRoutes from './routes/sessions/index.js';
+import preparedPayloadRoutes from './routes/prepared-payload/index.js';
 import type { RedisLike } from './cache/RedisCache.js';
 import { SqliteStore } from './storage/sqlite.js';
 
@@ -83,6 +86,7 @@ const vcRepository = new VcRepository(prisma, sqlite);
 const auditLogRepository = new AuditLogRepository(prisma, sqlite);
 const agentRepository = new AgentRepository(prisma, sqlite);
 const serviceRegistry = new ServiceRegistryRepository(agentRepository);
+const preparedPayloadRepository = new PreparedPayloadRepository(prisma, sqlite);
 await serviceRegistry.seedBuiltIns();
 
 await ensureIssuerDidCached();
@@ -116,6 +120,7 @@ const vpService = new VPService(vcService, auditLogger, config.API_BASE_URL, {
   ttlSeconds: config.JWT_SESSION_TTL_SECONDS,
 });
 const agentService = new AgentService(agentRepository, didService, vcService, auditLogger);
+const preparedPayloadService = new PreparedPayloadService(preparedPayloadRepository, didService);
 
 const app = Fastify({
   logger: {
@@ -199,6 +204,10 @@ await app.register(vcRoutes, {
   prefix: '/v1/vcs',
   vcService,
   adminApiKey: config.HELIX_ADMIN_API_KEY,
+});
+await app.register(preparedPayloadRoutes, {
+  prefix: '/v1/vcs',
+  preparedPayloadService,
 });
 await app.register(statusListRoutes, {
   prefix: '/v1/status-list',

@@ -131,6 +131,18 @@ CREATE TABLE IF NOT EXISTS service_registry (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS prepared_payloads (
+  id TEXT PRIMARY KEY,
+  token TEXT NOT NULL UNIQUE,
+  purpose TEXT NOT NULL,
+  unsigned_payload TEXT NOT NULL,
+  canonical_hash TEXT NOT NULL,
+  expected_signer_did TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  consumed_at TEXT,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   timestamp TEXT NOT NULL,
@@ -144,6 +156,21 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
   execute(sql: string): void {
     this.db.exec(sql);
+  }
+
+  /**
+   * Like execute(), but for a single parameterless UPDATE/DELETE where the
+   * caller needs to know how many rows were actually affected (e.g. a
+   * conditional `WHERE consumed_at IS NULL` used for single-use tokens).
+   * exec() doesn't expose this, and comparing timestamps instead is
+   * unreliable — two calls issued within the same millisecond produce
+   * identical Date.now() values, so a timestamp-equality check can't tell
+   * "I just set this" apart from "someone else already set this to the same
+   * value" (see docs/proposal-sdk-api-only.md's prepare-endpoint idempotency
+   * requirement — this is exactly the race it's meant to close).
+   */
+  run(sql: string): { changes: number } {
+    return this.db.prepare(sql).run();
   }
 
   query<T = Record<string, unknown>>(sql: string): T[] {
