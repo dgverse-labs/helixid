@@ -186,6 +186,11 @@ model Account {
   // Null until the account links (or is created via) Google sign-in.
   googleId     String?   @unique
   issuerDid    String?   @unique
+  // Google accounts are verified by construction (emailVerified check at
+  // link/create time); password accounts must click the emailed link.
+  emailVerifiedAt            DateTime?
+  emailVerificationTokenHash String?
+  emailVerificationExpiresAt DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 

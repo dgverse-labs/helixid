@@ -21,6 +21,13 @@ export interface AuthRouteOptions {
   googleClientId?: string | undefined;
   googleClientSecret?: string | undefined;
   googleRedirectUri?: string | undefined;
+  rateLimits?:
+    | {
+        loginMax?: number;
+        registerMax?: number;
+        refreshMax?: number;
+      }
+    | undefined;
 }
 
 interface EmailPasswordBody {
@@ -47,26 +54,38 @@ function requireEmailPassword(body: EmailPasswordBody): { email: string; passwor
 }
 
 const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (fastify, options) => {
-  fastify.post('/register', async (request, reply) => {
-    const { email, password } = requireEmailPassword(request.body as EmailPasswordBody);
-    const { account, tokens } = await options.authService.register({ email, password });
-    return reply.code(201).send({ account, ...tokens });
-  });
+  fastify.post(
+    '/register',
+    { config: { rateLimit: { max: options.rateLimits?.registerMax ?? 3, timeWindow: '1 hour' } } },
+    async (request, reply) => {
+      const { email, password } = requireEmailPassword(request.body as EmailPasswordBody);
+      const { account, tokens } = await options.authService.register({ email, password });
+      return reply.code(201).send({ account, ...tokens });
+    },
+  );
 
-  fastify.post('/login', async (request, reply) => {
-    const { email, password } = requireEmailPassword(request.body as EmailPasswordBody);
-    const { account, tokens } = await options.authService.login({ email, password });
-    return reply.code(200).send({ account, ...tokens });
-  });
+  fastify.post(
+    '/login',
+    { config: { rateLimit: { max: options.rateLimits?.loginMax ?? 5, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const { email, password } = requireEmailPassword(request.body as EmailPasswordBody);
+      const { account, tokens } = await options.authService.login({ email, password });
+      return reply.code(200).send({ account, ...tokens });
+    },
+  );
 
-  fastify.post('/refresh', async (request, reply) => {
-    const body = request.body as RefreshBody;
-    if (typeof body.refreshToken !== 'string' || body.refreshToken.length === 0) {
-      throw new HelixError(ErrorCode.VALIDATION_ERROR, 'refreshToken is required', 400);
-    }
-    const tokens = await options.authService.refresh(body.refreshToken);
-    return reply.code(200).send(tokens);
-  });
+  fastify.post(
+    '/refresh',
+    { config: { rateLimit: { max: options.rateLimits?.refreshMax ?? 20, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const body = request.body as RefreshBody;
+      if (typeof body.refreshToken !== 'string' || body.refreshToken.length === 0) {
+        throw new HelixError(ErrorCode.VALIDATION_ERROR, 'refreshToken is required', 400);
+      }
+      const tokens = await options.authService.refresh(body.refreshToken);
+      return reply.code(200).send(tokens);
+    },
+  );
 
   fastify.post('/logout', async (request, reply) => {
     const body = request.body as RefreshBody;
@@ -75,6 +94,26 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (fastify, options
     }
     await options.authService.logout(body.refreshToken);
     return reply.code(204).send();
+  });
+
+  fastify.post('/verify-email', async (request, reply) => {
+    const body = request.body as { token?: unknown };
+    if (typeof body.token !== 'string' || body.token.length === 0) {
+      throw new HelixError(ErrorCode.VALIDATION_ERROR, 'token is required', 400);
+    }
+    const account = await options.authService.verifyEmail(body.token);
+    return reply.code(200).send({ account });
+  });
+
+  fastify.post('/resend-verification', async (request, reply) => {
+    const body = request.body as EmailPasswordBody;
+    if (typeof body.email !== 'string' || !body.email.includes('@')) {
+      throw new HelixError(ErrorCode.VALIDATION_ERROR, 'A valid email is required', 400);
+    }
+    await options.authService.resendVerificationEmail(body.email);
+    // Always 202, whether or not the account exists/is already verified —
+    // this endpoint must not leak account existence.
+    return reply.code(202).send();
   });
 
   // ── Google OAuth2/OIDC (authorization-code flow) ──────────────────────────

@@ -90,9 +90,18 @@ export function verifyAccessToken(token: string, secret: string): AccessTokenPay
 
 /** Opaque bearer-style refresh token. Only its sha256 hash is ever persisted. */
 export function generateRefreshToken(): string {
-  return `rft_${randomBytes(32).toString('base64url')}`;
+  return generateOpaqueToken('rft');
 }
 
 export function hashRefreshToken(token: string): string {
+  return hashOpaqueToken(token);
+}
+
+/** Generic opaque-token helper, reused for refresh tokens and email-verification tokens alike. */
+export function generateOpaqueToken(prefix: string): string {
+  return `${prefix}_${randomBytes(32).toString('base64url')}`;
+}
+
+export function hashOpaqueToken(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex');
 }

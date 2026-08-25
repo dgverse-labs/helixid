@@ -14,9 +14,11 @@ import {
   InvalidCredentialsError,
   RefreshTokenReuseDetectedError,
   AccountHasNoPasswordError,
+  EmailVerificationTokenInvalidError,
 } from '@helixid/core';
 import { AuthService } from '../../../src/services/auth/auth.service.js';
 import { AesGcmKeyCustody } from '../../../src/services/auth/key-custody.js';
+import type { IEmailSender } from '../../../src/services/auth/email-sender.js';
 import { AccountRepository } from '../../../src/repositories/account.repository.js';
 import { DidRepository } from '../../../src/repositories/did.repository.js';
 import { IssuerKeyRepository } from '../../../src/repositories/issuer-key.repository.js';
@@ -27,7 +29,7 @@ const MASTER_KEY = 'a'.repeat(64);
 const ACCESS_SECRET = 'test-access-token-secret-please-ignore';
 const DID_DOMAIN = 'hosted.helixid.test';
 
-function makeService() {
+function makeService(overrides: { emailSender?: IEmailSender } = {}) {
   const accountRepository = new AccountRepository();
   const didRepository = new DidRepository();
   const issuerKeyRepository = new IssuerKeyRepository();
@@ -44,6 +46,9 @@ function makeService() {
     DID_DOMAIN,
     900,
     30,
+    overrides.emailSender,
+    'https://hosted.helixid.test',
+    24,
   );
   return { service, accountRepository, didRepository, issuerKeyRepository, refreshTokenRepository };
 }
@@ -172,6 +177,113 @@ describe('AuthService.refresh', () => {
     // The precaution burns every session for the account, including the
     // legitimately-rotated one.
     await expect(service.refresh(rotated.refreshToken)).rejects.toThrow();
+  });
+});
+
+describe('AuthService email verification', () => {
+  it('sends a verification email on password registration and the account starts unverified', async () => {
+    const { service } = makeService();
+    const sentEmails: Array<{ to: string; url: string }> = [];
+    const { service: serviceWithEmail } = makeService({
+      emailSender: {
+        sendVerificationEmail: async (to: string, verificationUrl: string) => {
+          sentEmails.push({ to, url: verificationUrl });
+        },
+      },
+    });
+
+    const { account } = await serviceWithEmail.register({
+      email: 'verify-me@example.com',
+      password: 'password123',
+    });
+
+    expect(account.emailVerified).toBe(false);
+    expect(sentEmails).toHaveLength(1);
+    expect(sentEmails[0]!.to).toBe('verify-me@example.com');
+    expect(sentEmails[0]!.url).toContain('/account/verify-email?token=vrf_');
+
+    // No email sender configured for the plain `service` instance: register
+    // still succeeds, it just can't send anything (documented no-op).
+    const { account: noEmailAccount } = await service.register({
+      email: 'no-sender@example.com',
+      password: 'password123',
+    });
+    expect(noEmailAccount.emailVerified).toBe(false);
+  });
+
+  it('verifies the account when a valid token is presented', async () => {
+    let capturedUrl = '';
+    const { service } = makeService({
+      emailSender: {
+        sendVerificationEmail: async (_to: string, verificationUrl: string) => {
+          capturedUrl = verificationUrl;
+        },
+      },
+    });
+
+    const { account } = await service.register({
+      email: 'confirm@example.com',
+      password: 'password123',
+    });
+    expect(account.emailVerified).toBe(false);
+
+    const token = new URL(capturedUrl).searchParams.get('token')!;
+    const verified = await service.verifyEmail(token);
+    expect(verified.emailVerified).toBe(true);
+
+    // Token is single-use.
+    await expect(service.verifyEmail(token)).rejects.toBeInstanceOf(
+      EmailVerificationTokenInvalidError,
+    );
+  });
+
+  it('rejects an unknown or malformed token', async () => {
+    const { service } = makeService();
+    await expect(service.verifyEmail('not-a-real-token')).rejects.toBeInstanceOf(
+      EmailVerificationTokenInvalidError,
+    );
+  });
+
+  it('Google sign-in accounts are verified immediately, no email sent', async () => {
+    const sentEmails: string[] = [];
+    const { service } = makeService({
+      emailSender: {
+        sendVerificationEmail: async (to: string) => {
+          sentEmails.push(to);
+        },
+      },
+    });
+
+    const { account } = await service.loginWithGoogle({
+      googleId: 'g-verified',
+      email: 'googley@example.com',
+      emailVerified: true,
+    });
+
+    expect(account.emailVerified).toBe(true);
+    expect(sentEmails).toHaveLength(0);
+  });
+
+  it('resend is silent for unknown emails and for already-verified accounts', async () => {
+    const sentEmails: string[] = [];
+    const { service } = makeService({
+      emailSender: {
+        sendVerificationEmail: async (to: string) => {
+          sentEmails.push(to);
+        },
+      },
+    });
+
+    await service.resendVerificationEmail('nobody@example.com');
+    expect(sentEmails).toHaveLength(0);
+
+    await service.loginWithGoogle({
+      googleId: 'g-already',
+      email: 'already-verified@example.com',
+      emailVerified: true,
+    });
+    await service.resendVerificationEmail('already-verified@example.com');
+    expect(sentEmails).toHaveLength(0);
   });
 });
 

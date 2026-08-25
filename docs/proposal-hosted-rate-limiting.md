@@ -1,8 +1,8 @@
 # Proposal: Rate limiting & abuse prevention for the hosted instance
 
-Status: **Partially decided.** Per-account quotas (§2) are locked. Per-IP
-numeric limits (§1) and CAPTCHA/email-verification specifics (§3) are
-still proposal-stage placeholders pending approval.
+Status: **Decided.** Per-account quotas (§2) and per-IP limits (§1) are
+both locked. CAPTCHA/email-verification specifics (§3) remain proposal-stage
+pending a provider decision (Turnstile keys).
 
 Companion to [`proposal-hosted-instance.md`](./proposal-hosted-instance.md).
 That doc covers accounts, login, and DID/key custody; this one covers
@@ -17,13 +17,13 @@ Ordered by build priority (cheapest / highest-leverage first).
 First line of defense, doesn't depend on accounts existing yet.
 
 - `@fastify/rate-limit` applied globally across the hosted API — a coarse
-  ceiling (e.g. 100 req/min/IP) to blunt basic scripted abuse before it
-  reaches auth or business logic.
+  ceiling, decided: **100 req/min/IP** to blunt basic scripted abuse before
+  it reaches auth or business logic.
 - Tighter, endpoint-specific limits on the brute-force/credential-stuffing
-  targets:
-  - `POST /v1/auth/login` — e.g. 5/min/IP
-  - `POST /v1/auth/register` — e.g. 3/hour/IP
-  - `POST /v1/auth/refresh` — e.g. 20/min/IP
+  targets, decided:
+  - `POST /v1/auth/login` — **5/min/IP**
+  - `POST /v1/auth/register` — **3/hour/IP**
+  - `POST /v1/auth/refresh` — **20/min/IP**
 
 This is the cheapest control to ship and closes the worst brute-force risk
 immediately, with no dependency on anything else in this doc.

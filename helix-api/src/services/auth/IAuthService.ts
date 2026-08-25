@@ -22,6 +22,7 @@ export interface AccountSummary {
   issuerDid: string | null;
   hasPassword: boolean;
   hasGoogle: boolean;
+  emailVerified: boolean;
 }
 
 export interface RegisterInput {
@@ -51,4 +52,8 @@ export interface IAuthService {
   refresh(refreshToken: string): Promise<AuthTokens>;
   logout(refreshToken: string): Promise<void>;
   verifyAccessToken(accessToken: string): { accountId: string; scope: string[] };
+  /** Consumes an emailed verification token and marks the account verified. */
+  verifyEmail(token: string): Promise<AccountSummary>;
+  /** Re-sends the verification email with a fresh token (old one invalidated). No-op if already verified. */
+  resendVerificationEmail(email: string): Promise<void>;
 }

@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import pg from 'pg';
 import { Redis } from 'ioredis';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -37,7 +38,7 @@ import { VCService } from './services/vc/vc.service.js';
 import { VPService } from './services/vp/vp.service.js';
 import { AgentService } from './services/agent/agent.service.js';
 import { PreparedPayloadService } from './services/prepared-payload/index.js';
-import { AuthService, AesGcmKeyCustody } from './services/auth/index.js';
+import { AuthService, AesGcmKeyCustody, ConsoleEmailSender } from './services/auth/index.js';
 import didRoutes from './routes/did/index.js';
 import didWebRoutes from './routes/did-web/index.js';
 import vcRoutes from './routes/vc/index.js';
@@ -151,6 +152,13 @@ const hostedAccessTokenTtlSeconds =
 const hostedRefreshTokenTtlDays =
   (config as unknown as { HOSTED_REFRESH_TOKEN_TTL_DAYS?: number }).HOSTED_REFRESH_TOKEN_TTL_DAYS ?? 30;
 const keyCustody = new AesGcmKeyCustody(hostedKeyEncryptionKey);
+const emailSender = new ConsoleEmailSender();
+const hostedConsoleBaseUrl =
+  (config as unknown as { HOSTED_CONSOLE_BASE_URL?: string }).HOSTED_CONSOLE_BASE_URL ??
+  'https://hosted.helixid.io';
+const hostedEmailVerificationTtlHours =
+  (config as unknown as { HOSTED_EMAIL_VERIFICATION_TTL_HOURS?: number })
+    .HOSTED_EMAIL_VERIFICATION_TTL_HOURS ?? 24;
 const authService = new AuthService(
   accountRepository,
   didRepository,
@@ -162,6 +170,9 @@ const authService = new AuthService(
   hostedDidDomain,
   hostedAccessTokenTtlSeconds,
   hostedRefreshTokenTtlDays,
+  emailSender,
+  hostedConsoleBaseUrl,
+  hostedEmailVerificationTtlHours,
 );
 
 const app = Fastify({
@@ -171,6 +182,29 @@ const app = Fastify({
   },
   genReqId: () => `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`,
 });
+
+// Per-IP rate limiting (proposal-hosted-rate-limiting.md, §1 — decided).
+// Only applies in hosted mode: self-hosted single-operator deployments
+// shouldn't have hosted-tier limits forced on them. Global ceiling here;
+// tighter per-route overrides are set via `config.rateLimit` on the
+// individual auth routes (see routes/auth/index.ts).
+const isHostedMode = (config as unknown as { HOSTED_MODE?: boolean }).HOSTED_MODE ?? false;
+const rateLimitGlobalMax =
+  (config as unknown as { HOSTED_RATE_LIMIT_GLOBAL_MAX?: number }).HOSTED_RATE_LIMIT_GLOBAL_MAX ?? 100;
+const rateLimitLoginMax =
+  (config as unknown as { HOSTED_RATE_LIMIT_LOGIN_MAX?: number }).HOSTED_RATE_LIMIT_LOGIN_MAX ?? 5;
+const rateLimitRegisterMax =
+  (config as unknown as { HOSTED_RATE_LIMIT_REGISTER_MAX?: number }).HOSTED_RATE_LIMIT_REGISTER_MAX ?? 3;
+const rateLimitRefreshMax =
+  (config as unknown as { HOSTED_RATE_LIMIT_REFRESH_MAX?: number }).HOSTED_RATE_LIMIT_REFRESH_MAX ?? 20;
+
+if (isHostedMode) {
+  await app.register(rateLimit, {
+    global: true,
+    max: rateLimitGlobalMax,
+    timeWindow: '1 minute',
+  });
+}
 
 
 app.addSchema({

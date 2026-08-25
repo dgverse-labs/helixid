@@ -85,6 +85,7 @@ export const ConfigSchema = z.object({
   // generated per-process key (see server.ts), which is fine for local dev
   // but means encrypted IssuerKeyRecord rows and issued sessions don't
   // survive a restart.
+  HOSTED_MODE: z.coerce.boolean().default(false),
   HOSTED_KEY_ENCRYPTION_KEY: z
     .string()
     .regex(/^[0-9a-fA-F]{64}$/, 'must be 64 hex chars (32 bytes) for AES-256-GCM')
@@ -93,9 +94,24 @@ export const ConfigSchema = z.object({
   HOSTED_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
   HOSTED_REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   HOSTED_DID_DOMAIN: z.string().default('hosted.helixid.io'),
+  // Where the console is served, used to build email-verification links
+  // (e.g. https://hosted.helixid.io/account/verify-email?token=...).
+  HOSTED_CONSOLE_BASE_URL: z.string().url().default('https://hosted.helixid.io'),
+  HOSTED_EMAIL_VERIFICATION_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_OAUTH_REDIRECT_URI: z.string().url().optional(),
+
+  // Hosted rate limiting & abuse prevention (proposal-hosted-rate-limiting.md).
+  // Numeric values are the decided defaults from that doc; overridable via
+  // env for tuning without a code change. Only enforced when HOSTED_MODE=true.
+  HOSTED_RATE_LIMIT_GLOBAL_MAX: z.coerce.number().int().min(1).default(100),
+  HOSTED_RATE_LIMIT_LOGIN_MAX: z.coerce.number().int().min(1).default(5),
+  HOSTED_RATE_LIMIT_REGISTER_MAX: z.coerce.number().int().min(1).default(3),
+  HOSTED_RATE_LIMIT_REFRESH_MAX: z.coerce.number().int().min(1).default(20),
+  HOSTED_QUOTA_VC_ISSUANCE_PER_DAY: z.coerce.number().int().min(1).default(1000),
+  HOSTED_QUOTA_ENROLLMENT_TOKEN_PER_DAY: z.coerce.number().int().min(1).default(2000),
+  TURNSTILE_SECRET_KEY: z.string().optional(),
 
   // E2E / Testing
   HEDERA_E2E_TESTNET: z

@@ -601,3 +601,35 @@ export class GoogleOAuthFailedError extends HelixError {
     super('GOOGLE_OAUTH_FAILED', message, 401);
   }
 }
+
+export class EmailNotVerifiedError extends HelixError {
+  constructor(
+    message = 'Please verify your email before issuing credentials or enrollment tokens',
+  ) {
+    super('EMAIL_NOT_VERIFIED', message, 403);
+  }
+}
+
+export class EmailVerificationTokenInvalidError extends HelixError {
+  constructor(message = 'Verification link is invalid') {
+    super('EMAIL_VERIFICATION_TOKEN_INVALID', message, 400);
+  }
+}
+
+export class EmailVerificationTokenExpiredError extends HelixError {
+  constructor(message = 'Verification link has expired; request a new one') {
+    super('EMAIL_VERIFICATION_TOKEN_EXPIRED', message, 400);
+  }
+}
+
+export class AccountQuotaExceededError extends HelixError {
+  constructor(message = 'Daily quota exceeded for this account') {
+    super('ACCOUNT_QUOTA_EXCEEDED', message, 429);
+  }
+}
+
+export class CaptchaFailedError extends HelixError {
+  constructor(message = 'CAPTCHA verification failed') {
+    super('CAPTCHA_FAILED', message, 400);
+  }
+}

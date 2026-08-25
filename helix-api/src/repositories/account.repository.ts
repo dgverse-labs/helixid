@@ -41,6 +41,9 @@ export interface AccountRecord {
   passwordHash: string | null;
   googleId: string | null;
   issuerDid: string | null;
+  emailVerifiedAt: Date | null;
+  emailVerificationTokenHash: string | null;
+  emailVerificationExpiresAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -51,6 +54,9 @@ type SqliteAccountRow = {
   password_hash: string | null;
   google_id: string | null;
   issuer_did: string | null;
+  email_verified_at: string | null;
+  email_verification_token_hash: string | null;
+  email_verification_expires_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -63,6 +69,11 @@ function fromSqliteRow(row: SqliteAccountRow | undefined): AccountRecord | null 
     passwordHash: row.password_hash,
     googleId: row.google_id,
     issuerDid: row.issuer_did,
+    emailVerifiedAt: row.email_verified_at ? new Date(row.email_verified_at) : null,
+    emailVerificationTokenHash: row.email_verification_token_hash,
+    emailVerificationExpiresAt: row.email_verification_expires_at
+      ? new Date(row.email_verification_expires_at)
+      : null,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -125,13 +136,17 @@ export class AccountRepository {
 
     if (this.sqlite) {
       this.sqlite.execute(`
-        INSERT INTO accounts (id, email, password_hash, google_id, issuer_did, created_at, updated_at)
+        INSERT INTO accounts (
+          id, email, password_hash, google_id, issuer_did,
+          email_verified_at, email_verification_token_hash, email_verification_expires_at,
+          created_at, updated_at
+        )
         VALUES (
           ${sqliteLiteral(id)},
           ${sqliteLiteral(data.email)},
           ${sqliteLiteral(data.passwordHash)},
           ${sqliteLiteral(data.googleId)},
-          NULL,
+          NULL, NULL, NULL, NULL,
           ${sqliteLiteral(now)},
           ${sqliteLiteral(now)}
         )
@@ -142,6 +157,9 @@ export class AccountRepository {
         passwordHash: data.passwordHash,
         googleId: data.googleId,
         issuerDid: null,
+        emailVerifiedAt: null,
+        emailVerificationTokenHash: null,
+        emailVerificationExpiresAt: null,
         createdAt: now,
         updatedAt: now,
       };
@@ -153,6 +171,9 @@ export class AccountRepository {
       passwordHash: data.passwordHash,
       googleId: data.googleId,
       issuerDid: null,
+      emailVerifiedAt: null,
+      emailVerificationTokenHash: null,
+      emailVerificationExpiresAt: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -236,6 +257,52 @@ export class AccountRepository {
     return this.update(id, { issuerDid });
   }
 
+  /** Stores a hashed, expiring email-verification token — see services/auth/email-verification.ts. */
+  async setEmailVerificationToken(
+    id: string,
+    tokenHash: string,
+    expiresAt: Date,
+  ): Promise<AccountRecord> {
+    return this.update(id, {
+      emailVerificationTokenHash: tokenHash,
+      emailVerificationExpiresAt: expiresAt,
+    });
+  }
+
+  /** Marks the email verified and clears the (now-consumed) token. */
+  async markEmailVerified(id: string): Promise<AccountRecord> {
+    return this.update(id, {
+      emailVerifiedAt: new Date(),
+      emailVerificationTokenHash: null,
+      emailVerificationExpiresAt: null,
+    });
+  }
+
+  async findByEmailVerificationTokenHash(tokenHash: string): Promise<AccountRecord | null> {
+    if (this.prisma && hasRealRaw(this.prisma)) {
+      const rows = await (this.prisma as PrismaRaw).$queryRawUnsafe<AccountRecord[]>(
+        `SELECT * FROM "accounts" WHERE "emailVerificationTokenHash" = $1 LIMIT 1`,
+        tokenHash,
+      );
+      return rows[0] ?? null;
+    }
+    if (this.prisma) {
+      return (this.prisma as PrismaWithAccount).account.findUnique({
+        where: { emailVerificationTokenHash: tokenHash } as unknown as Record<string, unknown>,
+      });
+    }
+    if (this.sqlite) {
+      const rows = this.sqlite.query<SqliteAccountRow>(
+        `SELECT * FROM accounts WHERE email_verification_token_hash = ${sqliteLiteral(tokenHash)} LIMIT 1`,
+      );
+      return fromSqliteRow(rows[0]);
+    }
+    for (const record of this.rows.values()) {
+      if (record.emailVerificationTokenHash === tokenHash) return record;
+    }
+    return null;
+  }
+
   private async update(id: string, patch: Partial<AccountRecord>): Promise<AccountRecord> {
     const now = new Date();
 
@@ -274,6 +341,16 @@ export class AccountRepository {
       if (patch.issuerDid !== undefined) setClauses.push(`issuer_did = ${sqliteLiteral(patch.issuerDid)}`);
       if (patch.passwordHash !== undefined)
         setClauses.push(`password_hash = ${sqliteLiteral(patch.passwordHash)}`);
+      if (patch.emailVerifiedAt !== undefined)
+        setClauses.push(`email_verified_at = ${sqliteLiteral(patch.emailVerifiedAt)}`);
+      if (patch.emailVerificationTokenHash !== undefined)
+        setClauses.push(
+          `email_verification_token_hash = ${sqliteLiteral(patch.emailVerificationTokenHash)}`,
+        );
+      if (patch.emailVerificationExpiresAt !== undefined)
+        setClauses.push(
+          `email_verification_expires_at = ${sqliteLiteral(patch.emailVerificationExpiresAt)}`,
+        );
       setClauses.push(`updated_at = ${sqliteLiteral(now)}`);
       this.sqlite.execute(
         `UPDATE accounts SET ${setClauses.join(', ')} WHERE id = ${sqliteLiteral(id)}`,

@@ -149,6 +149,9 @@ CREATE TABLE IF NOT EXISTS accounts (
   password_hash TEXT,
   google_id TEXT,
   issuer_did TEXT,
+  email_verified_at TEXT,
+  email_verification_token_hash TEXT,
+  email_verification_expires_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

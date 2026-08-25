@@ -23,6 +23,8 @@ import {
   AccountAlreadyExistsError,
   AccountHasNoPasswordError,
   AccountNotFoundError,
+  EmailVerificationTokenInvalidError,
+  EmailVerificationTokenExpiredError,
   InvalidCredentialsError,
   RefreshTokenExpiredError,
   RefreshTokenInvalidError,
@@ -35,8 +37,11 @@ import type { DidRepository } from '../../repositories/did.repository.js';
 import type { IssuerKeyRepository } from '../../repositories/issuer-key.repository.js';
 import type { RefreshTokenRepository } from '../../repositories/refresh-token.repository.js';
 import type { IKeyCustody } from './key-custody.js';
+import type { IEmailSender } from './email-sender.js';
 import { provisionAccountIssuerDid } from './provision-issuer-did.js';
 import {
+  generateOpaqueToken,
+  hashOpaqueToken,
   generateRefreshToken,
   hashRefreshToken,
   issueAccessToken,
@@ -57,6 +62,7 @@ function toSummary(account: {
   issuerDid: string | null;
   passwordHash: string | null;
   googleId: string | null;
+  emailVerifiedAt: Date | null;
 }): AccountSummary {
   return {
     id: account.id,
@@ -64,6 +70,7 @@ function toSummary(account: {
     issuerDid: account.issuerDid,
     hasPassword: account.passwordHash !== null,
     hasGoogle: account.googleId !== null,
+    emailVerified: account.emailVerifiedAt !== null,
   };
 }
 
@@ -79,6 +86,9 @@ export class AuthService implements IAuthService {
     private readonly didDomain: string,
     private readonly accessTokenTtlSeconds = 900,
     private readonly refreshTokenTtlDays = 30,
+    private readonly emailSender?: IEmailSender,
+    private readonly consoleBaseUrl = 'https://hosted.helixid.io',
+    private readonly emailVerificationTtlHours = 24,
   ) {}
 
   async register(input: RegisterInput): Promise<{ account: AccountSummary; tokens: AuthTokens }> {
@@ -105,6 +115,8 @@ export class AuthService implements IAuthService {
       accountId: account.id,
       issuerDid,
     });
+
+    await this.sendVerificationEmail(withDid.id, withDid.email);
 
     const tokens = await this.issueSession(account.id);
     return { account: toSummary(withDid), tokens };
@@ -162,6 +174,9 @@ export class AuthService implements IAuthService {
           throw new AccountNotFoundError('Google account email is not verified');
         }
         account = await this.accountRepository.linkGoogleId(existingByEmail.id, profile.googleId);
+        if (!account.emailVerifiedAt) {
+          account = await this.accountRepository.markEmailVerified(account.id);
+        }
         await this.auditLogger.log(AuditEvents.ACCOUNT_GOOGLE_LINKED, {
           requestId: `auth:${account.id}`,
           accountId: account.id,
@@ -180,6 +195,9 @@ export class AuthService implements IAuthService {
           keyCustody: this.keyCustody,
         });
         account = await this.accountRepository.setIssuerDid(created.id, issuerDid);
+        if (profile.emailVerified) {
+          account = await this.accountRepository.markEmailVerified(account.id);
+        }
         await this.auditLogger.log(AuditEvents.ACCOUNT_REGISTERED, {
           requestId: `auth:${created.id}`,
           accountId: created.id,
@@ -245,6 +263,37 @@ export class AuthService implements IAuthService {
   verifyAccessToken(accessToken: string): { accountId: string; scope: string[] } {
     const payload = verifyAccessToken(accessToken, this.accessTokenSecret);
     return { accountId: payload.accountId, scope: payload.scope };
+  }
+
+  async verifyEmail(token: string): Promise<AccountSummary> {
+    const tokenHash = hashOpaqueToken(token);
+    const account = await this.accountRepository.findByEmailVerificationTokenHash(tokenHash);
+    if (!account) {
+      throw new EmailVerificationTokenInvalidError();
+    }
+    if (!account.emailVerificationExpiresAt || account.emailVerificationExpiresAt.getTime() <= Date.now()) {
+      throw new EmailVerificationTokenExpiredError();
+    }
+    const verified = await this.accountRepository.markEmailVerified(account.id);
+    return toSummary(verified);
+  }
+
+  async resendVerificationEmail(email: string): Promise<void> {
+    const account = await this.accountRepository.findByEmail(normalizeEmail(email));
+    // Deliberately silent on "no such account" / "already verified" — this
+    // endpoint must not leak whether an email is registered.
+    if (!account || account.emailVerifiedAt) return;
+    await this.sendVerificationEmail(account.id, account.email);
+  }
+
+  /** Generates a fresh (hashed, expiring) verification token and emails it. No-op if no email sender is configured. */
+  private async sendVerificationEmail(accountId: string, email: string): Promise<void> {
+    if (!this.emailSender) return;
+    const rawToken = generateOpaqueToken('vrf');
+    const expiresAt = new Date(Date.now() + this.emailVerificationTtlHours * 60 * 60 * 1000);
+    await this.accountRepository.setEmailVerificationToken(accountId, hashOpaqueToken(rawToken), expiresAt);
+    const verificationUrl = `${this.consoleBaseUrl}/account/verify-email?token=${rawToken}`;
+    await this.emailSender.sendVerificationEmail(email, verificationUrl);
   }
 
   /** Issues a fresh access + refresh token pair; if replacing, revokes the old refresh token and links it to the new one. */
