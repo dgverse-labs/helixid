@@ -8,3 +8,8 @@ export {
   assertUnderEnrollmentTokenQuota,
   assertUnderDailyQuota,
 } from './quota.js';
+export {
+  resolveAccountOrAdmin,
+  type AccountOrAdminGuardDeps,
+  type AccountOrAdminGuardResult,
+} from './account-or-admin-guard.js';

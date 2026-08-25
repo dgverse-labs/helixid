@@ -138,27 +138,16 @@ const preparedPayloadService = new PreparedPayloadService(preparedPayloadReposit
 // means encrypted IssuerKeyRecord rows and issued sessions won't survive a
 // restart in that mode. Set HOSTED_KEY_ENCRYPTION_KEY / HOSTED_ACCESS_TOKEN_SECRET
 // explicitly for any deployment that needs persistence across restarts.
-const hostedKeyEncryptionKey =
-  (config as unknown as { HOSTED_KEY_ENCRYPTION_KEY?: string }).HOSTED_KEY_ENCRYPTION_KEY ??
-  crypto.randomBytes(32).toString('hex');
+const hostedKeyEncryptionKey = config.HOSTED_KEY_ENCRYPTION_KEY ?? crypto.randomBytes(32).toString('hex');
 const hostedAccessTokenSecret =
-  (config as unknown as { HOSTED_ACCESS_TOKEN_SECRET?: string }).HOSTED_ACCESS_TOKEN_SECRET ??
-  crypto.randomBytes(32).toString('hex');
-const hostedDidDomain =
-  (config as unknown as { HOSTED_DID_DOMAIN?: string }).HOSTED_DID_DOMAIN ?? 'hosted.helixid.io';
-const hostedAccessTokenTtlSeconds =
-  (config as unknown as { HOSTED_ACCESS_TOKEN_TTL_SECONDS?: number }).HOSTED_ACCESS_TOKEN_TTL_SECONDS ??
-  900;
-const hostedRefreshTokenTtlDays =
-  (config as unknown as { HOSTED_REFRESH_TOKEN_TTL_DAYS?: number }).HOSTED_REFRESH_TOKEN_TTL_DAYS ?? 30;
+  config.HOSTED_ACCESS_TOKEN_SECRET ?? crypto.randomBytes(32).toString('hex');
+const hostedDidDomain = config.HOSTED_DID_DOMAIN;
+const hostedAccessTokenTtlSeconds = config.HOSTED_ACCESS_TOKEN_TTL_SECONDS;
+const hostedRefreshTokenTtlDays = config.HOSTED_REFRESH_TOKEN_TTL_DAYS;
 const keyCustody = new AesGcmKeyCustody(hostedKeyEncryptionKey);
 const emailSender = new ConsoleEmailSender();
-const hostedConsoleBaseUrl =
-  (config as unknown as { HOSTED_CONSOLE_BASE_URL?: string }).HOSTED_CONSOLE_BASE_URL ??
-  'https://hosted.helixid.io';
-const hostedEmailVerificationTtlHours =
-  (config as unknown as { HOSTED_EMAIL_VERIFICATION_TTL_HOURS?: number })
-    .HOSTED_EMAIL_VERIFICATION_TTL_HOURS ?? 24;
+const hostedConsoleBaseUrl = config.HOSTED_CONSOLE_BASE_URL;
+const hostedEmailVerificationTtlHours = config.HOSTED_EMAIL_VERIFICATION_TTL_HOURS;
 const authService = new AuthService(
   accountRepository,
   didRepository,
@@ -188,15 +177,11 @@ const app = Fastify({
 // shouldn't have hosted-tier limits forced on them. Global ceiling here;
 // tighter per-route overrides are set via `config.rateLimit` on the
 // individual auth routes (see routes/auth/index.ts).
-const isHostedMode = (config as unknown as { HOSTED_MODE?: boolean }).HOSTED_MODE ?? false;
-const rateLimitGlobalMax =
-  (config as unknown as { HOSTED_RATE_LIMIT_GLOBAL_MAX?: number }).HOSTED_RATE_LIMIT_GLOBAL_MAX ?? 100;
-const rateLimitLoginMax =
-  (config as unknown as { HOSTED_RATE_LIMIT_LOGIN_MAX?: number }).HOSTED_RATE_LIMIT_LOGIN_MAX ?? 5;
-const rateLimitRegisterMax =
-  (config as unknown as { HOSTED_RATE_LIMIT_REGISTER_MAX?: number }).HOSTED_RATE_LIMIT_REGISTER_MAX ?? 3;
-const rateLimitRefreshMax =
-  (config as unknown as { HOSTED_RATE_LIMIT_REFRESH_MAX?: number }).HOSTED_RATE_LIMIT_REFRESH_MAX ?? 20;
+const isHostedMode = config.HOSTED_MODE;
+const rateLimitGlobalMax = config.HOSTED_RATE_LIMIT_GLOBAL_MAX;
+const rateLimitLoginMax = config.HOSTED_RATE_LIMIT_LOGIN_MAX;
+const rateLimitRegisterMax = config.HOSTED_RATE_LIMIT_REGISTER_MAX;
+const rateLimitRefreshMax = config.HOSTED_RATE_LIMIT_REFRESH_MAX;
 
 if (isHostedMode) {
   await app.register(rateLimit, {
@@ -280,6 +265,8 @@ await app.register(vcRoutes, {
   prefix: '/v1/vcs',
   vcService,
   adminApiKey: config.HELIX_ADMIN_API_KEY,
+  accountOrAdminGuardDeps: { authService, accountRepository, auditLogRepository, adminApiKey: config.HELIX_ADMIN_API_KEY },
+  vcIssuanceDailyQuota: config.HOSTED_QUOTA_VC_ISSUANCE_PER_DAY,
 });
 await app.register(preparedPayloadRoutes, {
   prefix: '/v1/vcs',
@@ -301,14 +288,18 @@ await app.register(auditLogRoutes, {
   auditLogger,
   adminApiKey: config.HELIX_ADMIN_API_KEY,
 });
-await app.register(agentRoutes, { prefix: '/v1', agentService });
+await app.register(agentRoutes, {
+  prefix: '/v1',
+  agentService,
+  accountOrAdminGuardDeps: { authService, accountRepository, auditLogRepository, adminApiKey: config.HELIX_ADMIN_API_KEY },
+  enrollmentTokenDailyQuota: config.HOSTED_QUOTA_ENROLLMENT_TOKEN_PER_DAY,
+});
 await app.register(authRoutes, {
   prefix: '/v1/auth',
   authService,
-  googleClientId: (config as unknown as { GOOGLE_CLIENT_ID?: string }).GOOGLE_CLIENT_ID,
-  googleClientSecret: (config as unknown as { GOOGLE_CLIENT_SECRET?: string }).GOOGLE_CLIENT_SECRET,
-  googleRedirectUri: (config as unknown as { GOOGLE_OAUTH_REDIRECT_URI?: string })
-    .GOOGLE_OAUTH_REDIRECT_URI,
+  googleClientId: config.GOOGLE_CLIENT_ID,
+  googleClientSecret: config.GOOGLE_CLIENT_SECRET,
+  googleRedirectUri: config.GOOGLE_OAUTH_REDIRECT_URI,
 });
 await app.register(accountDidRoutes, { didDomain: hostedDidDomain, didRepository });
 

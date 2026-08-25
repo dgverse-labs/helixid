@@ -11,8 +11,12 @@
 // limitations under the License.
 
 import { FastifyPluginAsync } from 'fastify';
-import { AdminAuthRequiredError, ErrorCode, HelixError } from '@helixid/core';
+import { AdminAuthRequiredError, ErrorCode, HelixError, AuditEvents } from '@helixid/core';
 import type { IVCService, IssueVCParams, RenewVCOptions } from '../../services/vc/vc.service.js';
+import {
+  resolveAccountOrAdmin,
+  type AccountOrAdminGuardDeps,
+} from '../../services/auth/account-or-admin-guard.js';
 
 const VC_STATUSES = ['active', 'revoked', 'expired'] as const;
 type VCStatus = (typeof VC_STATUSES)[number];
@@ -20,6 +24,10 @@ type VCStatus = (typeof VC_STATUSES)[number];
 export interface VcRouteOptions {
   vcService: IVCService;
   adminApiKey?: string | undefined;
+  /** Enables hosted-account bearer-token issuance (in addition to the admin key) when provided. */
+  accountOrAdminGuardDeps?: AccountOrAdminGuardDeps | undefined;
+  /** Required alongside accountOrAdminGuardDeps — see docs/proposal-hosted-rate-limiting.md. */
+  vcIssuanceDailyQuota?: number | undefined;
 }
 
 interface VCParams {
@@ -71,9 +79,24 @@ const vcRoutes: FastifyPluginAsync<VcRouteOptions> = async (fastify, options) =>
 
   // POST /v1/vcs - Issue a VC
   fastify.post('', async (request, reply) => {
-    requireAdmin(request);
+    let accountId: string | undefined;
+    if (options.accountOrAdminGuardDeps) {
+      // Hosted mode: admin key OR a verified, under-quota hosted-account
+      // bearer token may issue. Self-hosted (no accountOrAdminGuardDeps
+      // configured) keeps the original admin-key-only behavior untouched.
+      const result = await resolveAccountOrAdmin(request, options.accountOrAdminGuardDeps, {
+        requireAuth: true,
+        quota: options.vcIssuanceDailyQuota
+          ? { eventType: AuditEvents.VC_ISSUED, dailyLimit: options.vcIssuanceDailyQuota }
+          : undefined,
+      });
+      accountId = result.accountId;
+    } else {
+      requireAdmin(request);
+    }
+
     const params = request.body as IssueVCParams;
-    const result = await vcService.issueVC(params, request.id);
+    const result = await vcService.issueVC({ ...params, accountId }, request.id);
     return reply.status(201).send(result);
   });
 

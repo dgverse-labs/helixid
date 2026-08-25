@@ -36,6 +36,7 @@ export interface IAgentService {
       requestedScopes: string[];
       requestedDomains?: string[];
       maxDelegationDepth?: number;
+      accountId?: string;
     },
     requestId: string,
   ): Promise<EnrollmentTokenResult>;
