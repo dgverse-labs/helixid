@@ -143,6 +143,41 @@ CREATE TABLE IF NOT EXISTS prepared_payloads (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS accounts (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  password_hash TEXT,
+  google_id TEXT,
+  issuer_did TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_google_id ON accounts(google_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_issuer_did ON accounts(issuer_did);
+
+CREATE TABLE IF NOT EXISTS issuer_key_records (
+  id TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL UNIQUE,
+  did TEXT NOT NULL UNIQUE,
+  encrypted_private_key TEXT NOT NULL,
+  iv TEXT NOT NULL,
+  auth_tag TEXT NOT NULL,
+  algorithm TEXT NOT NULL DEFAULT 'aes-256-gcm',
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+  id TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  revoked_at TEXT,
+  replaced_by_token_id TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_account_id ON refresh_tokens(account_id);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   timestamp TEXT NOT NULL,

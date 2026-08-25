@@ -77,6 +77,26 @@ export const ConfigSchema = z.object({
   AUDIT_LOG_DESTINATION: z.enum(['stdout', 'file', 'both']).default('stdout'),
   AUDIT_LOG_PATH: z.string().optional(),
 
+  // Hosted accounts & auth (Item #1, see docs/proposal-hosted-instance.md).
+  // All optional/defaulted so self-hosted deployments (which don't use
+  // accounts at all — HELIX_ADMIN_API_KEY covers the single operator) never
+  // need to set these. On the hosted instance itself these should be set
+  // explicitly in production; unset values fall back to a randomly
+  // generated per-process key (see server.ts), which is fine for local dev
+  // but means encrypted IssuerKeyRecord rows and issued sessions don't
+  // survive a restart.
+  HOSTED_KEY_ENCRYPTION_KEY: z
+    .string()
+    .regex(/^[0-9a-fA-F]{64}$/, 'must be 64 hex chars (32 bytes) for AES-256-GCM')
+    .optional(),
+  HOSTED_ACCESS_TOKEN_SECRET: z.string().min(32).optional(),
+  HOSTED_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
+  HOSTED_REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  HOSTED_DID_DOMAIN: z.string().default('hosted.helixid.io'),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_OAUTH_REDIRECT_URI: z.string().url().optional(),
+
   // E2E / Testing
   HEDERA_E2E_TESTNET: z
     .string()

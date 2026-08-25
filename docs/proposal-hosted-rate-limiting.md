@@ -1,6 +1,8 @@
 # Proposal: Rate limiting & abuse prevention for the hosted instance
 
-Status: **Proposal — not yet decided/approved.**
+Status: **Partially decided.** Per-account quotas (§2) are locked. Per-IP
+numeric limits (§1) and CAPTCHA/email-verification specifics (§3) are
+still proposal-stage placeholders pending approval.
 
 Companion to [`proposal-hosted-instance.md`](./proposal-hosted-instance.md).
 That doc covers accounts, login, and DID/key custody; this one covers
@@ -46,9 +48,9 @@ Addresses a different threat than the two controls above: not "a bot
 hitting an endpoint," but "an authenticated, human-verified account
 issuing VCs or enrollment tokens at abusive volume."
 
-- Quotas tied to `accountId`, e.g.:
-  - VC issuance: N/day on a free account
-  - Enrollment token generation: N/day per account
+- Quotas tied to `accountId`, decided:
+  - VC issuance: **1000/day** on a free account
+  - Enrollment token generation: **2000/day** per account
 - Enforced by counting existing audit log rows
   (`AuditEvents.ENROLLMENT_TOKEN_GENERATED`, VC-issuance events, etc.) in a
   rolling window. The audit log already records these events — this is a

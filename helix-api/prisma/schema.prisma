@@ -172,3 +172,65 @@ model AuditLog {
   @@index([requestId])
   @@map("audit_log")
 }
+
+// ── Hosted accounts & auth (Item #1) ────────────────────────────────────────
+// See docs/proposal-hosted-instance.md ("Decided: accounts, login, and
+// DID/key custody"). Self-hosted deployments never populate these tables —
+// a single operator authenticates with HELIX_ADMIN_API_KEY instead.
+
+model Account {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  // Null when the account was created via Google sign-in only.
+  passwordHash String?
+  // Null until the account links (or is created via) Google sign-in.
+  googleId     String?   @unique
+  issuerDid    String?   @unique
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  issuerKey     IssuerKeyRecord?
+  refreshTokens RefreshToken[]
+
+  @@map("accounts")
+}
+
+model IssuerKeyRecord {
+  id                  String   @id @default(cuid())
+  accountId           String   @unique
+  did                 String   @unique
+  // AES-256-GCM ciphertext of the raw Ed25519 private key, hex-encoded.
+  // Encrypted/decrypted only through KeyCustody (encrypt/decrypt/sign),
+  // never handled directly at call sites — see proposal-hosted-instance.md
+  // ("Private key storage (interim, pre-KMS)").
+  encryptedPrivateKey String
+  iv                  String
+  authTag             String
+  algorithm           String   @default("aes-256-gcm")
+  createdAt           DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id])
+
+  @@map("issuer_key_records")
+}
+
+model RefreshToken {
+  id                String    @id @default(cuid())
+  accountId         String
+  // sha256 hex of the opaque bearer token — mirrors the hashToken() pattern
+  // already used for enrollment tokens in agent.service.ts. The raw token
+  // is returned to the client once and never stored.
+  tokenHash         String    @unique
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  // Points at the token this one was rotated into, forming a chain used for
+  // reuse detection: presenting an already-revoked token is treated as a
+  // compromise signal (see AuthService.refresh()).
+  replacedByTokenId String?
+  createdAt         DateTime  @default(now())
+
+  account Account @relation(fields: [accountId], references: [id])
+
+  @@index([accountId])
+  @@map("refresh_tokens")
+}

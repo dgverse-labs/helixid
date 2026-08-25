@@ -27,6 +27,9 @@ import { AuditLogRepository } from './repositories/audit-log.repository.js';
 import { AgentRepository } from './repositories/agent.repository.js';
 import { ServiceRegistryRepository } from './repositories/service-registry.repository.js';
 import { PreparedPayloadRepository } from './repositories/prepared-payload.repository.js';
+import { AccountRepository } from './repositories/account.repository.js';
+import { IssuerKeyRepository } from './repositories/issuer-key.repository.js';
+import { RefreshTokenRepository } from './repositories/refresh-token.repository.js';
 import { createDidCache, createStatusListCache } from './cache/cacheFactory.js';
 import { extractEd25519PublicKeyHexFromDIDDocument } from './services/did/publicKey.js';
 import { DIDService } from './services/did/did.service.js';
@@ -34,6 +37,7 @@ import { VCService } from './services/vc/vc.service.js';
 import { VPService } from './services/vp/vp.service.js';
 import { AgentService } from './services/agent/agent.service.js';
 import { PreparedPayloadService } from './services/prepared-payload/index.js';
+import { AuthService, AesGcmKeyCustody } from './services/auth/index.js';
 import didRoutes from './routes/did/index.js';
 import didWebRoutes from './routes/did-web/index.js';
 import vcRoutes from './routes/vc/index.js';
@@ -43,6 +47,8 @@ import agentRoutes from './routes/agent/index.js';
 import auditLogRoutes from './routes/audit-log/index.js';
 import sessionRoutes from './routes/sessions/index.js';
 import preparedPayloadRoutes from './routes/prepared-payload/index.js';
+import authRoutes from './routes/auth/index.js';
+import accountDidRoutes from './routes/account-did/index.js';
 import type { RedisLike } from './cache/RedisCache.js';
 import { SqliteStore } from './storage/sqlite.js';
 
@@ -87,6 +93,9 @@ const auditLogRepository = new AuditLogRepository(prisma, sqlite);
 const agentRepository = new AgentRepository(prisma, sqlite);
 const serviceRegistry = new ServiceRegistryRepository(agentRepository);
 const preparedPayloadRepository = new PreparedPayloadRepository(prisma, sqlite);
+const accountRepository = new AccountRepository(prisma, sqlite);
+const issuerKeyRepository = new IssuerKeyRepository(prisma, sqlite);
+const refreshTokenRepository = new RefreshTokenRepository(prisma, sqlite);
 await serviceRegistry.seedBuiltIns();
 
 await ensureIssuerDidCached();
@@ -121,6 +130,39 @@ const vpService = new VPService(vcService, auditLogger, config.API_BASE_URL, {
 });
 const agentService = new AgentService(agentRepository, didService, vcService, auditLogger);
 const preparedPayloadService = new PreparedPayloadService(preparedPayloadRepository, didService);
+
+// Hosted accounts & auth (Item #1, see docs/proposal-hosted-instance.md).
+// Both secrets fall back to a random per-process value when unset, so
+// self-hosted / dev environments boot without configuring them — but that
+// means encrypted IssuerKeyRecord rows and issued sessions won't survive a
+// restart in that mode. Set HOSTED_KEY_ENCRYPTION_KEY / HOSTED_ACCESS_TOKEN_SECRET
+// explicitly for any deployment that needs persistence across restarts.
+const hostedKeyEncryptionKey =
+  (config as unknown as { HOSTED_KEY_ENCRYPTION_KEY?: string }).HOSTED_KEY_ENCRYPTION_KEY ??
+  crypto.randomBytes(32).toString('hex');
+const hostedAccessTokenSecret =
+  (config as unknown as { HOSTED_ACCESS_TOKEN_SECRET?: string }).HOSTED_ACCESS_TOKEN_SECRET ??
+  crypto.randomBytes(32).toString('hex');
+const hostedDidDomain =
+  (config as unknown as { HOSTED_DID_DOMAIN?: string }).HOSTED_DID_DOMAIN ?? 'hosted.helixid.io';
+const hostedAccessTokenTtlSeconds =
+  (config as unknown as { HOSTED_ACCESS_TOKEN_TTL_SECONDS?: number }).HOSTED_ACCESS_TOKEN_TTL_SECONDS ??
+  900;
+const hostedRefreshTokenTtlDays =
+  (config as unknown as { HOSTED_REFRESH_TOKEN_TTL_DAYS?: number }).HOSTED_REFRESH_TOKEN_TTL_DAYS ?? 30;
+const keyCustody = new AesGcmKeyCustody(hostedKeyEncryptionKey);
+const authService = new AuthService(
+  accountRepository,
+  didRepository,
+  issuerKeyRepository,
+  refreshTokenRepository,
+  keyCustody,
+  auditLogger,
+  hostedAccessTokenSecret,
+  hostedDidDomain,
+  hostedAccessTokenTtlSeconds,
+  hostedRefreshTokenTtlDays,
+);
 
 const app = Fastify({
   logger: {
@@ -226,6 +268,15 @@ await app.register(auditLogRoutes, {
   adminApiKey: config.HELIX_ADMIN_API_KEY,
 });
 await app.register(agentRoutes, { prefix: '/v1', agentService });
+await app.register(authRoutes, {
+  prefix: '/v1/auth',
+  authService,
+  googleClientId: (config as unknown as { GOOGLE_CLIENT_ID?: string }).GOOGLE_CLIENT_ID,
+  googleClientSecret: (config as unknown as { GOOGLE_CLIENT_SECRET?: string }).GOOGLE_CLIENT_SECRET,
+  googleRedirectUri: (config as unknown as { GOOGLE_OAUTH_REDIRECT_URI?: string })
+    .GOOGLE_OAUTH_REDIRECT_URI,
+});
+await app.register(accountDidRoutes, { didDomain: hostedDidDomain, didRepository });
 
 const shutdown = async (): Promise<void> => {
   app.log.info('Helix ID API shutting down...');

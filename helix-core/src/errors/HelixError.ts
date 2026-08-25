@@ -533,3 +533,71 @@ export class ServiceAlreadyExistsError extends HelixError {
     super('SERVICE_ALREADY_EXISTS', message, 409);
   }
 }
+
+// ── Hosted accounts & auth (Item #1) ────────────────────────────────────────
+// See docs/proposal-hosted-instance.md ("Decided: accounts, login, and
+// DID/key custody"). Account-facing auth errors only — key custody
+// implementation errors stay as generic InternalError, since their detail
+// should never reach a client response.
+
+export class AccountAlreadyExistsError extends HelixError {
+  constructor(message = 'An account with this email already exists') {
+    super('ACCOUNT_ALREADY_EXISTS', message, 409);
+  }
+}
+
+export class AccountNotFoundError extends HelixError {
+  constructor(message = 'Account was not found') {
+    super('ACCOUNT_NOT_FOUND', message, 404);
+  }
+}
+
+export class InvalidCredentialsError extends HelixError {
+  constructor(message = 'Email or password is incorrect') {
+    super('INVALID_CREDENTIALS', message, 401);
+  }
+}
+
+export class AccountHasNoPasswordError extends HelixError {
+  constructor(message = 'This account signs in with Google only; no password is set') {
+    super('ACCOUNT_HAS_NO_PASSWORD', message, 401);
+  }
+}
+
+export class RefreshTokenInvalidError extends HelixError {
+  constructor(message = 'Refresh token is invalid') {
+    super('REFRESH_TOKEN_INVALID', message, 401);
+  }
+}
+
+export class RefreshTokenExpiredError extends HelixError {
+  constructor(message = 'Refresh token has expired; please sign in again') {
+    super('REFRESH_TOKEN_EXPIRED', message, 401);
+  }
+}
+
+export class RefreshTokenReuseDetectedError extends HelixError {
+  constructor(
+    message = 'This refresh token was already used. All sessions for this account have been signed out as a precaution.',
+  ) {
+    super('REFRESH_TOKEN_REUSE_DETECTED', message, 401);
+  }
+}
+
+export class AccessTokenInvalidError extends HelixError {
+  constructor(message = 'Access token is invalid') {
+    super('ACCESS_TOKEN_INVALID', message, 401);
+  }
+}
+
+export class AccessTokenExpiredError extends HelixError {
+  constructor(message = 'Access token has expired') {
+    super('ACCESS_TOKEN_EXPIRED', message, 401);
+  }
+}
+
+export class GoogleOAuthFailedError extends HelixError {
+  constructor(message = 'Google sign-in failed') {
+    super('GOOGLE_OAUTH_FAILED', message, 401);
+  }
+}
