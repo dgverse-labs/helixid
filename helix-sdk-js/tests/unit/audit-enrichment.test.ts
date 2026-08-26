@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentWallet } from '../../src/wallet/AgentWallet.js';
 import { HelixClient } from '../../src/client/HelixClient.js';
-import type { SignedVC } from '@helixid/core';
+import type { SignedVC } from '../../src/core/schemas/vc.js';
 
 /** HttpAdapter-shaped mock. `hasAdminApiKey` is what gates audit emission. */
 function mockHttp(): { post: ReturnType<typeof vi.fn>; hasAdminApiKey: () => boolean } {

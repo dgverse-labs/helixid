@@ -1,4 +1,4 @@
-import type { DelegationLink, SignedVP } from '@helixid/core';
+import type { DelegationLink, SignedVP } from '../../core/index.js';
 
 export interface VPVerificationResult {
   valid: true;

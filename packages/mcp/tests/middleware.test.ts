@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { generateKeyPair } from '@helixid/core';
+import { generateKeyPair } from '@helixid/sdk-js';
 import { AgentWallet, verifyVP as verifyVPExport } from '@helixid/sdk-js';
 import { attachHelixVP } from '../src/attach.js';
 import { helixidMCPMiddleware } from '../src/middleware.js';

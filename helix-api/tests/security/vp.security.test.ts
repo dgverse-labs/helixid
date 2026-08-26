@@ -5,7 +5,7 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { buildDelegationVC, type SignedVP } from '@helixid/core';
+import { buildDelegationVC, type SignedVP } from '../../src/core/index.js';
 import { VPService } from '../../src/services/vp/vp.service.js';
 import vpRoutes from '../../src/routes/vp/index.js';
 import { TestAuditLogger } from '../utils/TestAuditLogger.js';
@@ -160,7 +160,7 @@ describe('POST /v1/vp/verify — grant matrix (§9.4 A1)', () => {
     const spList = makeSpStatusList(sp);
     const vc = await makeAgentVC(issuer, holder.did);
     const grant = await makeGrant(sp, holder.did, USER_DID, ['book:flights'], spList);
-    const { revokeGrant } = await import('@helixid/core');
+    const { revokeGrant } = await import('../../src/core/index.js');
     const revokedList = await revokeGrant(spList, sp, { vc: grant });
     stubFetch({ [SP_LIST_URL]: revokedList });
 

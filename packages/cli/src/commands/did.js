@@ -1,4 +1,5 @@
-import { buildDIDDocument, generateKeyPair, publicKeyToMultibase } from '@helixid/core';
+import { buildDIDDocument } from '../core/did.js';
+import { generateKeyPair, publicKeyToMultibase } from '../core/keys.js';
 import { access } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { requireHederaOperator, requirePassphrase } from '../lib/env.js';

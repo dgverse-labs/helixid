@@ -1,7 +1,5 @@
-import {
-  InsufficientScopeError,
-  type VerifyVPResult,
-} from '@helixid/core';
+import { InsufficientScopeError } from './errors/index.js';
+import type { VerifyVPResult } from './core/verification-types.js';
 
 export function checkScope(result: VerifyVPResult, requiredScope: string): boolean {
   // Enforcement reads effectiveScopes: identical to privilegeScopes when no

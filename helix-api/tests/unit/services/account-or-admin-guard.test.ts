@@ -16,7 +16,7 @@ import {
   AccountQuotaExceededError,
   EmailNotVerifiedError,
   AuditEvents,
-} from '@helixid/core';
+} from '../../../src/core/index.js';
 import { resolveAccountOrAdmin } from '../../../src/services/auth/account-or-admin-guard.js';
 import { AccountRepository } from '../../../src/repositories/account.repository.js';
 import { AuditLogRepository } from '../../../src/repositories/audit-log.repository.js';

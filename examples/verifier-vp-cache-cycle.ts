@@ -2,7 +2,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
 import { verifyVP } from '@helixid/sdk-js';
-import type { SignedVP, VerifyVPResult } from '@helixid/core';
+import type { SignedVP, VerifyVPResult } from '@helixid/sdk-js';
 import { createFreshSignedVP } from './verifier-example-utils.js';
 
 // VP verification cache example

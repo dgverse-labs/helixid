@@ -22,7 +22,7 @@
 // the audit payload for those events). That wiring doesn't exist yet — see
 // the call sites this is intentionally NOT yet wired into.
 
-import { AccountQuotaExceededError, AuditEvents, type AuditEventType } from '@helixid/core';
+import { AccountQuotaExceededError, AuditEvents, type AuditEventType } from '../../core/index.js';
 import type { AuditLogRepository } from '../../repositories/audit-log.repository.js';
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;

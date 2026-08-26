@@ -1,4 +1,4 @@
-import type { DIDDocument, ServiceEndpoint } from '@helixid/core';
+import type { DIDDocument, ServiceEndpoint } from '../../core/index.js';
 
 export type { DIDDocument, ServiceEndpoint };
 

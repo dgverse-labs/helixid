@@ -1,7 +1,8 @@
-import type { SignedVP, VerifyVPOptions } from '@helixid/core';
+import type { SignedVP } from './core/schemas/vp.js';
+import type { VerifyVPOptions } from './core/verification-types.js';
 import type { HelixClient, VerifyVPApiResult } from './client/HelixClient.js';
 
-export type { VerifyVPOptions, VerifyVPResult } from '@helixid/core';
+export type { VerifyVPOptions, VerifyVPResult } from './core/verification-types.js';
 export type { VerifyVPApiResult } from './client/HelixClient.js';
 
 /**

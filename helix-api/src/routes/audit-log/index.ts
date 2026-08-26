@@ -5,7 +5,7 @@ import {
   HelixError,
   type AuditEventType,
   type IAuditLogger,
-} from '@helixid/core';
+} from '../../core/index.js';
 import type { FastifyPluginAsync } from 'fastify';
 import type { AuditLogRepository } from '../../repositories/audit-log.repository.js';
 

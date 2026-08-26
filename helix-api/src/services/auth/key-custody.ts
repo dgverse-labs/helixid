@@ -23,7 +23,7 @@
 // codebase. KMS-backed custody and rotation are explicitly deferred.
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { generateKeyPair, signData, type KeyPair } from '@helixid/core';
+import { generateKeyPair, signData, type KeyPair } from '../../core/index.js';
 
 const ALGORITHM = 'aes-256-gcm';
 

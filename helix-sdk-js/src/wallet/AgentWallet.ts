@@ -3,17 +3,12 @@ import { access, readFile, writeFile } from 'node:fs/promises';
 import {
   CredentialAlreadyInWalletError,
   CredentialNotForThisAgentError,
-  derivePublicKey,
-  generateKeyPair,
-  publicKeyToMultibase,
-  selfIssueVC,
-  signData,
-  type DelegationGrantVC,
-  type KeyPair,
-  type SelfIssueOptions,
-  type ServiceEndpoint,
-  type SignedVC,
-} from '@helixid/core';
+} from '../errors/index.js';
+import { derivePublicKey, generateKeyPair, publicKeyToMultibase, signData, type KeyPair } from '../core/keys.js';
+import { selfIssueVC, type SelfIssueOptions } from '../core/self-signed.js';
+import type { ServiceEndpoint } from '../core/did.js';
+import type { SignedVC } from '../core/schemas/vc.js';
+import type { DelegationGrantVC } from '../core/schemas/delegation-grant.js';
 import type { HelixClient } from '../client/HelixClient.js';
 
 /** Same detection the grant schema's `superRefine` uses. */

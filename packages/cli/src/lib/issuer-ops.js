@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
-import { createEd25519Proof, createStatusList, getBit, setBit, } from '@helixid/core';
+import { createEd25519Proof } from '../core/proof.js';
+import { createStatusList, getBit, setBit } from '../core/status-list-schema.js';
 export async function signCredential(credential, issuerDid, privateKeyHex) {
     return {
         ...credential,

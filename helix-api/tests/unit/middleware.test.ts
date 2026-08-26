@@ -1,7 +1,7 @@
 // Copyright 2026 DgVerse LLP
 import { describe, expect, it, vi } from 'vitest';
 import type { FastifyError } from 'fastify';
-import { EnrollmentTokenNotFoundError } from '@helixid/core';
+import { EnrollmentTokenNotFoundError } from '../../src/core/index.js';
 import { errorHandler } from '../../src/middleware/errorHandler.js';
 import { registerRequestLogger } from '../../src/middleware/requestLogger.js';
 

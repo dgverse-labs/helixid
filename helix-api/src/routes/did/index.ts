@@ -11,7 +11,7 @@
 // limitations under the License.
 
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
-import { ErrorCode, HelixError, type ServiceEndpoint } from '@helixid/core';
+import { ErrorCode, HelixError, type ServiceEndpoint } from '../../core/index.js';
 import type { IDIDService } from '../../services/did/did.service.js';
 
 interface DIDRouteOptions {

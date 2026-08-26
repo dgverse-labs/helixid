@@ -18,7 +18,7 @@
 // secret rather than EdDSA, per the design doc.
 
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { AccessTokenExpiredError, AccessTokenInvalidError } from '@helixid/core';
+import { AccessTokenExpiredError, AccessTokenInvalidError } from '../../core/index.js';
 
 export interface AccessTokenPayload {
   accountId: string;

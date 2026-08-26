@@ -1,4 +1,4 @@
-import { HelixError, VPMissingError, VPVerificationFailedError, type SignedVP } from '@helixid/core';
+import { HelixError, VPMissingError, VPVerificationFailedError, type SignedVP } from '@helixid/sdk-js';
 import { requireScope, verifyVP } from '@helixid/sdk-js';
 import type { MCPToolCall, MCPMiddlewareOptions } from './types.js';
 

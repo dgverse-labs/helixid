@@ -11,7 +11,7 @@
 // limitations under the License.
 
 import { FastifyPluginAsync } from 'fastify';
-import { AdminAuthRequiredError } from '@helixid/core';
+import { AdminAuthRequiredError } from '../../core/index.js';
 import { IVCService } from '../../services/vc/vc.service.js';
 
 export interface StatusListRouteOptions {

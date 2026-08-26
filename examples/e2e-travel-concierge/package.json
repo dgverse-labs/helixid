@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",
-    "@helixid/core": "^0.1.5",
     "@helixid/sdk-js": "^0.1.7",
     "@helixid/mcp": "^0.1.2",
     "@modelcontextprotocol/sdk": "^1.29.0",

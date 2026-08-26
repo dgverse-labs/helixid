@@ -24,15 +24,14 @@ export * from './resolver/IDidResolver.js';
 export * from './resolver/HelixDidResolver.js';
 export * from './resolver/types.js';
 export type {
-  DelegationLink,
   DIDDocument,
-  SelfIssueOptions,
   ServiceEndpoint,
-  SignedVC,
-  SignedVP,
   VerificationMethod,
-  VerifyVPOptions,
-  VerifyVPResult,
-  VPBuilderOptions,
-} from '@helixid/core';
+} from './core/did.js';
+export type { DelegationLink, VerifyVPOptions, VerifyVPResult } from './core/verification-types.js';
+export type { SelfIssueOptions } from './core/self-signed.js';
+export type { SignedVC } from './core/schemas/vc.js';
+export type { SignedVP } from './core/schemas/vp.js';
+export type { VPBuilderOptions } from './core/vp-builder-impl.js';
+export { generateKeyPair, publicKeyToMultibase, signData, type KeyPair } from './core/keys.js';
 export type { SessionClaims, SessionIssueInput, SessionManagerOptions } from './session/index.js';

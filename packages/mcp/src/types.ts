@@ -1,4 +1,4 @@
-import type { SignedVP } from '@helixid/core';
+import type { SignedVP } from '@helixid/sdk-js';
 import type { HelixClient } from '@helixid/sdk-js';
 
 export interface MCPToolCall {

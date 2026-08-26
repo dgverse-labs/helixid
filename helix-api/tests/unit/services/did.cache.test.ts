@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DIDService } from '../../../src/services/did/did.service.js';
 import { InProcessCache } from '../../../src/cache/InProcessCache.js';
-import { ErrorCode, type DIDDocument } from '@helixid/core';
+import { ErrorCode, type DIDDocument } from '../../../src/core/index.js';
 
 describe('DIDService cache behavior', () => {
   let repository: any;

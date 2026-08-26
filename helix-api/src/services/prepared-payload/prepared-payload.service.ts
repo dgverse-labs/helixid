@@ -47,7 +47,7 @@ import {
   validateScopeSubset,
   verifySignature,
   type SignedVC,
-} from '@helixid/core';
+} from '../../core/index.js';
 import type {
   FinalizeInput,
   IPreparedPayloadService,

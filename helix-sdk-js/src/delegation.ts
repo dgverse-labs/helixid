@@ -1,4 +1,5 @@
-import { NoCredentialInWalletError, type SignedVC } from '@helixid/core';
+import { NoCredentialInWalletError } from './errors/index.js';
+import type { SignedVC } from './core/schemas/vc.js';
 import type { AgentWallet } from './wallet/AgentWallet.js';
 
 export interface DelegateOptions {

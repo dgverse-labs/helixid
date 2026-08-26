@@ -14,7 +14,7 @@ import {
   type StatusListCredential,
   type StatusListResolver,
   type VerifyVPResult,
-} from '@helixid/core';
+} from '../../core/index.js';
 import type { IVCService } from '../vc/IVCService.js';
 import type { IVPService, VPVerificationResult } from './IVPService.js';
 

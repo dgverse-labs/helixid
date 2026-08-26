@@ -10,7 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import type { DIDDocument } from '@helixid/core';
+import type { DIDDocument } from '../core/did.js';
 
 export interface DIDResolutionMetadata {
   contentType?: string;

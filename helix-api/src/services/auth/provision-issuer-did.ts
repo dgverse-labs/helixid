@@ -17,7 +17,7 @@
 // hosted database and is served dynamically at GET /accounts/:id/did.json —
 // this is exactly how did:web with path segments is meant to resolve.
 
-import { buildDIDDocument } from '@helixid/core';
+import { buildDIDDocument } from '../../core/index.js';
 import type { DidRepository } from '../../repositories/did.repository.js';
 import type { IssuerKeyRepository } from '../../repositories/issuer-key.repository.js';
 import type { IKeyCustody } from './key-custody.js';

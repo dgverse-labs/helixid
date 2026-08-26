@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { AgentWallet } from '../../../src/wallet/AgentWallet.js';
-import { generateKeyPair, publicKeyToMultibase, selfIssueVC, type SignedVC } from '@helixid/core';
+import { generateKeyPair, publicKeyToMultibase } from '../../../src/core/keys.js';
+import { selfIssueVC } from '../../../src/core/self-signed.js';
+import type { SignedVC } from '../../../src/core/schemas/vc.js';
 
 const credential = AgentWallet.credentialFromVC('v', {
   id: 'v',

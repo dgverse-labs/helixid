@@ -1,4 +1,6 @@
-import { NoCredentialInWalletError, type SignedVC, type StatusListCredential } from '@helixid/core';
+import { NoCredentialInWalletError } from './errors/index.js';
+import type { SignedVC } from './core/schemas/vc.js';
+import type { StatusListCredential } from './core/status-list-schema.js';
 import type { AgentWallet } from './wallet/AgentWallet.js';
 
 export interface RenewAgentVCOptions {

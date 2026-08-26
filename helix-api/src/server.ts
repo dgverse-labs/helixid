@@ -17,7 +17,7 @@ import {
   loadConfigFromEnv,
   resolveDidMethod,
   type DIDDocument,
-} from '@helixid/core';
+} from './core/index.js';
 
 import { errorHandler } from './middleware/errorHandler.js';
 import { ApiAuditLogger } from './audit/index.js';

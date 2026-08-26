@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import type { Config } from '@helixid/core';
+import type { HederaClientConfig } from './core/config.js';
 import type { Client } from '@hashgraph/sdk';
 import { buildHederaClient, extractTopicId, patchAccountIdFromString } from './hiero-client.js';
 import type {
@@ -35,10 +35,7 @@ const registrar = require('@hiero-did-sdk/registrar') as HieroRegistrar;
 
 export class HieroHederaClient implements IHederaClient {
   constructor(
-    private readonly config: Pick<
-      Config,
-      'HEDERA_NETWORK' | 'HEDERA_OPERATOR_ID' | 'HEDERA_OPERATOR_KEY'
-    > = {
+    private readonly config: HederaClientConfig = {
       HEDERA_NETWORK: 'testnet',
       HEDERA_OPERATOR_ID: '',
       HEDERA_OPERATOR_KEY: '',

@@ -1,7 +1,11 @@
 // Copyright 2026 DgVerse LLP
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { HelixClient } from '../../../src/client/HelixClient.js';
-import { createStatusList, generateKeyPair, issueJWT, publicKeyToMultibase, selfIssueVC, VPBuilder } from '@helixid/core';
+import { createStatusList } from '../../../src/core/status-list-schema.js';
+import { generateKeyPair, publicKeyToMultibase } from '../../../src/core/keys.js';
+import { issueJWT } from '../../../src/core/jwt.js';
+import { selfIssueVC } from '../../../src/core/self-signed.js';
+import { VPBuilder } from '../../../src/vp-builder.js';
 
 describe('HelixClient Full Unit Tests', () => {
   let mockHttp: any;

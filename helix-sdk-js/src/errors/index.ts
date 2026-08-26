@@ -10,9 +10,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { 
+import {
   HelixError, 
-  ErrorCode, 
   HelixErrorBody,
   InternalError,
   ValidationError,
@@ -58,7 +57,15 @@ import {
   VPInvalidStructureError,
   ConsentGrantSubjectMismatchError,
   ConsentGrantInvalidError
-} from '@helixid/core';
+} from '../core/HelixError.js';
+import { ErrorCode } from '../core/codes.js';
+
+// Duplicated from helix-core (see docs/proposal-retire-core-package.md) --
+// re-export everything so downstream consumers (@helixid/mcp,
+// @helixid/langchain, etc.) that previously imported error classes
+// straight from @helixid/core can get them from here instead.
+export * from '../core/HelixError.js';
+export * from '../core/codes.js';
 
 /**
  * Maps a structured API error response to a typed HelixError instance.
@@ -170,5 +177,3 @@ export function mapApiError(body: unknown): HelixError {
       );
   }
 }
-
-export { HelixError, ErrorCode };

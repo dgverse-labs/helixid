@@ -34,7 +34,7 @@ import {
   PreparedPayloadPurposeMismatchError,
   PreparedPayloadSignatureInvalidError,
   type SignedVC,
-} from '@helixid/core';
+} from '../../../src/core/index.js';
 import { PreparedPayloadService } from '../../../src/services/prepared-payload/prepared-payload.service.js';
 import { PreparedPayloadRepository } from '../../../src/repositories/prepared-payload.repository.js';
 import type { IDIDService } from '../../../src/services/did/did.service.js';

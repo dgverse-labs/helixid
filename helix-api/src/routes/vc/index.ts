@@ -11,7 +11,7 @@
 // limitations under the License.
 
 import { FastifyPluginAsync } from 'fastify';
-import { AdminAuthRequiredError, ErrorCode, HelixError, AuditEvents } from '@helixid/core';
+import { AdminAuthRequiredError, ErrorCode, HelixError, AuditEvents } from '../../core/index.js';
 import type { IVCService, IssueVCParams, RenewVCOptions } from '../../services/vc/vc.service.js';
 import {
   resolveAccountOrAdmin,

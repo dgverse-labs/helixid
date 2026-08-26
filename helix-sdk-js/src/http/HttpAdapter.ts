@@ -1,4 +1,4 @@
-import { HelixError } from '@helixid/core';
+import { HelixError } from '../errors/index.js';
 import { mapApiError } from '../errors/index.js';
 
 export class HttpAdapter {

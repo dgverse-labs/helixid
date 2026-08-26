@@ -1,7 +1,7 @@
 {
   "name": "@helixid/langchain",
   "version": "0.1.1",
-  "description": "HelixID middleware for LangChain and LangGraph — verifiable credential enforcement at agent execution boundaries with per-tool scope checking.",
+  "description": "HelixID middleware for LangChain and LangGraph \u2014 verifiable credential enforcement at agent execution boundaries with per-tool scope checking.",
   "type": "module",
   "license": "Apache-2.0",
   "author": "DgVerse <hello@dgverse.in>",
@@ -39,7 +39,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@helixid/core": "workspace:^",
     "@helixid/sdk-js": "workspace:^"
   },
   "peerDependencies": {

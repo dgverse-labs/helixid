@@ -103,9 +103,6 @@ importers:
 
   examples:
     dependencies:
-      '@helixid/core':
-        specifier: ^0.1.0
-        version: 0.1.0
       '@helixid/sdk-js':
         specifier: ^0.1.1
         version: 0.1.1
@@ -118,9 +115,6 @@ importers:
       '@google/genai':
         specifier: ^2.15.0
         version: 2.15.0(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76))
-      '@helixid/core':
-        specifier: workspace:*
-        version: link:../../helix-core
       '@helixid/sdk-js':
         specifier: workspace:*
         version: link:../../helix-sdk-js
@@ -158,9 +152,6 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.68.0
         version: 0.68.0(zod@3.25.76)
-      '@helixid/core':
-        specifier: ^0.1.5
-        version: 0.1.5
       '@helixid/mcp':
         specifier: ^0.1.2
         version: 0.1.2(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76))
@@ -198,9 +189,6 @@ importers:
 
   examples/framework-middleware:
     dependencies:
-      '@helixid/core':
-        specifier: ^0.1.0
-        version: 0.1.0
       '@helixid/langchain':
         specifier: ^0.1.0
         version: 0.1.0(@langchain/core@1.1.48(openai@4.104.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))
@@ -238,12 +226,18 @@ importers:
       '@fastify/swagger-ui':
         specifier: ^5.2.6
         version: 5.2.6
-      '@helixid/core':
-        specifier: workspace:^
-        version: link:../helix-core
       '@helixid/did-hedera':
         specifier: ^0.1.0
         version: 0.1.0(bn.js@5.2.3)
+      '@noble/curves':
+        specifier: ^1.4.0
+        version: 1.9.7
+      '@noble/ed25519':
+        specifier: ^2.3.0
+        version: 2.3.0
+      '@noble/hashes':
+        specifier: ^1.8.0
+        version: 1.8.0
       '@prisma/adapter-pg':
         specifier: ^7.8.0
         version: 7.8.0
@@ -281,9 +275,6 @@ importers:
       '@helixid/sdk-js':
         specifier: ^0.1.1
         version: 0.1.1
-      '@noble/ed25519':
-        specifier: ^2.3.0
-        version: 2.3.0
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
@@ -327,11 +318,8 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@types/node@20.19.39)(@vitest/coverage-v8@4.1.8)(jsdom@26.1.0)(vite@7.3.5(@types/node@20.19.39)(jiti@2.6.1)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0))
 
-  helix-core:
+  helix-sdk-js:
     dependencies:
-      '@noble/curves':
-        specifier: ^1.4.0
-        version: 1.9.7
       '@noble/ed25519':
         specifier: ^2.3.0
         version: 2.3.0
@@ -364,51 +352,26 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@types/node@20.19.39)(@vitest/coverage-v8@4.1.8)(jsdom@26.1.0)(vite@7.3.5(@types/node@20.19.39)(jiti@2.6.1)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0))
 
-  helix-sdk-js:
-    dependencies:
-      '@helixid/core':
-        specifier: workspace:^
-        version: link:../helix-core
-      '@noble/ed25519':
-        specifier: ^2.3.0
-        version: 2.3.0
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      '@typescript-eslint/eslint-plugin':
-        specifier: ^8.0.0
-        version: 8.58.2(@typescript-eslint/parser@8.58.2(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)(typescript@5.9.3)
-      '@typescript-eslint/parser':
-        specifier: ^8.0.0
-        version: 8.58.2(eslint@8.57.1)(typescript@5.9.3)
-      '@vitest/coverage-v8':
-        specifier: ^4.1.8
-        version: 4.1.8(vitest@4.1.8)
-      eslint:
-        specifier: ^8.57.0
-        version: 8.57.1
-      typescript:
-        specifier: ^5.4.0
-        version: 5.9.3
-      vitest:
-        specifier: ^4.1.8
-        version: 4.1.8(@types/node@20.19.39)(@vitest/coverage-v8@4.1.8)(jsdom@26.1.0)(vite@7.3.5(@types/node@20.19.39)(jiti@2.6.1)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0))
-
   packages/cli:
     dependencies:
-      '@helixid/core':
-        specifier: workspace:^
-        version: link:../../helix-core
       '@helixid/sdk-js':
         specifier: workspace:^
         version: link:../../helix-sdk-js
+      '@noble/ed25519':
+        specifier: ^2.3.0
+        version: 2.3.0
+      '@noble/hashes':
+        specifier: ^1.8.0
+        version: 1.8.0
       chalk:
         specifier: ^5.4.1
         version: 5.6.2
       commander:
         specifier: ^11.1.0
         version: 11.1.0
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
     optionalDependencies:
       '@helixid/did-hedera':
         specifier: workspace:*
@@ -432,9 +395,6 @@ importers:
       '@hashgraph/sdk':
         specifier: ^2.49.0
         version: 2.81.0(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
-      '@helixid/core':
-        specifier: workspace:^
-        version: link:../../helix-core
       '@hiero-did-sdk/hcs':
         specifier: ^0.1.8
         version: 0.1.8(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
@@ -444,7 +404,19 @@ importers:
       '@hiero-did-sdk/resolver':
         specifier: ^0.1.8
         version: 0.1.8(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
+      '@noble/ed25519':
+        specifier: ^2.3.0
+        version: 2.3.0
+      '@noble/hashes':
+        specifier: ^1.8.0
+        version: 1.8.0
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
     devDependencies:
+      '@helixid/core':
+        specifier: ^0.1.0
+        version: 0.1.5
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.42
@@ -457,9 +429,6 @@ importers:
 
   packages/langchain:
     dependencies:
-      '@helixid/core':
-        specifier: workspace:^
-        version: link:../../helix-core
       '@helixid/sdk-js':
         specifier: workspace:^
         version: link:../../helix-sdk-js
@@ -479,9 +448,6 @@ importers:
 
   packages/mcp:
     dependencies:
-      '@helixid/core':
-        specifier: workspace:^
-        version: link:../../helix-core
       '@helixid/sdk-js':
         specifier: workspace:^
         version: link:../../helix-sdk-js
@@ -1006,9 +972,6 @@ packages:
     engines: {node: '>=18.0.0'}
     peerDependencies:
       bn.js: 5.2.3
-
-  '@helixid/core@0.1.0':
-    resolution: {integrity: sha512-HAD5LAL1NsmtEE5qAK7bBKmwOq0x72u6m9E7ZG9Ac+L/sTwIavd9gz6G4XqNifkW1QBdOs8A8XvuxesYQVt13w==}
 
   '@helixid/core@0.1.5':
     resolution: {integrity: sha512-mdqBzfe1katc0BbcWU0jKTWkSWxvizryknFQiiPEnSYI+xsbCa5SLLIAH0CUgdIH0C1EITnqCpzE1KfX/mcLvQ==}
@@ -5074,13 +5037,6 @@ snapshots:
       - react-native
       - supports-color
 
-  '@helixid/core@0.1.0':
-    dependencies:
-      '@noble/curves': 1.9.7
-      '@noble/ed25519': 2.3.0
-      '@noble/hashes': 1.8.0
-      zod: 3.25.76
-
   '@helixid/core@0.1.5':
     dependencies:
       '@noble/curves': 1.9.7
@@ -5124,7 +5080,7 @@ snapshots:
 
   '@helixid/sdk-js@0.1.1':
     dependencies:
-      '@helixid/core': 0.1.0
+      '@helixid/core': 0.1.5
       '@noble/ed25519': 2.3.0
 
   '@helixid/sdk-js@0.1.7':
@@ -6126,7 +6082,7 @@ snapshots:
       obug: 2.1.2
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.8(@types/node@20.19.39)(@vitest/coverage-v8@4.1.8)(jsdom@26.1.0)(vite@7.3.5(@types/node@20.19.39)(jiti@2.6.1)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0))
+      vitest: 4.1.8(@types/node@20.19.42)(@vitest/coverage-v8@4.1.8)(jsdom@26.1.0)(vite@7.3.5(@types/node@20.19.42)(jiti@2.6.1)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0))
 
   '@vitest/expect@4.1.8':
     dependencies:

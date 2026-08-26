@@ -16,7 +16,7 @@
 // meant to resolve, no special-casing needed beyond routing the path.
 
 import type { FastifyPluginAsync } from 'fastify';
-import type { DIDDocument } from '@helixid/core';
+import type { DIDDocument } from '../../core/index.js';
 import { buildAccountIssuerDid } from '../../services/auth/provision-issuer-did.js';
 
 interface AccountDidRouteOptions {

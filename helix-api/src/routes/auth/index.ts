@@ -13,7 +13,7 @@
 // See docs/proposal-hosted-instance.md ("Rough endpoint list").
 
 import type { FastifyPluginAsync } from 'fastify';
-import { HelixError, ErrorCode, GoogleOAuthFailedError } from '@helixid/core';
+import { HelixError, ErrorCode, GoogleOAuthFailedError } from '../../core/index.js';
 import type { IAuthService } from '../../services/auth/IAuthService.js';
 
 export interface AuthRouteOptions {

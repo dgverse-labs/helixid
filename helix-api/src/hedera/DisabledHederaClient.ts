@@ -1,6 +1,6 @@
 // Copyright 2026 DgVerse LLP
 // Licensed under the Apache License, Version 2.0 (the "License");
-import type { DidMethod } from '@helixid/core';
+import type { DidMethod } from '../core/index.js';
 import type {
   HederaDIDCreationRequest,
   HederaDIDCreationResult,

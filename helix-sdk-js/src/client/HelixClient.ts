@@ -1,21 +1,14 @@
-import {
-  AuditEvents,
-  generateKeyPair,
-  HelixError,
-  SDKOnlyModeNoAPIError,
-  verifyJWT,
-  signBytes,
-  signData,
-  type DIDDocument,
-  type HelixJWTPayload,
-  type KeyPair,
-  type ServiceEndpoint,
-  type StatusListCredential,
-  type SignedVC,
-  type SignedVP,
-  type VerifyVPOptions,
-  type VerifyVPResult,
-} from '@helixid/core';
+import { AuditEvents } from '../core/audit-events.js';
+import { generateKeyPair, signData, type KeyPair } from '../core/keys.js';
+import { signBytes } from '../core/vp-crypto.js';
+import { HelixError, SDKOnlyModeNoAPIError } from '../errors/index.js';
+import { verifyJWT } from '../core/jwt.js';
+import type { HelixJWTPayload } from '../core/schemas/jwt.js';
+import type { DIDDocument, ServiceEndpoint } from '../core/did.js';
+import type { StatusListCredential } from '../core/status-list-schema.js';
+import type { SignedVC } from '../core/schemas/vc.js';
+import type { SignedVP } from '../core/schemas/vp.js';
+import type { VerifyVPOptions, VerifyVPResult } from '../core/verification-types.js';
 import { HttpAdapter } from '../http/HttpAdapter.js';
 import { AgentWallet } from '../wallet/AgentWallet.js';
 

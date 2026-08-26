@@ -31,7 +31,7 @@ import {
   AdminAuthRequiredError,
   EmailNotVerifiedError,
   type AuditEventType,
-} from '@helixid/core';
+} from '../../core/index.js';
 import type { AccountRepository } from '../../repositories/account.repository.js';
 import type { AuditLogRepository } from '../../repositories/audit-log.repository.js';
 import type { IAuthService } from './IAuthService.js';

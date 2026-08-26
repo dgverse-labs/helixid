@@ -16,7 +16,7 @@ import {
   type HelixError,
   type IAuditLogger,
   type SignedVC,
-} from '@helixid/core';
+} from '../../core/index.js';
 import type { AgentRepository } from '../../repositories/agent.repository.js';
 import type { IDIDService } from '../did/IDIDService.js';
 import type { IVCService } from '../vc/IVCService.js';

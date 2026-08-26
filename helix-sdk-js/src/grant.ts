@@ -1,4 +1,6 @@
-import { signData, type SignedVC, type StatusListCredential } from '@helixid/core';
+import { signData } from './core/keys.js';
+import type { SignedVC } from './core/schemas/vc.js';
+import type { StatusListCredential } from './core/status-list-schema.js';
 import type { HelixClient } from './client/HelixClient.js';
 
 /** SP-held issuer key material. The SP signs grants with its own key, which never leaves this process. */

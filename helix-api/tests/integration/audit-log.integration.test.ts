@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
-import { ErrorCode } from '@helixid/core';
+import { ErrorCode } from '../../src/core/index.js';
 
 import auditLogRoutes from '../../src/routes/audit-log/index.js';
 import { errorHandler } from '../../src/middleware/errorHandler.js';

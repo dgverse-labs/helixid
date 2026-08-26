@@ -1,4 +1,4 @@
-import type { AuditEvent, AuditEventType, IAuditLogger } from '@helixid/core';
+import type { AuditEvent, AuditEventType, IAuditLogger } from '../../src/core/index.js';
 
 export class TestAuditLogger implements IAuditLogger {
   public readonly events: Array<{ event: AuditEvent; payload: Record<string, unknown> }> = [];

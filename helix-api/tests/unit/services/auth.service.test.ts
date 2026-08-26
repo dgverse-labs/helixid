@@ -15,7 +15,7 @@ import {
   RefreshTokenReuseDetectedError,
   AccountHasNoPasswordError,
   EmailVerificationTokenInvalidError,
-} from '@helixid/core';
+} from '../../../src/core/index.js';
 import { AuthService } from '../../../src/services/auth/auth.service.js';
 import { AesGcmKeyCustody } from '../../../src/services/auth/key-custody.js';
 import type { IEmailSender } from '../../../src/services/auth/email-sender.js';

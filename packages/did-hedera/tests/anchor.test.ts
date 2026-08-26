@@ -1,6 +1,6 @@
 import { PrivateKey } from '@hashgraph/sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { generateKeyPair } from '@helixid/core';
+import { generateKeyPair } from '../src/core/keys.js';
 import { anchorDidHedera } from '../src/anchor.js';
 
 const createDIDMock = vi.fn();

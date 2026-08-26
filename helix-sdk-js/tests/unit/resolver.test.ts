@@ -12,7 +12,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { HelixDidResolver } from '../../src/resolver/HelixDidResolver.js';
-import { ErrorCode } from '@helixid/core';
+import { ErrorCode } from '../../src/errors/index.js';
 
 describe('HelixDidResolver', () => {
   const baseUrl = 'http://api.test';

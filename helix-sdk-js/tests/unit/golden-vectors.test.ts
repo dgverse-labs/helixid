@@ -29,9 +29,9 @@ import { fileURLToPath } from 'node:url';
 // SDK's public surface.
 import {
   VPBuilder,
-  type SignedVC,
   type VPBuilderSignOverrides,
-} from '@helixid/core';
+} from '../../src/core/vp-builder-impl.js';
+import type { SignedVC } from '../../src/core/schemas/vc.js';
 
 const FIXTURES_DIR = fileURLToPath(new URL('../../../fixtures/golden-vectors/', import.meta.url));
 

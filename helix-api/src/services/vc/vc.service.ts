@@ -25,7 +25,7 @@ import {
   type HelixVC,
   type SignedVC,
   VPMultipleActiveVCError,
-} from '@helixid/core';
+} from '../../core/index.js';
 import * as crypto from 'node:crypto';
 import { VcRepository } from '../../repositories/vc.repository.js';
 import type { IDIDService } from '../did/did.service.js';

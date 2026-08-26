@@ -5,7 +5,7 @@
 //    http://www.apache.org/licenses/LICENSE-2.0
 
 import type { FastifyPluginAsync } from 'fastify';
-import { AuditEvents } from '@helixid/core';
+import { AuditEvents } from '../../core/index.js';
 import type { IAgentService } from '../../services/agent/IAgentService.js';
 import { mapAgentError } from '../../services/agent/agent.service.js';
 import {

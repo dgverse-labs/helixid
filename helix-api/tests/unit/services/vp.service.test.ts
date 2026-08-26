@@ -4,7 +4,7 @@
 // step, single audit event per outcome, JWT scopes from effectiveScopes.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AuditEvents } from '@helixid/core';
+import { AuditEvents } from '../../../src/core/index.js';
 import { VPService } from '../../../src/services/vp/vp.service.js';
 import { TestAuditLogger } from '../../utils/TestAuditLogger.js';
 import {

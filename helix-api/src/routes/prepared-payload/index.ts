@@ -17,7 +17,7 @@
 // resulting signature.
 
 import type { FastifyPluginAsync } from 'fastify';
-import { HelixError, ErrorCode } from '@helixid/core';
+import { HelixError, ErrorCode } from '../../core/index.js';
 import type { IPreparedPayloadService } from '../../services/prepared-payload/IPreparedPayloadService.js';
 
 export interface PreparedPayloadRouteOptions {
