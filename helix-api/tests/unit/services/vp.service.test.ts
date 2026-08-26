@@ -105,8 +105,12 @@ describe('VPService (thin wrapper)', () => {
     const grant = await makeGrant(sp, holder.did, USER_DID, ['book:flights'], makeSpStatusList(sp));
     const vp = await buildSignedVP([vc, grant], holder, USER_DID);
 
+    // §4.2/S2: an SP-hosted list that fails schema validation is treated the
+    // same as "can't prove not-revoked" — the service surfaces the specific
+    // VC_REVOKED failure (see vp.service.ts's catch: HelixError subtypes are
+    // preserved for the caller, not collapsed to the generic code).
     await expect(service.verifyVP(vp, 'req-1')).rejects.toMatchObject({
-      code: 'VP_VERIFICATION_FAILED',
+      code: 'VC_REVOKED',
     });
     const rejected = auditLogger.events.filter(
       (entry) => entry.event.event === AuditEvents.VP_REJECTED,
@@ -157,8 +161,10 @@ describe('VPService (thin wrapper)', () => {
     });
     const vp = await buildSignedVP([vc], holder, USER_DID);
 
+    // Same preserve-the-specific-failure behavior as above: an expired VC
+    // surfaces as VC_EXPIRED, not the generic fallback code.
     await expect(service.verifyVP(vp, 'req-1')).rejects.toMatchObject({
-      code: 'VP_VERIFICATION_FAILED',
+      code: 'VC_EXPIRED',
     });
 
     const eventTypes = auditLogger.events.map((entry) => entry.event.event);
@@ -173,8 +179,10 @@ describe('VPService (thin wrapper)', () => {
 
   it('rejects a payload that fails signedVPSchema parsing', async () => {
     const { service } = makeService();
+    // Rejected before core verification even runs, so it's VP_INVALID_STRUCTURE
+    // specifically, not the generic VP_VERIFICATION_FAILED fallback.
     await expect(service.verifyVP({ nope: true } as never, 'req-1')).rejects.toMatchObject({
-      code: 'VP_VERIFICATION_FAILED',
+      code: 'VP_INVALID_STRUCTURE',
     });
   });
 
@@ -191,8 +199,11 @@ describe('VPService (thin wrapper)', () => {
     (vc.credentialSubject as Record<string, unknown>)['delegatedFrom'] = 'did:key:zParent';
     const vp = await buildSignedVP([vc], holder, USER_DID);
 
+    // A parentVcId/delegatedFrom on the credentialSubject with no matching
+    // parent VC in the presentation is what actually fails here —
+    // DELEGATION_CHAIN_INVALID, not the generic fallback code.
     await expect(service.verifyVP(vp, 'req-1')).rejects.toMatchObject({
-      code: 'VP_VERIFICATION_FAILED',
+      code: 'DELEGATION_CHAIN_INVALID',
     });
 
     const rejected = auditLogger.events.find(
@@ -210,7 +221,7 @@ describe('VPService (thin wrapper)', () => {
     // must degrade to no fields rather than throw over the audit call.
     await expect(
       service.verifyVP({ verifiableCredential: 'not-an-array' } as never, 'req-1'),
-    ).rejects.toMatchObject({ code: 'VP_VERIFICATION_FAILED' });
+    ).rejects.toMatchObject({ code: 'VP_INVALID_STRUCTURE' });
 
     const rejected = auditLogger.events.find(
       (entry) => entry.event.event === AuditEvents.VP_REJECTED,

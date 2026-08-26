@@ -88,17 +88,24 @@ describe('HelixClient Branch Coverage', () => {
   });
 
   describe('checkVCStatus branches', () => {
-    it('returns expired if date in past', async () => {
-        const res = await client.checkVCStatus({ validUntil: new Date(Date.now() - 1000).toISOString() } as any);
+    // Status is decided server-side (see docs/proposal-sdk-api-only.md) — the
+    // SDK's only job is the GET and passing the status straight through.
+    it('returns whatever status the API reports', async () => {
+        mockHttp.get.mockResolvedValue({ vcId: 'vc:1', status: 'expired' });
+        const res = await client.checkVCStatus({ id: 'vc:1' } as any);
+        expect(mockHttp.get).toHaveBeenCalledWith('/v1/vcs/vc%3A1/status');
         expect(res).toBe('expired');
     });
 
-    it('returns revoked if bit set', async () => {
-        mockHttp.get.mockResolvedValue({ credentialSubject: { encodedList: 'A' } });
-        // Assuming bit 0 is set in 'A'? No, bit calculation is core logic.
-        // Let's mock getBit to return 1.
-        // Wait, checkVCStatus calls getBit from @helixid/core.
-        // I should mock it.
+    it('returns revoked when the API reports revoked', async () => {
+        mockHttp.get.mockResolvedValue({ vcId: 'vc:2', status: 'revoked' });
+        const res = await client.checkVCStatus({ id: 'vc:2' } as any);
+        expect(res).toBe('revoked');
+    });
+
+    it('throws if the adapter has no GET support', async () => {
+        const c2 = new HelixClient({ post: vi.fn() } as any, 'http://localhost');
+        await expect(c2.checkVCStatus({ id: 'vc:1' } as any)).rejects.toThrow('GET not implemented by adapter');
     });
   });
 

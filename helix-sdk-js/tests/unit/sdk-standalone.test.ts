@@ -1,11 +1,12 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   AgentWallet,
   checkScope,
   delegate,
+  HelixClient,
   requireScope,
   VPBuilder,
   verifyVP,
@@ -40,14 +41,56 @@ describe('standalone SDK exports', () => {
   });
 
   it('delegates from wallet.credentials[0] by default', async () => {
+    // Delegation payload construction now happens server-side via
+    // prepare/finalize (see docs/proposal-sdk-api-only.md) — the wallet only
+    // signs locally, so a HelixClient is required and the only thing left to
+    // verify here is that delegate() picks wallet.credentials[0] as fromVC
+    // when the caller doesn't supply one explicitly.
     const dir = await mkdtemp(join(tmpdir(), 'helix-sdk-standalone-'));
     const path = join(dir, 'wallet.json');
 
     try {
-      const wallet = await AgentWallet.create(path, 'pass');
+      const http = {
+        get: vi.fn(),
+        post: vi.fn(),
+        delete: vi.fn(),
+        hasAdminApiKey: vi.fn(() => false),
+      };
+      const client = new HelixClient(http as any, 'http://api');
+      const wallet = await AgentWallet.create(path, 'pass', client);
       const parent = await wallet.selfIssueVC({
         scopes: ['read:orders', 'write:orders'],
         maxDelegationDepth: 1,
+      });
+
+      http.post.mockImplementation(async (urlPath: string, body: any) => {
+        if (urlPath === '/v1/vcs/delegation/prepare') {
+          expect(body).toMatchObject({
+            delegatorDid: wallet.getDID(),
+            fromVC: parent,
+            to: 'did:key:zDelegatee',
+            scopes: ['read:orders'],
+            expiresIn: 3600,
+          });
+          return {
+            token: 'prepared-token',
+            unsignedPayload: {},
+            canonicalHash: 'ab'.repeat(32),
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          };
+        }
+        if (urlPath === '/v1/vcs/delegation/finalize') {
+          return {
+            issuer: wallet.getDID(),
+            credentialSubject: {
+              id: 'did:key:zDelegatee',
+              privilegeScopes: ['read:orders'],
+              parentVcId: parent.id,
+              delegationDepth: 1,
+            },
+          };
+        }
+        throw new Error(`unexpected path: ${urlPath}`);
       });
 
       const child = await delegate({
@@ -63,6 +106,10 @@ describe('standalone SDK exports', () => {
         parentVcId: parent.id,
         delegationDepth: 1,
       });
+      expect(http.post).toHaveBeenCalledWith(
+        '/v1/vcs/delegation/prepare',
+        expect.objectContaining({ fromVC: parent }),
+      );
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

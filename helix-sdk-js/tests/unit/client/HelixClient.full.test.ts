@@ -70,20 +70,23 @@ describe('HelixClient Full Unit Tests', () => {
   });
 
   it('checks VC status - expired', async () => {
-    const vc = { validUntil: new Date(Date.now() - 1000).toISOString() } as any;
+    // Status is decided server-side (see docs/proposal-sdk-api-only.md) — the
+    // client just relays whatever GET /v1/vcs/:id/status reports.
+    const vc = { id: 'vc:expired-1', validUntil: new Date(Date.now() - 1000).toISOString() } as any;
+    mockHttp.get.mockResolvedValue({ vcId: vc.id, status: 'expired' });
     const status = await client.checkVCStatus(vc);
+    expect(mockHttp.get).toHaveBeenCalledWith(`/v1/vcs/${encodeURIComponent(vc.id)}/status`);
     expect(status).toBe('expired');
   });
 
   it('checks VC status - active/revoked', async () => {
-    const vc = { 
-      validUntil: new Date(Date.now() + 10000).toISOString(),
-      credentialStatus: { statusListCredential: 'http://list', statusListIndex: '0' }
-    } as any;
-    const validList = createStatusList();
-    mockHttp.get.mockResolvedValue({ credentialSubject: { encodedList: validList } });
+    const vc = { id: 'vc:active-1', validUntil: new Date(Date.now() + 10000).toISOString() } as any;
+    mockHttp.get.mockResolvedValue({ vcId: vc.id, status: 'active' });
     const status = await client.checkVCStatus(vc);
     expect(status).toBe('active');
+
+    mockHttp.get.mockResolvedValue({ vcId: vc.id, status: 'revoked' });
+    expect(await client.checkVCStatus(vc)).toBe('revoked');
   });
 
   it('manages user challenges', async () => {
@@ -120,7 +123,10 @@ describe('HelixClient Full Unit Tests', () => {
     expect('delegate' in client).toBe(false);
   });
 
-  it('audits successful VP verification when the client can write audit logs', async () => {
+  it('forwards VP verification to the API and returns its result as-is', async () => {
+    // Verification and VP_VERIFIED/VP_REJECTED audit logging both happen
+    // server-side now (see docs/proposal-sdk-api-only.md) — the client makes
+    // exactly one POST and does not also write its own audit entry.
     const wallet = generateKeyPair();
     const did = `did:key:${publicKeyToMultibase(wallet.publicKey)}`;
     const vc = await selfIssueVC({ scopes: ['read:orders'] }, { did, privateKeyHex: wallet.privateKey });
@@ -131,56 +137,35 @@ describe('HelixClient Full Unit Tests', () => {
       userDid: did,
     }).sign(wallet.privateKey, `${did}#key-1`);
 
-    const auditHttp = {
-      get: vi.fn(),
-      post: vi.fn().mockResolvedValue({ recorded: true }),
-      delete: vi.fn(),
-      hasAdminApiKey: vi.fn(() => true),
-    };
-    const auditClient = new HelixClient(auditHttp as any, 'http://api');
-
-    const result = await auditClient.verifyVP(vp, { allowSelfSigned: true });
-
-    expect(result).toMatchObject({
+    const apiResult = {
       valid: true,
       agentDid: did,
       vpId: vp.id,
+      privilegeScopes: ['read:orders'],
+      effectiveScopes: ['read:orders'],
+      delegationChain: [],
+      targetService: 'orders',
+      verifiedAt: new Date().toISOString(),
+    };
+    mockHttp.post.mockResolvedValue(apiResult);
+
+    const result = await client.verifyVP(vp, { allowSelfSigned: true });
+
+    expect(mockHttp.post).toHaveBeenCalledWith('/v1/vp/verify', {
+      signedVP: vp,
+      allowSelfSigned: true,
     });
-    expect(auditHttp.post).toHaveBeenCalledWith(
-      '/v1/audit-log/vp-verification',
-      expect.objectContaining({
-        vpId: vp.id,
-        agentDid: did,
-        subjectDid: did,
-        targetService: 'orders',
-        result: 'success',
-        source: 'sdk',
-        eventType: 'VP_VERIFIED',
-      }),
-    );
+    expect(mockHttp.post).toHaveBeenCalledTimes(1);
+    expect(result).toBe(apiResult);
   });
 
-  it('audits rejected VP verification when verification fails', async () => {
-    const auditHttp = {
-      get: vi.fn(),
-      post: vi.fn().mockResolvedValue({ recorded: true }),
-      delete: vi.fn(),
-      hasAdminApiKey: vi.fn(() => true),
-    };
-    const auditClient = new HelixClient(auditHttp as any, 'http://api');
+  it('propagates the API rejection when VP verification fails', async () => {
+    mockHttp.post.mockRejectedValue(new Error('VP_REJECTED: signature invalid'));
 
-    await expect(auditClient.verifyVP({ id: 'vp:test', holder: 'did:key:abc' } as any)).rejects.toThrow();
-
-    expect(auditHttp.post).toHaveBeenCalledWith(
-      '/v1/audit-log/vp-verification',
-      expect.objectContaining({
-        vpId: 'vp:test',
-        agentDid: 'did:key:abc',
-        result: 'rejected',
-        source: 'sdk',
-        eventType: 'VP_REJECTED',
-      }),
-    );
+    await expect(
+      client.verifyVP({ id: 'vp:test', holder: 'did:key:abc' } as any),
+    ).rejects.toThrow('VP_REJECTED: signature invalid');
+    expect(mockHttp.post).toHaveBeenCalledTimes(1);
   });
 
   it('fetches and locally verifies JWT session tokens', async () => {
