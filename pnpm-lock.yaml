@@ -227,8 +227,8 @@ importers:
         specifier: ^5.2.6
         version: 5.2.6
       '@helixid/did-hedera':
-        specifier: ^0.1.0
-        version: 0.1.0(bn.js@5.2.3)
+        specifier: workspace:*
+        version: link:../packages/did-hedera
       '@noble/curves':
         specifier: ^1.4.0
         version: 1.9.7
@@ -273,8 +273,8 @@ importers:
         version: 3.25.76
     devDependencies:
       '@helixid/sdk-js':
-        specifier: ^0.1.1
-        version: 0.1.1
+        specifier: workspace:*
+        version: link:../helix-sdk-js
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
@@ -975,9 +975,6 @@ packages:
 
   '@helixid/core@0.1.5':
     resolution: {integrity: sha512-mdqBzfe1katc0BbcWU0jKTWkSWxvizryknFQiiPEnSYI+xsbCa5SLLIAH0CUgdIH0C1EITnqCpzE1KfX/mcLvQ==}
-
-  '@helixid/did-hedera@0.1.0':
-    resolution: {integrity: sha512-Gp1nEIGpXN9Dyak4aft525skH0yPRaf2DmlsA2VOIhKDffwlTJJLVhw4s9tGx4GkiRMgaVqmzgYl8Wac/8qZSg==}
 
   '@helixid/langchain@0.1.0':
     resolution: {integrity: sha512-gLUVpb5T6XtrXDSJ/VmRIkc2BCPrWaKjrhBRS2jcbTwe3AJ9InHmGK90DIKw3L/sdcO0NeRVpi6V0wNzJA9eoQ==}
@@ -5043,19 +5040,6 @@ snapshots:
       '@noble/ed25519': 2.3.0
       '@noble/hashes': 1.8.0
       zod: 3.25.76
-
-  '@helixid/did-hedera@0.1.0(bn.js@5.2.3)':
-    dependencies:
-      '@hashgraph/sdk': 2.81.0(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
-      '@helixid/core': 0.1.5
-      '@hiero-did-sdk/hcs': 0.1.8(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
-      '@hiero-did-sdk/registrar': 0.1.8(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
-      '@hiero-did-sdk/resolver': 0.1.8(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
-    transitivePeerDependencies:
-      - bn.js
-      - expo-crypto
-      - react-native
-      - supports-color
 
   '@helixid/langchain@0.1.0(@langchain/core@1.1.48(openai@4.104.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))':
     dependencies:

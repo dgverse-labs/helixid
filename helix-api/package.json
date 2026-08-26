@@ -29,7 +29,7 @@
     "@fastify/sensible": "^6.0.0",
     "@fastify/swagger": "^9.7.0",
     "@fastify/swagger-ui": "^5.2.6",
-    "@helixid/did-hedera": "^0.1.0",
+    "@helixid/did-hedera": "workspace:*",
     "@noble/curves": "^1.4.0",
     "@noble/ed25519": "^2.3.0",
     "@noble/hashes": "^1.8.0",
@@ -46,7 +46,7 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "@helixid/sdk-js": "^0.1.1",
+    "@helixid/sdk-js": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
     "@types/bs58": "^5.0.0",
     "@types/node": "^20.0.0",

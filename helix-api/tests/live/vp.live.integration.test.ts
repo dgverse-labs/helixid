@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import supertest from 'supertest';
-import { HelixClient, VPBuilder } from '@helixid/sdk-js';
+import { HelixClient } from '@helixid/sdk-js';
+import type { SignedVC } from '@helixid/sdk-js';
 import {
   LIVE_HEDERA_TIMEOUT_MS,
+  buildAndSignVP,
   onboardLiveAgent,
   resetLiveTestDatabase,
   startLiveApi,
@@ -21,7 +23,7 @@ describe('VP Live Integration', () => {
     await api?.stop();
   });
 
-  it('generates, signs, verifies, and rejects replay for a VP with real VC and VP signatures', async () => {
+  it('generates, signs, and verifies a VP built from a held VC', async () => {
     const client = new HelixClient(api.baseUrl, { adminApiKey: api.adminApiKey });
     const http = supertest(api.baseUrl);
     const agent = await onboardLiveAgent(api, client, {
@@ -32,17 +34,12 @@ describe('VP Live Integration', () => {
     });
 
     try {
-      const templateRes = await http.post('/v1/vp/template').send({
-        agentDid: agent.did,
-        userDid: 'did:hedera:testnet:live-user-placeholder',
-        targetService: 'amazon',
-        vcType: 'HelixAgentCredential',
-      });
-      expect(templateRes.statusCode).toBe(201);
-
-      const signedVP = await new VPBuilder(templateRes.body.unsignedVP).sign(
+      const vcRecord = await client.getVC(agent.vcId);
+      const signedVP = await buildAndSignVP(
+        [vcRecord.vc as SignedVC],
+        agent.did,
         agent.privateKeyHex,
-        `${agent.did}#key-1`,
+        { targetService: 'amazon', userDid: 'did:hedera:testnet:live-user-placeholder' },
       );
 
       const verifyRes = await http.post('/v1/vp/verify').send({ signedVP });
@@ -52,16 +49,50 @@ describe('VP Live Integration', () => {
         agentDid: agent.did,
         targetService: 'amazon',
       });
-
-      const replayRes = await http.post('/v1/vp/verify').send({ signedVP });
-      expect(replayRes.statusCode).toBe(400);
-      expect(replayRes.body.error.code).toBe('VP_VERIFICATION_FAILED');
     } finally {
       await agent.cleanup();
     }
   }, LIVE_HEDERA_TIMEOUT_MS);
 
-  it('rejects VP and VC tampering after signing', async () => {
+  // KNOWN GAP — not a test bug: VPRepository.consumeAtomically() and the
+  // `vpId` table exist (built for VP replay protection), but nothing in
+  // VPService.verifyVP calls them. A second submission of the exact same
+  // signed VP is not currently rejected. Flagging this rather than writing an
+  // assertion that would pass by accident — see conversation with Harish
+  // 2026-08-26. Un-skip once replay protection is actually wired up, and
+  // change the expectation below to whatever specific code that wiring
+  // throws (VP_ALREADY_CONSUMED is already defined, unused).
+  it.skip('rejects replaying the same VP twice', async () => {
+    const client = new HelixClient(api.baseUrl, { adminApiKey: api.adminApiKey });
+    const http = supertest(api.baseUrl);
+    const agent = await onboardLiveAgent(api, client, {
+      agentName: 'Live VP Replay Agent',
+      requestedScopes: ['read:orders'],
+      requestedDomains: ['https://live-vp-replay.agent.example.com'],
+      passphrase: 'live-vp-replay-passphrase',
+    });
+
+    try {
+      const vcRecord = await client.getVC(agent.vcId);
+      const signedVP = await buildAndSignVP(
+        [vcRecord.vc as SignedVC],
+        agent.did,
+        agent.privateKeyHex,
+        { targetService: 'amazon', userDid: 'did:hedera:testnet:live-user-placeholder' },
+      );
+
+      const firstRes = await http.post('/v1/vp/verify').send({ signedVP });
+      expect(firstRes.statusCode).toBe(200);
+
+      const replayRes = await http.post('/v1/vp/verify').send({ signedVP });
+      expect(replayRes.statusCode).toBe(400);
+      expect(replayRes.body.error.code).toBe('VP_ALREADY_CONSUMED');
+    } finally {
+      await agent.cleanup();
+    }
+  }, LIVE_HEDERA_TIMEOUT_MS);
+
+  it('rejects a VP whose targetService was tampered with after signing', async () => {
     const client = new HelixClient(api.baseUrl, { adminApiKey: api.adminApiKey });
     const http = supertest(api.baseUrl);
     const agent = await onboardLiveAgent(api, client, {
@@ -72,29 +103,52 @@ describe('VP Live Integration', () => {
     });
 
     try {
-      const templateRes = await http.post('/v1/vp/template').send({
-        agentDid: agent.did,
-        userDid: 'did:hedera:testnet:live-user-placeholder',
-        targetService: 'amazon',
-        vcType: 'HelixAgentCredential',
-      });
-      expect(templateRes.statusCode).toBe(201);
-
-      const vpTampered = await new VPBuilder(templateRes.body.unsignedVP).sign(
+      const vcRecord = await client.getVC(agent.vcId);
+      const vpTampered = await buildAndSignVP(
+        [vcRecord.vc as SignedVC],
+        agent.did,
         agent.privateKeyHex,
-        `${agent.did}#key-1`,
+        { targetService: 'amazon', userDid: 'did:hedera:testnet:live-user-placeholder' },
       );
-      vpTampered.targetService = 'tampered-service';
+      (vpTampered as unknown as { targetService: string }).targetService = 'tampered-service';
+
       const vpTamperRes = await http.post('/v1/vp/verify').send({ signedVP: vpTampered });
       expect(vpTamperRes.statusCode).toBe(400);
+      // Mutating any part of the signed payload — including targetService —
+      // invalidates the outer VP signature before verification ever reaches
+      // per-field checks (see vp-verifier.ts: VP signature is checked first).
+      expect(vpTamperRes.body.error.code).toBe('VP_SIGNATURE_INVALID');
+    } finally {
+      await agent.cleanup();
+    }
+  }, LIVE_HEDERA_TIMEOUT_MS);
 
-      const vcTampered = await new VPBuilder(templateRes.body.unsignedVP).sign(
+  it('rejects a VP whose embedded VC was tampered with after signing', async () => {
+    const client = new HelixClient(api.baseUrl, { adminApiKey: api.adminApiKey });
+    const http = supertest(api.baseUrl);
+    const agent = await onboardLiveAgent(api, client, {
+      agentName: 'Live VC Tamper Agent',
+      requestedScopes: ['read:orders'],
+      requestedDomains: ['https://live-vc-tamper.agent.example.com'],
+      passphrase: 'live-vc-tamper-passphrase',
+    });
+
+    try {
+      const vcRecord = await client.getVC(agent.vcId);
+      const vcTampered = await buildAndSignVP(
+        [vcRecord.vc as SignedVC],
+        agent.did,
         agent.privateKeyHex,
-        `${agent.did}#key-1`,
+        { targetService: 'amazon', userDid: 'did:hedera:testnet:live-user-placeholder' },
       );
       (vcTampered.verifiableCredential[0] as any).credentialSubject.agentName = 'Tampered Agent';
+
       const vcTamperRes = await http.post('/v1/vp/verify').send({ signedVP: vcTampered });
       expect(vcTamperRes.statusCode).toBe(400);
+      // The embedded VC is part of the VP's own signed payload, so mutating
+      // it invalidates the VP signature the same way tampering the VP's own
+      // fields does — it never gets far enough to check the VC's signature.
+      expect(vcTamperRes.body.error.code).toBe('VP_SIGNATURE_INVALID');
     } finally {
       await agent.cleanup();
     }

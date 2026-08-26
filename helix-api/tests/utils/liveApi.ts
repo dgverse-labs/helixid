@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { expect } from 'vitest';
-import { AgentWallet, HelixClient } from '@helixid/sdk-js';
+import { AgentWallet, HelixClient, VPBuilder } from '@helixid/sdk-js';
+import type { SignedVC, SignedVP } from '@helixid/sdk-js';
 import { createTestPrisma } from './prisma.js';
 
 export const LIVE_HEDERA_TIMEOUT_MS = 240_000;
@@ -26,7 +27,21 @@ export interface LiveAgent {
   cleanup(): Promise<void>;
 }
 
+/**
+ * Postgres is the default and only storage adapter these live tests have
+ * ever driven — set LIVE_STORAGE_ADAPTER=sqlite to run the same suite
+ * against helix-api's other real, first-class storage backend instead
+ * (see server.ts: HELIX_STORAGE_ADAPTER defaults to 'sqlite'). Each
+ * startLiveApi() call gets its own fresh sqlite file when this is set, so
+ * there's nothing to reset between runs — no prisma, no Postgres, no
+ * network required. Postgres-mode behavior is untouched.
+ */
+function usingSqliteAdapter(): boolean {
+  return process.env['LIVE_STORAGE_ADAPTER'] === 'sqlite';
+}
+
 export async function resetLiveTestDatabase(): Promise<void> {
+  if (usingSqliteAdapter()) return;
   assertTestDatabaseUrl(process.env['DATABASE_URL']);
   const prisma = createTestPrisma();
   await prisma.auditLog.deleteMany();
@@ -51,18 +66,41 @@ export async function startLiveApi(): Promise<LiveApi> {
   const adminApiKey =
     apiEnv['HELIX_ADMIN_API_KEY'] ?? workspaceEnv['HELIX_ADMIN_API_KEY'] ?? process.env['HELIX_ADMIN_API_KEY'] ?? 'test-admin-key-0001';
   const issuerDid = apiEnv['HELIX_ISSUER_DID'] ?? workspaceEnv['HELIX_ISSUER_DID'] ?? process.env['HELIX_ISSUER_DID'];
-  const databaseUrl = testEnv['DATABASE_URL'] ?? process.env['DATABASE_URL'];
-  assertTestDatabaseUrl(databaseUrl);
+  // tests/setup.ts (loaded for every non-live test file via vitest's
+  // setupFiles) unconditionally defaults DID_METHOD to 'hedera' with a mocked
+  // Hedera client, on *this* process — and that leaks into the spawned
+  // server's env below via the `...process.env` spread. Live tests never
+  // want that default: prefer whatever helix-api/.env declares, and in
+  // sqlite mode fall back to 'key' (self-describing, no registry/network
+  // needed) rather than silently inheriting the unit-test mock default.
+  const didMethod =
+    apiEnv['DID_METHOD'] ?? workspaceEnv['DID_METHOD'] ?? (usingSqliteAdapter() ? 'key' : process.env['DID_METHOD']);
+
+  const sqliteMode = usingSqliteAdapter();
+  let sqliteDir: string | undefined;
+  let sqlitePath: string | undefined;
+  let databaseUrl: string | undefined;
+  if (sqliteMode) {
+    sqliteDir = await mkdtemp(join(tmpdir(), 'helix-live-sqlite-'));
+    sqlitePath = join(sqliteDir, 'live.sqlite');
+  } else {
+    databaseUrl = testEnv['DATABASE_URL'] ?? process.env['DATABASE_URL'];
+    assertTestDatabaseUrl(databaseUrl);
+  }
 
   const env = {
     ...process.env,
-    DATABASE_URL: databaseUrl,
+    ...(sqliteMode
+      ? { HELIX_STORAGE_ADAPTER: 'sqlite', HELIX_SQLITE_PATH: sqlitePath }
+      : { DATABASE_URL: databaseUrl }),
     HEDERA_NETWORK: apiEnv['HEDERA_NETWORK'] ?? workspaceEnv['HEDERA_NETWORK'] ?? process.env['HEDERA_NETWORK'],
     HEDERA_OPERATOR_ID: apiEnv['HEDERA_OPERATOR_ID'] ?? workspaceEnv['HEDERA_OPERATOR_ID'] ?? process.env['HEDERA_OPERATOR_ID'],
     HEDERA_OPERATOR_KEY: apiEnv['HEDERA_OPERATOR_KEY'] ?? workspaceEnv['HEDERA_OPERATOR_KEY'] ?? process.env['HEDERA_OPERATOR_KEY'],
     HEDERA_TOPIC_ID: apiEnv['HEDERA_TOPIC_ID'] ?? workspaceEnv['HEDERA_TOPIC_ID'] ?? process.env['HEDERA_TOPIC_ID'],
     HELIX_SIGNING_KEY: apiEnv['HELIX_SIGNING_KEY'] ?? workspaceEnv['HELIX_SIGNING_KEY'] ?? process.env['HELIX_SIGNING_KEY'],
     HELIX_ISSUER_DID: issuerDid,
+    DID_METHOD: didMethod,
+    DID_DOMAIN: apiEnv['DID_DOMAIN'] ?? workspaceEnv['DID_DOMAIN'] ?? process.env['DID_DOMAIN'],
     JWT_SESSION_TTL_SECONDS: apiEnv['JWT_SESSION_TTL_SECONDS'] ?? workspaceEnv['JWT_SESSION_TTL_SECONDS'] ?? process.env['JWT_SESSION_TTL_SECONDS'] ?? '600',
     HELIX_ADMIN_API_KEY: adminApiKey,
     NODE_ENV: 'test',
@@ -92,6 +130,7 @@ export async function startLiveApi(): Promise<LiveApi> {
     issuerDid,
     async stop() {
       await stopChild(child);
+      if (sqliteDir) await rm(sqliteDir, { recursive: true, force: true });
     },
   };
 }
@@ -139,6 +178,27 @@ export async function onboardLiveAgent(
     walletPath,
     cleanup: () => rm(dir, { recursive: true, force: true }),
   };
+}
+
+/**
+ * Builds and signs a VP locally with the SDK's VPBuilder, the way a real
+ * caller does post-SDK-API-only-migration — there is no server endpoint that
+ * hands back an unsigned VP to sign anymore (`/v1/vp/template` was removed).
+ * `credentials` is 1 or 2 held VCs: the agent-authority VC, optionally
+ * followed by a consent grant VC.
+ */
+export async function buildAndSignVP(
+  credentials: SignedVC[],
+  holderDid: string,
+  privateKeyHex: string,
+  options: { targetService: string; userDid?: string },
+): Promise<SignedVP> {
+  return new VPBuilder({
+    credentials,
+    holderDid,
+    targetService: options.targetService,
+    ...(options.userDid !== undefined ? { userDid: options.userDid } : {}),
+  }).sign(privateKeyHex, `${holderDid}#key-1`);
 }
 
 async function getAvailablePort(): Promise<number> {
