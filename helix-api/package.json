@@ -11,7 +11,7 @@
     "test": "pnpm run test:deps && vitest run --exclude 'tests/live/**' --coverage --passWithNoTests && node ../scripts/check-coverage-thresholds.mjs coverage/coverage-final.json 90 90 85 90 0 0 0 0",
     "test:all": "pnpm run test:deps && vitest run --passWithNoTests",
     "test:non-live": "pnpm run test:deps && vitest run --exclude 'tests/live/**' --passWithNoTests",
-    "test:live": "pnpm run test:deps && vitest run tests/live --reporter=verbose",
+    "test:live": "pnpm run test:deps && vitest run tests/live --reporter=verbose --reporter=github-actions",
     "test:unit": "vitest run tests/unit --passWithNoTests",
     "test:coverage": "pnpm run test:deps && vitest run --exclude 'tests/live/**' --coverage --passWithNoTests && node ../scripts/check-coverage-thresholds.mjs coverage/coverage-final.json 90 90 85 90 0 0 0 0",
     "test:watch": "vitest",
