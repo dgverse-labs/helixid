@@ -12,17 +12,17 @@ import {
   AgentAlreadyOnboardedError,
   HelixError,
   ErrorCode
-} from '@helixid/core';
+} from '../../../src/core/index.js';
 
-vi.mock('@helixid/core', async () => {
-  const actual = await vi.importActual('@helixid/core') as any;
+vi.mock('../../../src/core/index.js', async () => {
+  const actual = await vi.importActual('../../../src/core/index.js') as any;
   return {
     ...actual,
     verifySignature: vi.fn(),
   };
 });
 
-import { verifySignature } from '@helixid/core';
+import { verifySignature } from '../../../src/core/index.js';
 
 describe('AgentService Branch Coverage', () => {
   let repository: any;

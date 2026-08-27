@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0
 
 import { describe, expect, it } from 'vitest';
-import { generateKeyPair, publicKeyToMultibase } from '@helixid/core';
+import { generateKeyPair, publicKeyToMultibase } from '../../../src/core/index.js';
 import { extractEd25519PublicKeyHexFromDIDDocument } from '../../../src/services/did/publicKey.js';
 
 describe('extractEd25519PublicKeyHexFromDIDDocument', () => {

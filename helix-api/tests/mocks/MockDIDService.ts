@@ -1,4 +1,4 @@
-import { publicKeyToMultibase } from '@helixid/core';
+import { publicKeyToMultibase } from '../../src/core/index.js';
 import type {
   CreateDIDResult,
   DIDCreationProof,

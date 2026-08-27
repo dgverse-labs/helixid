@@ -1,4 +1,4 @@
-import { HelixError, VPMissingError, VPVerificationFailedError, type SignedVP } from '@helixid/core';
+import { HelixError, VPMissingError, VPVerificationFailedError, type SignedVP } from '@helixid/sdk-js';
 import { requireScope, verifyVP } from '@helixid/sdk-js';
 import type { MCPToolCall, MCPMiddlewareOptions } from './types.js';
 
@@ -9,7 +9,7 @@ export function helixidMCPMiddleware(options: MCPMiddlewareOptions) {
       throw new VPMissingError();
     }
 
-    const result = await verifyVP(vp, {
+    const result = await verifyVP(vp, options.client, {
       allowSelfSigned: options.allowSelfSigned ?? false,
     });
 

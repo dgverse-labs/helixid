@@ -1,4 +1,4 @@
-import { NoCredentialInWalletError, type SignedVC } from '@helixid/core';
+import { NoCredentialInWalletError, type SignedVC } from '@helixid/sdk-js';
 import { AgentWallet, VPBuilder } from '@helixid/sdk-js';
 import type { AttachHelixVPOptions, MCPToolCall } from './types.js';
 

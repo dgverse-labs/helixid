@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import pg from 'pg';
 import { Redis } from 'ioredis';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -16,7 +17,7 @@ import {
   loadConfigFromEnv,
   resolveDidMethod,
   type DIDDocument,
-} from '@helixid/core';
+} from './core/index.js';
 
 import { errorHandler } from './middleware/errorHandler.js';
 import { ApiAuditLogger } from './audit/index.js';
@@ -26,12 +27,18 @@ import { VcRepository } from './repositories/vc.repository.js';
 import { AuditLogRepository } from './repositories/audit-log.repository.js';
 import { AgentRepository } from './repositories/agent.repository.js';
 import { ServiceRegistryRepository } from './repositories/service-registry.repository.js';
+import { PreparedPayloadRepository } from './repositories/prepared-payload.repository.js';
+import { AccountRepository } from './repositories/account.repository.js';
+import { IssuerKeyRepository } from './repositories/issuer-key.repository.js';
+import { RefreshTokenRepository } from './repositories/refresh-token.repository.js';
 import { createDidCache, createStatusListCache } from './cache/cacheFactory.js';
 import { extractEd25519PublicKeyHexFromDIDDocument } from './services/did/publicKey.js';
 import { DIDService } from './services/did/did.service.js';
 import { VCService } from './services/vc/vc.service.js';
 import { VPService } from './services/vp/vp.service.js';
 import { AgentService } from './services/agent/agent.service.js';
+import { PreparedPayloadService } from './services/prepared-payload/index.js';
+import { AuthService, AesGcmKeyCustody, ConsoleEmailSender } from './services/auth/index.js';
 import didRoutes from './routes/did/index.js';
 import didWebRoutes from './routes/did-web/index.js';
 import vcRoutes from './routes/vc/index.js';
@@ -40,6 +47,9 @@ import vpRoutes from './routes/vp/index.js';
 import agentRoutes from './routes/agent/index.js';
 import auditLogRoutes from './routes/audit-log/index.js';
 import sessionRoutes from './routes/sessions/index.js';
+import preparedPayloadRoutes from './routes/prepared-payload/index.js';
+import authRoutes from './routes/auth/index.js';
+import accountDidRoutes from './routes/account-did/index.js';
 import type { RedisLike } from './cache/RedisCache.js';
 import { SqliteStore } from './storage/sqlite.js';
 
@@ -83,6 +93,10 @@ const vcRepository = new VcRepository(prisma, sqlite);
 const auditLogRepository = new AuditLogRepository(prisma, sqlite);
 const agentRepository = new AgentRepository(prisma, sqlite);
 const serviceRegistry = new ServiceRegistryRepository(agentRepository);
+const preparedPayloadRepository = new PreparedPayloadRepository(prisma, sqlite);
+const accountRepository = new AccountRepository(prisma, sqlite);
+const issuerKeyRepository = new IssuerKeyRepository(prisma, sqlite);
+const refreshTokenRepository = new RefreshTokenRepository(prisma, sqlite);
 await serviceRegistry.seedBuiltIns();
 
 await ensureIssuerDidCached();
@@ -99,6 +113,8 @@ const didService = new DIDService(
   auditLogger,
   didCache,
   config.DID_CACHE_L1_TTL_SECONDS,
+  didMethod,
+  config.DID_DOMAIN,
 );
 const vcService = new VCService(
   vcRepository,
@@ -116,6 +132,39 @@ const vpService = new VPService(vcService, auditLogger, config.API_BASE_URL, {
   ttlSeconds: config.JWT_SESSION_TTL_SECONDS,
 });
 const agentService = new AgentService(agentRepository, didService, vcService, auditLogger);
+const preparedPayloadService = new PreparedPayloadService(preparedPayloadRepository, didService);
+
+// Hosted accounts & auth (Item #1, see docs/proposal-hosted-instance.md).
+// Both secrets fall back to a random per-process value when unset, so
+// self-hosted / dev environments boot without configuring them — but that
+// means encrypted IssuerKeyRecord rows and issued sessions won't survive a
+// restart in that mode. Set HOSTED_KEY_ENCRYPTION_KEY / HOSTED_ACCESS_TOKEN_SECRET
+// explicitly for any deployment that needs persistence across restarts.
+const hostedKeyEncryptionKey = config.HOSTED_KEY_ENCRYPTION_KEY ?? crypto.randomBytes(32).toString('hex');
+const hostedAccessTokenSecret =
+  config.HOSTED_ACCESS_TOKEN_SECRET ?? crypto.randomBytes(32).toString('hex');
+const hostedDidDomain = config.HOSTED_DID_DOMAIN;
+const hostedAccessTokenTtlSeconds = config.HOSTED_ACCESS_TOKEN_TTL_SECONDS;
+const hostedRefreshTokenTtlDays = config.HOSTED_REFRESH_TOKEN_TTL_DAYS;
+const keyCustody = new AesGcmKeyCustody(hostedKeyEncryptionKey);
+const emailSender = new ConsoleEmailSender();
+const hostedConsoleBaseUrl = config.HOSTED_CONSOLE_BASE_URL;
+const hostedEmailVerificationTtlHours = config.HOSTED_EMAIL_VERIFICATION_TTL_HOURS;
+const authService = new AuthService(
+  accountRepository,
+  didRepository,
+  issuerKeyRepository,
+  refreshTokenRepository,
+  keyCustody,
+  auditLogger,
+  hostedAccessTokenSecret,
+  hostedDidDomain,
+  hostedAccessTokenTtlSeconds,
+  hostedRefreshTokenTtlDays,
+  emailSender,
+  hostedConsoleBaseUrl,
+  hostedEmailVerificationTtlHours,
+);
 
 const app = Fastify({
   logger: {
@@ -124,6 +173,25 @@ const app = Fastify({
   },
   genReqId: () => `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`,
 });
+
+// Per-IP rate limiting (proposal-hosted-rate-limiting.md, §1 — decided).
+// Only applies in hosted mode: self-hosted single-operator deployments
+// shouldn't have hosted-tier limits forced on them. Global ceiling here;
+// tighter per-route overrides are set via `config.rateLimit` on the
+// individual auth routes (see routes/auth/index.ts).
+const isHostedMode = config.HOSTED_MODE;
+const rateLimitGlobalMax = config.HOSTED_RATE_LIMIT_GLOBAL_MAX;
+const rateLimitLoginMax = config.HOSTED_RATE_LIMIT_LOGIN_MAX;
+const rateLimitRegisterMax = config.HOSTED_RATE_LIMIT_REGISTER_MAX;
+const rateLimitRefreshMax = config.HOSTED_RATE_LIMIT_REFRESH_MAX;
+
+if (isHostedMode) {
+  await app.register(rateLimit, {
+    global: true,
+    max: rateLimitGlobalMax,
+    timeWindow: '1 minute',
+  });
+}
 
 
 app.addSchema({
@@ -156,6 +224,13 @@ app.get('/health', async () => ({
   storageAdapter,
   database: usingPostgres ? databaseName : usingSqlite ? sqlitePath : 'disabled',
   cacheAdapter,
+  // didMethod/issuerDid: exposed so test harnesses (see
+  // tests/utils/liveApi.ts) can read back the actual resolved issuer DID
+  // instead of duplicating loadConfig()'s did:key/did:web auto-derivation
+  // logic — the issuer DID isn't always known in advance (e.g. did:web's
+  // domain includes a dynamically-chosen port in tests).
+  didMethod,
+  issuerDid: config.HELIX_ISSUER_DID,
 }));
 
 function getDatabaseName(databaseUrl: string | undefined): string {
@@ -194,11 +269,17 @@ async function ensureIssuerDidCached(): Promise<void> {
 }
 
 await app.register(didRoutes, { didService });
-await app.register(didWebRoutes, { issuerDid: config.HELIX_ISSUER_DID, didRepository });
+await app.register(didWebRoutes, { issuerDid: config.HELIX_ISSUER_DID, didDomain: config.DID_DOMAIN, didRepository });
 await app.register(vcRoutes, {
   prefix: '/v1/vcs',
   vcService,
   adminApiKey: config.HELIX_ADMIN_API_KEY,
+  accountOrAdminGuardDeps: { authService, accountRepository, auditLogRepository, adminApiKey: config.HELIX_ADMIN_API_KEY },
+  vcIssuanceDailyQuota: config.HOSTED_QUOTA_VC_ISSUANCE_PER_DAY,
+});
+await app.register(preparedPayloadRoutes, {
+  prefix: '/v1/vcs',
+  preparedPayloadService,
 });
 await app.register(statusListRoutes, {
   prefix: '/v1/status-list',
@@ -216,7 +297,20 @@ await app.register(auditLogRoutes, {
   auditLogger,
   adminApiKey: config.HELIX_ADMIN_API_KEY,
 });
-await app.register(agentRoutes, { prefix: '/v1', agentService });
+await app.register(agentRoutes, {
+  prefix: '/v1',
+  agentService,
+  accountOrAdminGuardDeps: { authService, accountRepository, auditLogRepository, adminApiKey: config.HELIX_ADMIN_API_KEY },
+  enrollmentTokenDailyQuota: config.HOSTED_QUOTA_ENROLLMENT_TOKEN_PER_DAY,
+});
+await app.register(authRoutes, {
+  prefix: '/v1/auth',
+  authService,
+  googleClientId: config.GOOGLE_CLIENT_ID,
+  googleClientSecret: config.GOOGLE_CLIENT_SECRET,
+  googleRedirectUri: config.GOOGLE_OAUTH_REDIRECT_URI,
+});
+await app.register(accountDidRoutes, { didDomain: hostedDidDomain, didRepository });
 
 const shutdown = async (): Promise<void> => {
   app.log.info('Helix ID API shutting down...');

@@ -1,6 +1,6 @@
 // Copyright 2026 DgVerse LLP
 // Licensed under the Apache License, Version 2.0 (the "License");
-import { resolveDidMethod, type Config } from '@helixid/core';
+import { resolveDidMethod, type Config } from '../core/index.js';
 import { DisabledHederaClient } from './DisabledHederaClient.js';
 import { MockHederaClient } from './mock/MockHederaClient.js';
 import type { IHederaClient } from './IHederaClient.js';

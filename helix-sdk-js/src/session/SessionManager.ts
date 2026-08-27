@@ -1,5 +1,5 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
-import type { DelegationLink } from '@helixid/core';
+import type { DelegationLink } from '../core/verification-types.js';
 
 export interface SessionManagerOptions {
   secret: string;

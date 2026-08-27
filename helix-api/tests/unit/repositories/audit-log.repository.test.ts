@@ -24,7 +24,7 @@ describe('AuditLogRepository', () => {
       ]);
 
       const since = new Date('2026-05-01T00:00:00.000Z');
-      const result = await repository.findMany({ eventType: 'VC_ISSUED', since, limit: 10 });
+      const result = await repository.list({ eventType: 'VC_ISSUED', since, limit: 10 });
 
       expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith({
         where: { eventType: 'VC_ISSUED', timestamp: { gte: since } },
@@ -34,10 +34,10 @@ describe('AuditLogRepository', () => {
       expect(result).toEqual([
         {
           id: 'row1',
-          timestamp: '2026-06-01T00:00:00.000Z',
+          timestamp: new Date('2026-06-01T00:00:00.000Z'),
           eventType: 'VC_ISSUED',
           requestId: 'req_1',
-          payloadJson: '{"vcId":"vc:1"}',
+          payload: { vcId: 'vc:1' },
         },
       ]);
     });
@@ -45,7 +45,7 @@ describe('AuditLogRepository', () => {
     it('omits where clauses when no filters are given', async () => {
       mockPrisma.auditLog.findMany.mockResolvedValue([]);
 
-      await repository.findMany({ limit: 50 });
+      await repository.list({ limit: 50 });
 
       expect(mockPrisma.auditLog.findMany).toHaveBeenCalledWith({
         where: {},
@@ -68,7 +68,7 @@ describe('AuditLogRepository', () => {
       ]);
       const repository = new AuditLogRepository(undefined, { query } as any);
 
-      const result = await repository.findMany({
+      const result = await repository.list({
         eventType: 'AGENT_ONBOARDED',
         since: new Date('2026-05-01T00:00:00.000Z'),
         limit: 20,
@@ -82,10 +82,10 @@ describe('AuditLogRepository', () => {
       expect(result).toEqual([
         {
           id: '7',
-          timestamp: '2026-06-01T00:00:00.000Z',
+          timestamp: new Date('2026-06-01T00:00:00.000Z'),
           eventType: 'AGENT_ONBOARDED',
           requestId: 'req_7',
-          payloadJson: '{"agentDid":"did:1"}',
+          payload: { agentDid: 'did:1' },
         },
       ]);
     });
@@ -94,7 +94,7 @@ describe('AuditLogRepository', () => {
       const query = vi.fn().mockReturnValue([]);
       const repository = new AuditLogRepository(undefined, { query } as any);
 
-      await repository.findMany({ limit: 50 });
+      await repository.list({ limit: 50 });
 
       const sql = query.mock.calls[0]![0] as string;
       expect(sql).not.toContain('WHERE');
@@ -103,6 +103,6 @@ describe('AuditLogRepository', () => {
 
   it('returns an empty list when no queryable store is configured', async () => {
     const repository = new AuditLogRepository();
-    await expect(repository.findMany({ limit: 50 })).resolves.toEqual([]);
+    await expect(repository.list({ limit: 50 })).resolves.toEqual([]);
   });
 });

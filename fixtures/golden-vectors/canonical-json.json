@@ -1,0 +1,120 @@
+{
+  "generated_from": "helix-core",
+  "generator": "scripts/generate-golden-vectors.ts",
+  "note": "Regenerate whenever helix-core/src/crypto/vp.ts, crypto/keys.ts, proof.ts, or vp-builder.ts change. Every SDK asserts byte-for-byte equality against these fixtures — do not hand-edit.",
+  "vectors": [
+    {
+      "name": "empty_object",
+      "input": {},
+      "canonical_string": "{}",
+      "hash_hex": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    {
+      "name": "flat_object_unordered_keys",
+      "input": {
+        "zeta": 1,
+        "alpha": 2,
+        "mid": 3
+      },
+      "canonical_string": "{\"alpha\":2,\"mid\":3,\"zeta\":1}",
+      "hash_hex": "16de8b2404930fba509f84e9f243a0e340d785f301eeb4d9b4d688f8852310f3"
+    },
+    {
+      "name": "nested_object",
+      "input": {
+        "outer": {
+          "z": 1,
+          "a": {
+            "deep": true,
+            "arr": [
+              3,
+              1,
+              2
+            ]
+          }
+        },
+        "top": "value"
+      },
+      "canonical_string": "{\"outer\":{\"a\":{\"arr\":[3,1,2],\"deep\":true},\"z\":1},\"top\":\"value\"}",
+      "hash_hex": "59ba6250338d29be29498119e8582ca2f11e89c6c27e5c46ff0a41aff9dcee86"
+    },
+    {
+      "name": "array_of_primitives",
+      "input": [
+        3,
+        1,
+        2,
+        "b",
+        "a",
+        true,
+        false,
+        null
+      ],
+      "canonical_string": "[3,1,2,\"b\",\"a\",true,false,null]",
+      "hash_hex": "60e4578effcbe725253826535127eaa04fd1d91d647b0c5ebb7039635a1fc506"
+    },
+    {
+      "name": "array_of_objects",
+      "input": [
+        {
+          "b": 1,
+          "a": 2
+        },
+        {
+          "d": 3,
+          "c": 4
+        }
+      ],
+      "canonical_string": "[{\"a\":2,\"b\":1},{\"c\":4,\"d\":3}]",
+      "hash_hex": "b7674d3bc235a66d417357c0c4e21e834e6d899b1535ccdd3c988e9ce73d2c3d"
+    },
+    {
+      "name": "unicode_strings",
+      "input": {
+        "name": "héllo wörld 你好 🎉",
+        "emoji": "🔑✨"
+      },
+      "canonical_string": "{\"emoji\":\"🔑✨\",\"name\":\"héllo wörld 你好 🎉\"}",
+      "hash_hex": "54a57465c7351a7a6d0a8395eb39140b86bd1ade23f3d918862cb24ee80e7706"
+    },
+    {
+      "name": "numeric_edge_cases",
+      "input": {
+        "zero": 0,
+        "negative": -42,
+        "float": 3.14159,
+        "large": 9007199254740991,
+        "negZeroCheck": 0
+      },
+      "canonical_string": "{\"float\":3.14159,\"large\":9007199254740991,\"negZeroCheck\":0,\"negative\":-42,\"zero\":0}",
+      "hash_hex": "9546be21edbf3f3eca2ab04578fc5ffe18474bd680d596ef1aebc2f8dcfb7a5c"
+    },
+    {
+      "name": "null_and_booleans",
+      "input": {
+        "isNull": null,
+        "isTrue": true,
+        "isFalse": false
+      },
+      "canonical_string": "{\"isFalse\":false,\"isNull\":null,\"isTrue\":true}",
+      "hash_hex": "65c476f836c27a7e42ba87a39ce81010b2c3e5385a316cff63030aa064ccf726"
+    },
+    {
+      "name": "realistic_vp_like_payload",
+      "input": {
+        "@context": [
+          "https://www.w3.org/ns/credentials/v2"
+        ],
+        "type": [
+          "VerifiablePresentation"
+        ],
+        "id": "vp:helix:00000000-0000-4000-8000-000000000000",
+        "holder": "did:key:z6MkHolderExample",
+        "nonce": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        "targetService": "https://api.example.invalid/v1/tools/lookup"
+      },
+      "canonical_string": "{\"@context\":[\"https://www.w3.org/ns/credentials/v2\"],\"holder\":\"did:key:z6MkHolderExample\",\"id\":\"vp:helix:00000000-0000-4000-8000-000000000000\",\"nonce\":\"deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef\",\"targetService\":\"https://api.example.invalid/v1/tools/lookup\",\"type\":[\"VerifiablePresentation\"]}",
+      "hash_hex": "adba9732b2607586f6d3c149109d868d5f0ad698463dcf81b33285b3fe44da0d"
+    }
+  ]
+}

@@ -16,7 +16,7 @@ import {
   type HelixError,
   type IAuditLogger,
   type SignedVC,
-} from '@helixid/core';
+} from '../../core/index.js';
 import type { AgentRepository } from '../../repositories/agent.repository.js';
 import type { IDIDService } from '../did/IDIDService.js';
 import type { IVCService } from '../vc/IVCService.js';
@@ -119,6 +119,8 @@ export class AgentService implements IAgentService {
       requestedScopes: string[];
       requestedDomains?: string[];
       maxDelegationDepth?: number;
+      /** Set when a hosted-account bearer token generated this — see account-or-admin-guard.ts. */
+      accountId?: string;
     },
     requestId: string,
   ): Promise<{ token: string; expiresAt: string }> {
@@ -139,6 +141,7 @@ export class AgentService implements IAgentService {
       agentName: input.agentName,
       requestedScopes: input.requestedScopes,
       expiresAt: expiresAt.toISOString(),
+      ...(input.accountId ? { accountId: input.accountId } : {}),
     });
     return { token, expiresAt: expiresAt.toISOString() };
   }

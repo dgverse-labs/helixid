@@ -2,7 +2,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AgentWallet, HelixClient, VPBuilder } from '@helixid/sdk-js';
-import type { SignedVC, SignedVP } from '@helixid/core';
+import type { SignedVC, SignedVP } from '@helixid/sdk-js';
 
 // Utility helpers for verifier examples
 //

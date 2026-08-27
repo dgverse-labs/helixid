@@ -40,10 +40,12 @@
   },
   "dependencies": {
     "@hashgraph/sdk": "^2.49.0",
-    "@helixid/core": "workspace:^",
     "@hiero-did-sdk/hcs": "^0.1.8",
     "@hiero-did-sdk/registrar": "^0.1.8",
-    "@hiero-did-sdk/resolver": "^0.1.8"
+    "@hiero-did-sdk/resolver": "^0.1.8",
+    "@noble/ed25519": "^2.3.0",
+    "@noble/hashes": "^1.8.0",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@helixid/core": "^0.1.0",

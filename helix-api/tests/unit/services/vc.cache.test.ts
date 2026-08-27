@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createStatusList, ErrorCode, generateKeyPair } from '@helixid/core';
+import { createStatusList, ErrorCode, generateKeyPair } from '../../../src/core/index.js';
 import { VCService } from '../../../src/services/vc/vc.service.js';
 import { InProcessCache } from '../../../src/cache/InProcessCache.js';
 

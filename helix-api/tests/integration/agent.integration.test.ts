@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import { describe, expect, it } from 'vitest';
-import { signBytes } from '@helixid/core';
+import { signBytes } from '../../src/core/index.js';
 import agentRoutes from '../../src/routes/agent/index.js';
 import { AgentRepository } from '../../src/repositories/agent.repository.js';
 import { AgentService } from '../../src/services/agent/agent.service.js';

@@ -7,11 +7,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   base58btcEncode,
-  generateKeyPair,
   hashCanonicalPayload,
   signBytes,
-  type SignedVC,
-} from '@helixid/core';
+} from '../src/core/vp-crypto.js';
+import { generateKeyPair } from '../src/core/keys.js';
+import type { SignedVC } from '../src/core/schemas/vc.js';
 import { signCredential } from '../src/lib/issuer-ops.js';
 
 // Frozen copy of signCredential() as it existed before the merge into

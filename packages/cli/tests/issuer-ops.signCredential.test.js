@@ -4,7 +4,8 @@
 // You may obtain a copy of the License at
 //    http://www.apache.org/licenses/LICENSE-2.0
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { base58btcEncode, generateKeyPair, hashCanonicalPayload, signBytes, } from '@helixid/core';
+import { base58btcEncode, hashCanonicalPayload, signBytes, } from '../src/core/vp-crypto.js';
+import { generateKeyPair } from '../src/core/keys.js';
 import { signCredential } from '../src/lib/issuer-ops.js';
 // Frozen copy of signCredential() as it existed before the merge into
 // helix-core's createEd25519Proof(). The regression contract is byte-identical

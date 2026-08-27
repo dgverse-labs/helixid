@@ -3,17 +3,12 @@ import { access, readFile, writeFile } from 'node:fs/promises';
 import {
   CredentialAlreadyInWalletError,
   CredentialNotForThisAgentError,
-  derivePublicKey,
-  generateKeyPair,
-  publicKeyToMultibase,
-  selfIssueVC,
-  signData,
-  type DelegationGrantVC,
-  type KeyPair,
-  type SelfIssueOptions,
-  type ServiceEndpoint,
-  type SignedVC,
-} from '@helixid/core';
+} from '../errors/index.js';
+import { derivePublicKey, generateKeyPair, publicKeyToMultibase, signData, type KeyPair } from '../core/keys.js';
+import { selfIssueVC, type SelfIssueOptions } from '../core/self-signed.js';
+import type { ServiceEndpoint } from '../core/did.js';
+import type { SignedVC } from '../core/schemas/vc.js';
+import type { DelegationGrantVC } from '../core/schemas/delegation-grant.js';
 import type { HelixClient } from '../client/HelixClient.js';
 
 /** Same detection the grant schema's `superRefine` uses. */
@@ -65,7 +60,7 @@ export interface AgentWalletOptions {
 }
 
 export class AgentWallet {
-  private readonly client: HelixClient | undefined;
+  private readonly clientInstance: HelixClient | undefined;
   private privateKeyHex: string | undefined;
   private publicKeyHex: string | undefined;
   private didValue: string | undefined;
@@ -76,7 +71,7 @@ export class AgentWallet {
   private updatedAt: string | undefined;
 
   constructor(options: AgentWalletOptions = {}) {
-    this.client = options.client;
+    this.clientInstance = options.client;
     this.walletPath = options.walletPath;
     this.passphrase = options.passphrase;
     this.walletCredentials = options.credentials ?? [];
@@ -101,6 +96,11 @@ export class AgentWallet {
     return this.getDID();
   }
 
+  /** Exposed so free functions (e.g. `delegate()`) can reach the API without wallet needing to re-implement every client call itself. */
+  get client(): HelixClient | undefined {
+    return this.clientInstance;
+  }
+
   getPublicKey(): string {
     if (!this.publicKeyHex) throw new Error('Wallet has no in-memory public key');
     return this.publicKeyHex;
@@ -120,23 +120,23 @@ export class AgentWallet {
   }
 
   async createDID(subjectType: 'agent' | 'user'): Promise<{ did: string }> {
-    if (!this.client) throw new Error('Wallet has no HelixClient');
-    return this.client.createDID({ subjectType });
+    if (!this.clientInstance) throw new Error('Wallet has no HelixClient');
+    return this.clientInstance.createDID({ subjectType });
   }
 
   async addService(endpoint: ServiceEndpoint): Promise<unknown> {
-    if (!this.client) throw new Error('Wallet has no HelixClient');
-    return this.client.addServiceEndpoint(this.getDID(), endpoint);
+    if (!this.clientInstance) throw new Error('Wallet has no HelixClient');
+    return this.clientInstance.addServiceEndpoint(this.getDID(), endpoint);
   }
 
   async removeService(endpointId: string): Promise<unknown> {
-    if (!this.client) throw new Error('Wallet has no HelixClient');
-    return this.client.removeServiceEndpoint(this.getDID(), endpointId);
+    if (!this.clientInstance) throw new Error('Wallet has no HelixClient');
+    return this.clientInstance.removeServiceEndpoint(this.getDID(), endpointId);
   }
 
   async deactivate(reason = 'user_request'): Promise<void> {
-    if (!this.client) throw new Error('Wallet has no HelixClient');
-    await this.client.deactivateDID(this.getDID(), reason);
+    if (!this.clientInstance) throw new Error('Wallet has no HelixClient');
+    await this.clientInstance.deactivateDID(this.getDID(), reason);
   }
 
   sign(data: string | Uint8Array): string {
@@ -275,10 +275,10 @@ export class AgentWallet {
    * credential untouched and the caller none the wiser.
    */
   private async recordConsentGrant(vc: SignedVC): Promise<void> {
-    if (!this.client || !isDelegationGrantVC(vc)) return;
+    if (!this.clientInstance || !isDelegationGrantVC(vc)) return;
     try {
       const subject = vc.credentialSubject;
-      await this.client.recordConsentGrantedAudit({
+      await this.clientInstance.recordConsentGrantedAudit({
         vcId: vc.id,
         agentDid: subject.id,
         issuer: vc.issuer,

@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import supertest from 'supertest';
-import { HelixClient, VPBuilder } from '@helixid/sdk-js';
+import { HelixClient } from '@helixid/sdk-js';
+import type { SignedVC } from '@helixid/sdk-js';
 import {
   LIVE_HEDERA_TIMEOUT_MS,
+  buildAndSignVP,
   onboardLiveAgent,
   resetLiveTestDatabase,
   startLiveApi,
@@ -40,19 +42,13 @@ describe('VC Expiry Live Integration', () => {
         expiresInSeconds: 1,
       });
 
-      const templateRes = await http.post('/v1/vp/template').send({
-        agentDid: agent.did,
-        userDid: 'did:hedera:testnet:live-user-placeholder',
-        targetService: 'amazon',
-        vcType: 'HelixAgentCredential',
-        vcId: shortVc.vcId,
-      });
-      expect(templateRes.statusCode).toBe(201);
-      expect(templateRes.body.unsignedVP.verifiableCredential[0].id).toBe(shortVc.vcId);
-
-      const signedVP = await new VPBuilder(templateRes.body.unsignedVP).sign(
+      // VP construction moved fully client-side (VPBuilder, over a held VC)
+      // once /v1/vp/template was removed — see docs/proposal-sdk-api-only.md.
+      const signedVP = await buildAndSignVP(
+        [shortVc.vc as SignedVC],
+        agent.did,
         agent.privateKeyHex,
-        `${agent.did}#key-1`,
+        { targetService: 'amazon', userDid: 'did:hedera:testnet:live-user-placeholder' },
       );
 
       await new Promise((resolve) => setTimeout(resolve, 2_000));
@@ -61,7 +57,9 @@ describe('VC Expiry Live Integration', () => {
 
       const verifyRes = await http.post('/v1/vp/verify').send({ signedVP });
       expect(verifyRes.statusCode).toBe(400);
-      expect(verifyRes.body.error.code).toBe('VP_VERIFICATION_FAILED');
+      // The service preserves the specific failure for the caller rather than
+      // collapsing everything to the generic code (see vp.service.ts's catch).
+      expect(verifyRes.body.error.code).toBe('VC_EXPIRED');
     } finally {
       await agent.cleanup();
     }

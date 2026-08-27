@@ -1,7 +1,7 @@
 // Copyright 2026 DgVerse LLP
 import Fastify from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
-import { ErrorCode, createStatusList } from '@helixid/core';
+import { ErrorCode, createStatusList } from '../../../src/core/index.js';
 import { errorHandler } from '../../../src/middleware/errorHandler.js';
 import statusListRoutes from '../../../src/routes/status-list/index.js';
 

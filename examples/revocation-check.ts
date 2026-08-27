@@ -2,7 +2,7 @@ import { dirname, join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
-import { generateKeyPair, publicKeyToMultibase, signData } from '@helixid/core';
+import { generateKeyPair, publicKeyToMultibase, signData } from '@helixid/sdk-js';
 
 // Expiry is planned and known in advance. Revocation is immediate and event
 // driven: consent changes, key compromise, incorrect scopes, or anomalous agent

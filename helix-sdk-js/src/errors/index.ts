@@ -10,9 +10,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { 
+import {
   HelixError, 
-  ErrorCode, 
   HelixErrorBody,
   InternalError,
   ValidationError,
@@ -34,8 +33,39 @@ import {
   DelegationScopeEscalationError,
   DelegationChainInvalidError,
   DelegationParentVCNotFoundError,
-  DelegationParentVCRevokedError
-} from '@helixid/core';
+  DelegationParentVCRevokedError,
+  MaxDelegationDepthExceededError,
+  ScopeEscalationDeniedError,
+  PreparedPayloadNotFoundError,
+  PreparedPayloadExpiredError,
+  PreparedPayloadAlreadyConsumedError,
+  PreparedPayloadSignatureInvalidError,
+  PreparedPayloadPurposeMismatchError,
+  VCRevokedError,
+  VCMissingCredentialStatusError,
+  RenewalWindowNotOpenError,
+  RenewalWindowExpiredError,
+  MaxRenewalCountExceededError,
+  VCExpiredError,
+  VCNotYetValidError,
+  VCSignatureInvalidError,
+  SelfSignedVCNotAllowedError,
+  VPMissingError,
+  VPExpiredError,
+  VPVerificationFailedError,
+  VPSignatureInvalidError,
+  VPInvalidStructureError,
+  ConsentGrantSubjectMismatchError,
+  ConsentGrantInvalidError
+} from '../core/HelixError.js';
+import { ErrorCode } from '../core/codes.js';
+
+// Duplicated from helix-core (see docs/proposal-retire-core-package.md) --
+// re-export everything so downstream consumers (@helixid/mcp,
+// @helixid/langchain, etc.) that previously imported error classes
+// straight from @helixid/core can get them from here instead.
+export * from '../core/HelixError.js';
+export * from '../core/codes.js';
 
 /**
  * Maps a structured API error response to a typed HelixError instance.
@@ -92,6 +122,52 @@ export function mapApiError(body: unknown): HelixError {
       return new DelegationParentVCNotFoundError(message);
     case ErrorCode.DELEGATION_PARENT_VC_REVOKED:
       return new DelegationParentVCRevokedError(message);
+    case ErrorCode.MAX_DELEGATION_DEPTH_EXCEEDED:
+      return new MaxDelegationDepthExceededError(message);
+    case ErrorCode.SCOPE_ESCALATION_DENIED:
+      return new ScopeEscalationDeniedError(message);
+    case ErrorCode.PREPARED_PAYLOAD_NOT_FOUND:
+      return new PreparedPayloadNotFoundError(message);
+    case ErrorCode.PREPARED_PAYLOAD_EXPIRED:
+      return new PreparedPayloadExpiredError(message);
+    case ErrorCode.PREPARED_PAYLOAD_ALREADY_CONSUMED:
+      return new PreparedPayloadAlreadyConsumedError(message);
+    case ErrorCode.PREPARED_PAYLOAD_SIGNATURE_INVALID:
+      return new PreparedPayloadSignatureInvalidError(message);
+    case ErrorCode.PREPARED_PAYLOAD_PURPOSE_MISMATCH:
+      return new PreparedPayloadPurposeMismatchError(message);
+    case ErrorCode.VC_REVOKED:
+      return new VCRevokedError(message);
+    case ErrorCode.VC_MISSING_CREDENTIAL_STATUS:
+      return new VCMissingCredentialStatusError(message);
+    case ErrorCode.RENEWAL_WINDOW_NOT_OPEN:
+      return new RenewalWindowNotOpenError(message);
+    case ErrorCode.RENEWAL_WINDOW_EXPIRED:
+      return new RenewalWindowExpiredError(message);
+    case ErrorCode.MAX_RENEWAL_COUNT_EXCEEDED:
+      return new MaxRenewalCountExceededError(message);
+    case ErrorCode.VC_EXPIRED:
+      return new VCExpiredError(message);
+    case ErrorCode.VC_NOT_YET_VALID:
+      return new VCNotYetValidError(message);
+    case ErrorCode.VC_SIGNATURE_INVALID:
+      return new VCSignatureInvalidError(message);
+    case ErrorCode.SELF_SIGNED_VC_NOT_ALLOWED:
+      return new SelfSignedVCNotAllowedError(message);
+    case ErrorCode.VP_MISSING:
+      return new VPMissingError(message);
+    case ErrorCode.VP_EXPIRED:
+      return new VPExpiredError(message);
+    case ErrorCode.VP_VERIFICATION_FAILED:
+      return new VPVerificationFailedError(message);
+    case ErrorCode.VP_SIGNATURE_INVALID:
+      return new VPSignatureInvalidError(message);
+    case ErrorCode.VP_INVALID_STRUCTURE:
+      return new VPInvalidStructureError(message);
+    case ErrorCode.CONSENT_GRANT_SUBJECT_MISMATCH:
+      return new ConsentGrantSubjectMismatchError(message);
+    case ErrorCode.CONSENT_GRANT_INVALID:
+      return new ConsentGrantInvalidError(message);
     default:
       // Fallback to base HelixError for unknown codes
       return new HelixError(
@@ -101,5 +177,3 @@ export function mapApiError(body: unknown): HelixError {
       );
   }
 }
-
-export { HelixError, ErrorCode };

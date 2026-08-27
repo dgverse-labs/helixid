@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import Fastify from 'fastify';
-import { ErrorCode } from '@helixid/core';
+import { ErrorCode } from '../../src/core/index.js';
 
 import vcRoutes from '../../src/routes/vc/index.js';
 import { MockVCService } from '../mocks/MockVCService.js';

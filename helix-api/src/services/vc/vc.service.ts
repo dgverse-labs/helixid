@@ -25,7 +25,7 @@ import {
   type HelixVC,
   type SignedVC,
   VPMultipleActiveVCError,
-} from '@helixid/core';
+} from '../../core/index.js';
 import * as crypto from 'node:crypto';
 import { VcRepository } from '../../repositories/vc.repository.js';
 import type { IDIDService } from '../did/did.service.js';
@@ -70,6 +70,8 @@ export interface IssueVCParams {
   delegationDepth?: number | undefined;
   maxDelegationDepth?: number | undefined;
   parentVcId?: string | undefined;
+  /** Set when a hosted-account bearer token (not the operator admin key) issued this VC — see account-or-admin-guard.ts. Tags the audit row so per-account quotas can be counted. */
+  accountId?: string | undefined;
 }
 
 export interface IssueVCResult {
@@ -345,6 +347,7 @@ export class VCService implements IVCService {
       privilegeScopes: params.privilegeScopes,
       expiresAt: expiresAt.toISOString(),
       statusListIndex: claimedIndex,
+      ...(params.accountId ? { accountId: params.accountId } : {}),
     });
 
     return {

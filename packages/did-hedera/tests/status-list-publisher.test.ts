@@ -1,6 +1,6 @@
 import { PrivateKey } from '@hashgraph/sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { generateKeyPair } from '@helixid/core';
+import { generateKeyPair } from '../src/core/keys.js';
 import { publishStatusListToHCS } from '../src/status-list-publisher.js';
 
 const { submitMessageMock, closeMock } = vi.hoisted(() => ({

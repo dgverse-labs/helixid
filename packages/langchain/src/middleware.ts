@@ -1,5 +1,5 @@
 import { AgentWallet, VPBuilder } from '@helixid/sdk-js';
-import type { SignedVC } from '@helixid/core';
+import type { SignedVC } from '@helixid/sdk-js';
 
 export interface RunnableConfigLike {
   callbacks: Array<{

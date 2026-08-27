@@ -8,7 +8,11 @@ export class MockVPService implements IVPService {
       agentDid: 'did:hedera:testnet:agent1',
       userDid: 'did:hedera:testnet:user1',
       targetService: 'amazon',
-      verifiedAt: new Date().toISOString()
+      verifiedAt: new Date().toISOString(),
+      privilegeScopes: ['read:orders'],
+      effectiveScopes: ['read:orders'],
+      vpId: 'vp:helix:mock',
+      delegationChain: []
     };
   }
 }

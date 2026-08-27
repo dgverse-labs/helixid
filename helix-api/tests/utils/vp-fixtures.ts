@@ -16,7 +16,7 @@ import {
   type SignedVC,
   type SignedVP,
   type StatusListCredential,
-} from '@helixid/core';
+} from '../../src/core/index.js';
 import type { IVCService } from '../../src/services/vc/IVCService.js';
 
 export const API_BASE_URL = 'http://localhost:3000';

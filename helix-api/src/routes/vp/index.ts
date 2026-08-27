@@ -20,14 +20,27 @@ const vpRoutes: FastifyPluginAsync<VPRouteOptions> = async (fastify, options) =>
         required: ['signedVP'],
         properties: {
           signedVP: { type: 'object' },
-          session: { type: 'boolean', default: false }
+          session: { type: 'boolean', default: false },
+          expectedTargetService: { type: 'string' },
+          allowSelfSigned: { type: 'boolean' }
         }
       }
     }
   }, async (request, reply) => {
     try {
-      const body = request.body as { signedVP: Parameters<IVPService['verifyVP']>[0]; session?: boolean };
-      const result = await options.vpService.verifyVP(body.signedVP, request.id, { issueSession: body.session === true });
+      const body = request.body as {
+        signedVP: Parameters<IVPService['verifyVP']>[0];
+        session?: boolean;
+        expectedTargetService?: string;
+        allowSelfSigned?: boolean;
+      };
+      const result = await options.vpService.verifyVP(body.signedVP, request.id, {
+        issueSession: body.session === true,
+        ...(body.expectedTargetService !== undefined
+          ? { expectedTargetService: body.expectedTargetService }
+          : {}),
+        ...(body.allowSelfSigned !== undefined ? { allowSelfSigned: body.allowSelfSigned } : {}),
+      });
       return reply.code(200).send(result);
     } catch (error) {
       const mapped = mapErrorToResponse(error);

@@ -1,4 +1,4 @@
-import { buildStatusListCredential, createStatusList, setBit } from '@helixid/core';
+import { buildStatusListCredential, createStatusList, setBit } from '../../src/core/index.js';
 import type {
   IVCService,
   IssueVCInput,

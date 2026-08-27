@@ -103,9 +103,6 @@ importers:
 
   examples:
     dependencies:
-      '@helixid/core':
-        specifier: ^0.1.0
-        version: 0.1.0
       '@helixid/sdk-js':
         specifier: ^0.1.1
         version: 0.1.1
@@ -118,9 +115,6 @@ importers:
       '@google/genai':
         specifier: ^2.15.0
         version: 2.15.0(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76))
-      '@helixid/core':
-        specifier: workspace:*
-        version: link:../../helix-core
       '@helixid/sdk-js':
         specifier: workspace:*
         version: link:../../helix-sdk-js
@@ -158,9 +152,6 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.68.0
         version: 0.68.0(zod@3.25.76)
-      '@helixid/core':
-        specifier: ^0.1.5
-        version: 0.1.5
       '@helixid/mcp':
         specifier: ^0.1.2
         version: 0.1.2(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76))
@@ -198,9 +189,6 @@ importers:
 
   examples/framework-middleware:
     dependencies:
-      '@helixid/core':
-        specifier: ^0.1.0
-        version: 0.1.0
       '@helixid/langchain':
         specifier: ^0.1.0
         version: 0.1.0(@langchain/core@1.1.48(openai@4.104.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))
@@ -226,6 +214,9 @@ importers:
 
   helix-api:
     dependencies:
+      '@fastify/rate-limit':
+        specifier: ^11.2.0
+        version: 11.2.0
       '@fastify/sensible':
         specifier: ^6.0.0
         version: 6.0.4
@@ -235,12 +226,18 @@ importers:
       '@fastify/swagger-ui':
         specifier: ^5.2.6
         version: 5.2.6
-      '@helixid/core':
-        specifier: workspace:^
-        version: link:../helix-core
       '@helixid/did-hedera':
-        specifier: ^0.1.0
-        version: 0.1.0(bn.js@5.2.3)
+        specifier: workspace:*
+        version: link:../packages/did-hedera
+      '@noble/curves':
+        specifier: ^1.4.0
+        version: 1.9.7
+      '@noble/ed25519':
+        specifier: ^2.3.0
+        version: 2.3.0
+      '@noble/hashes':
+        specifier: ^1.8.0
+        version: 1.8.0
       '@prisma/adapter-pg':
         specifier: ^7.8.0
         version: 7.8.0
@@ -250,6 +247,9 @@ importers:
       '@prisma/config':
         specifier: ^7.8.0
         version: 7.8.0(magicast@0.3.5)
+      argon2:
+        specifier: ^0.45.1
+        version: 0.45.1
       better-sqlite3:
         specifier: ^12.11.1
         version: 12.11.1
@@ -273,11 +273,8 @@ importers:
         version: 3.25.76
     devDependencies:
       '@helixid/sdk-js':
-        specifier: ^0.1.1
-        version: 0.1.1
-      '@noble/ed25519':
-        specifier: ^2.3.0
-        version: 2.3.0
+        specifier: workspace:*
+        version: link:../helix-sdk-js
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
@@ -321,11 +318,8 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@types/node@20.19.39)(@vitest/coverage-v8@4.1.8)(jsdom@26.1.0)(vite@7.3.5(@types/node@20.19.39)(jiti@2.6.1)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0))
 
-  helix-core:
+  helix-sdk-js:
     dependencies:
-      '@noble/curves':
-        specifier: ^1.4.0
-        version: 1.9.7
       '@noble/ed25519':
         specifier: ^2.3.0
         version: 2.3.0
@@ -358,51 +352,26 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@types/node@20.19.39)(@vitest/coverage-v8@4.1.8)(jsdom@26.1.0)(vite@7.3.5(@types/node@20.19.39)(jiti@2.6.1)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0))
 
-  helix-sdk-js:
-    dependencies:
-      '@helixid/core':
-        specifier: workspace:^
-        version: link:../helix-core
-      '@noble/ed25519':
-        specifier: ^2.3.0
-        version: 2.3.0
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      '@typescript-eslint/eslint-plugin':
-        specifier: ^8.0.0
-        version: 8.58.2(@typescript-eslint/parser@8.58.2(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)(typescript@5.9.3)
-      '@typescript-eslint/parser':
-        specifier: ^8.0.0
-        version: 8.58.2(eslint@8.57.1)(typescript@5.9.3)
-      '@vitest/coverage-v8':
-        specifier: ^4.1.8
-        version: 4.1.8(vitest@4.1.8)
-      eslint:
-        specifier: ^8.57.0
-        version: 8.57.1
-      typescript:
-        specifier: ^5.4.0
-        version: 5.9.3
-      vitest:
-        specifier: ^4.1.8
-        version: 4.1.8(@types/node@20.19.39)(@vitest/coverage-v8@4.1.8)(jsdom@26.1.0)(vite@7.3.5(@types/node@20.19.39)(jiti@2.6.1)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0))
-
   packages/cli:
     dependencies:
-      '@helixid/core':
-        specifier: workspace:^
-        version: link:../../helix-core
       '@helixid/sdk-js':
         specifier: workspace:^
         version: link:../../helix-sdk-js
+      '@noble/ed25519':
+        specifier: ^2.3.0
+        version: 2.3.0
+      '@noble/hashes':
+        specifier: ^1.8.0
+        version: 1.8.0
       chalk:
         specifier: ^5.4.1
         version: 5.6.2
       commander:
         specifier: ^11.1.0
         version: 11.1.0
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
     optionalDependencies:
       '@helixid/did-hedera':
         specifier: workspace:*
@@ -426,9 +395,6 @@ importers:
       '@hashgraph/sdk':
         specifier: ^2.49.0
         version: 2.81.0(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
-      '@helixid/core':
-        specifier: workspace:^
-        version: link:../../helix-core
       '@hiero-did-sdk/hcs':
         specifier: ^0.1.8
         version: 0.1.8(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
@@ -438,7 +404,19 @@ importers:
       '@hiero-did-sdk/resolver':
         specifier: ^0.1.8
         version: 0.1.8(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
+      '@noble/ed25519':
+        specifier: ^2.3.0
+        version: 2.3.0
+      '@noble/hashes':
+        specifier: ^1.8.0
+        version: 1.8.0
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
     devDependencies:
+      '@helixid/core':
+        specifier: ^0.1.0
+        version: 0.1.5
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.42
@@ -451,9 +429,6 @@ importers:
 
   packages/langchain:
     dependencies:
-      '@helixid/core':
-        specifier: workspace:^
-        version: link:../../helix-core
       '@helixid/sdk-js':
         specifier: workspace:^
         version: link:../../helix-sdk-js
@@ -473,9 +448,6 @@ importers:
 
   packages/mcp:
     dependencies:
-      '@helixid/core':
-        specifier: workspace:^
-        version: link:../../helix-core
       '@helixid/sdk-js':
         specifier: workspace:^
         version: link:../../helix-sdk-js
@@ -687,6 +659,9 @@ packages:
 
   '@electric-sql/pglite@0.4.1':
     resolution: {integrity: sha512-mZ9NzzUSYPOCnxHH1oAHPRzoMFJHY472raDKwXl/+6oPbpdJ7g8LsCN4FSaIIfkiCKHhb3iF/Zqo3NYxaIhU7Q==}
+
+  '@epic-web/invariant@1.0.0':
+    resolution: {integrity: sha512-lrTPqgvfFQtR/eY/qkIzp98OGdNJu0m5ji3q/nJI8v3SXkRKEnWiOxMmbvcSoAIzv/cGiuvRy57k4suKQSAdwA==}
 
   '@esbuild/aix-ppc64@0.27.7':
     resolution: {integrity: sha512-EKX3Qwmhz1eMdEJokhALr0YiD0lhQNwDqkPYyPhiSwKrh7/4KRjQc04sZ8db+5DVVnZ1LmbNDI1uAMPEUBnQPg==}
@@ -937,6 +912,9 @@ packages:
   '@fastify/proxy-addr@5.1.0':
     resolution: {integrity: sha512-INS+6gh91cLUjB+PVHfu1UqcB76Sqtpyp7bnL+FYojhjygvOPA9ctiD/JDKsyD9Xgu4hUhCSJBPig/w7duNajw==}
 
+  '@fastify/rate-limit@11.2.0':
+    resolution: {integrity: sha512-X7osJd4XSvMoejYrnJkSZYYjY1eNYoBqhjlzf1RakC2204qExFqZFTKj5+T7VuzA/iUI9Z3UoSqQRkB2HpG0oQ==}
+
   '@fastify/send@4.1.0':
     resolution: {integrity: sha512-TMYeQLCBSy2TOFmV95hQWkiTYgC/SEx7vMdV+wnZVX4tt8VBLKzmH8vV9OzJehV0+XBfg+WxPMt5wp+JBUKsVw==}
 
@@ -995,14 +973,8 @@ packages:
     peerDependencies:
       bn.js: 5.2.3
 
-  '@helixid/core@0.1.0':
-    resolution: {integrity: sha512-HAD5LAL1NsmtEE5qAK7bBKmwOq0x72u6m9E7ZG9Ac+L/sTwIavd9gz6G4XqNifkW1QBdOs8A8XvuxesYQVt13w==}
-
   '@helixid/core@0.1.5':
     resolution: {integrity: sha512-mdqBzfe1katc0BbcWU0jKTWkSWxvizryknFQiiPEnSYI+xsbCa5SLLIAH0CUgdIH0C1EITnqCpzE1KfX/mcLvQ==}
-
-  '@helixid/did-hedera@0.1.0':
-    resolution: {integrity: sha512-Gp1nEIGpXN9Dyak4aft525skH0yPRaf2DmlsA2VOIhKDffwlTJJLVhw4s9tGx4GkiRMgaVqmzgYl8Wac/8qZSg==}
 
   '@helixid/langchain@0.1.0':
     resolution: {integrity: sha512-gLUVpb5T6XtrXDSJ/VmRIkc2BCPrWaKjrhBRS2jcbTwe3AJ9InHmGK90DIKw3L/sdcO0NeRVpi6V0wNzJA9eoQ==}
@@ -1196,6 +1168,10 @@ packages:
 
   '@paralleldrive/cuid2@2.3.1':
     resolution: {integrity: sha512-XO7cAxhnTZl0Yggq6jOgjiOHhbgcO4NqFqwSmQpjK3b6TEE6Uj/jfSk6wzYyemh3+I0sHirKSetjQwn5cZktFw==}
+
+  '@phc/format@1.0.0':
+    resolution: {integrity: sha512-m7X9U6BG2+J+R1lSOdCiITLLrxm+cWlNI3HUFA92oLO77ObGNzaKdh8pMLqdZcshtkKuV84olNNXDfMc4FezBQ==}
+    engines: {node: '>=10'}
 
   '@pinojs/redact@0.4.0':
     resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
@@ -1889,6 +1865,10 @@ packages:
     resolution: {integrity: sha512-4Dj6M28JB+oAH8kFkTLUo+a2jwOFkuqb3yucU0CANcRRUbxS0cP0nZYCGjcc3BNXwRIsUVmDGgzawme7zvJHvg==}
     engines: {node: '>=12'}
 
+  argon2@0.45.1:
+    resolution: {integrity: sha512-skm+/WCjkGqCQxF7FG1LuZXM5yvbFjgbfiCGsud2oLgaDhh6b6dbH0b1EkghbM+xx4Bj8Ape+KKgixoIlWZicQ==}
+    engines: {node: '>=16.17.0'}
+
   argparse@2.0.1:
     resolution: {integrity: sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==}
 
@@ -2199,12 +2179,18 @@ packages:
     resolution: {integrity: sha512-tJtZBBHA6vjIAaF6EnIaq6laBBP9aq/Y3ouVJjEfoHbRBcHBAHYcMh/w8LDrk2PvIMMq8gmopa5D4V8RmbrxGw==}
     engines: {node: '>= 0.10'}
 
+  cross-env@10.1.0:
+    resolution: {integrity: sha512-GsYosgnACZTADcmEyJctkJIoqAhHjttw7RsFrVoJNXbsWWqaq6Ym+7kZjq6mS45O0jij6vtiReppKQEtqWy6Dw==}
+    engines: {node: '>=20'}
+    hasBin: true
+
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
     engines: {node: '>= 8'}
 
   crypto-js@4.2.0:
     resolution: {integrity: sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==}
+    deprecated: Active development of CryptoJS has been discontinued. This library is no longer maintained.
 
   css.escape@1.5.1:
     resolution: {integrity: sha512-YUifsXXuknHlUsmlgyY0PKzgPOr7/FjCePfHNt0jxm83wHZi44VDMQ7/fGNkjY3/jV1MC+1CmZbaHzugyeRtpg==}
@@ -2532,6 +2518,9 @@ packages:
 
   fastify-plugin@5.1.0:
     resolution: {integrity: sha512-FAIDA8eovSt5qcDgcBvDuX/v0Cjz0ohGhENZ/wpc3y+oZCY2afZ9Baqql3g/lC+OHRnciQol4ww7tuthOb9idw==}
+
+  fastify-plugin@6.0.0:
+    resolution: {integrity: sha512-fZOty7z3O7vOliF6d8bHE3wiEh1KcNnKEQensSgTk9C1DvN6nRLS++XVd86v33Hw/8u9Un8A1zDrQ8ujcQDHEg==}
 
   fastify@5.8.5:
     resolution: {integrity: sha512-Yqptv59pQzPgQUSIm87hMqHJmdkb1+GPxdE6vW6FRyVE9G86mt7rOghitiU4JHRaTyDUk9pfeKmDeu70lAwM4Q==}
@@ -3331,6 +3320,10 @@ packages:
     resolution: {integrity: sha512-KdHvFWZjEKDf0cakgFjebl371GPsISX2oZHcuyKqM7DtogIsHrqKeLTo8wBHxaXRAQlY2PsPlZmfo+9ZCxEREQ==}
     engines: {node: '>=10'}
 
+  node-addon-api@8.9.2:
+    resolution: {integrity: sha512-VijLXbi3UACN69I0JVXJsX4tjACjNoQDgv2gTF6sx2wWEi8tkSg2eX8p5gSIFi8z2+DL3oHmY6OyKce38SDolg==}
+    engines: {node: ^18 || ^20 || >= 21}
+
   node-domexception@1.0.0:
     resolution: {integrity: sha512-/jKZoMpw0F8GRwl4/eLROPA3cfcXtLApP0QzLmUT/HuPCZWyB7IY9ZrMeKw2O/nFIqPQB3PVM9aYm0F312AXDQ==}
     engines: {node: '>=10.5.0'}
@@ -3354,6 +3347,10 @@ packages:
 
   node-gyp-build-optional-packages@5.1.1:
     resolution: {integrity: sha512-+P72GAjVAbTxjjwUmwjVrqrdZROD4nf8KgpBoDxqXXTiYZZt/ud60dE5yvCSr9lRO8e8yv6kgJIC0K0PfZFVQw==}
+    hasBin: true
+
+  node-gyp-build@4.8.4:
+    resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
     hasBin: true
 
   node-int64@0.4.0:
@@ -4650,6 +4647,8 @@ snapshots:
 
   '@electric-sql/pglite@0.4.1': {}
 
+  '@epic-web/invariant@1.0.0': {}
+
   '@esbuild/aix-ppc64@0.27.7':
     optional: true
 
@@ -4899,6 +4898,13 @@ snapshots:
       '@fastify/forwarded': 3.0.1
       ipaddr.js: 2.3.0
 
+  '@fastify/rate-limit@11.2.0':
+    dependencies:
+      '@lukeed/ms': 2.0.2
+      fastify-plugin: 6.0.0
+      ip-address: 10.2.0
+      toad-cache: 3.7.0
+
   '@fastify/send@4.1.0':
     dependencies:
       '@lukeed/ms': 2.0.2
@@ -5028,32 +5034,12 @@ snapshots:
       - react-native
       - supports-color
 
-  '@helixid/core@0.1.0':
-    dependencies:
-      '@noble/curves': 1.9.7
-      '@noble/ed25519': 2.3.0
-      '@noble/hashes': 1.8.0
-      zod: 3.25.76
-
   '@helixid/core@0.1.5':
     dependencies:
       '@noble/curves': 1.9.7
       '@noble/ed25519': 2.3.0
       '@noble/hashes': 1.8.0
       zod: 3.25.76
-
-  '@helixid/did-hedera@0.1.0(bn.js@5.2.3)':
-    dependencies:
-      '@hashgraph/sdk': 2.81.0(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
-      '@helixid/core': 0.1.5
-      '@hiero-did-sdk/hcs': 0.1.8(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
-      '@hiero-did-sdk/registrar': 0.1.8(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
-      '@hiero-did-sdk/resolver': 0.1.8(bn.js@5.2.3)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.14)(react@19.2.5))
-    transitivePeerDependencies:
-      - bn.js
-      - expo-crypto
-      - react-native
-      - supports-color
 
   '@helixid/langchain@0.1.0(@langchain/core@1.1.48(openai@4.104.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))':
     dependencies:
@@ -5078,7 +5064,7 @@ snapshots:
 
   '@helixid/sdk-js@0.1.1':
     dependencies:
-      '@helixid/core': 0.1.0
+      '@helixid/core': 0.1.5
       '@noble/ed25519': 2.3.0
 
   '@helixid/sdk-js@0.1.7':
@@ -5357,6 +5343,8 @@ snapshots:
   '@paralleldrive/cuid2@2.3.1':
     dependencies:
       '@noble/hashes': 1.8.0
+
+  '@phc/format@1.0.0': {}
 
   '@pinojs/redact@0.4.0': {}
 
@@ -6189,6 +6177,13 @@ snapshots:
 
   ansi-styles@6.2.3: {}
 
+  argon2@0.45.1:
+    dependencies:
+      '@phc/format': 1.0.0
+      cross-env: 10.1.0
+      node-addon-api: 8.9.2
+      node-gyp-build: 4.8.4
+
   argparse@2.0.1: {}
 
   aria-query@5.3.0:
@@ -6526,6 +6521,11 @@ snapshots:
     dependencies:
       object-assign: 4.1.1
       vary: 1.1.2
+
+  cross-env@10.1.0:
+    dependencies:
+      '@epic-web/invariant': 1.0.0
+      cross-spawn: 7.0.6
 
   cross-spawn@7.0.6:
     dependencies:
@@ -6915,6 +6915,8 @@ snapshots:
   fast-uri@3.1.2: {}
 
   fastify-plugin@5.1.0: {}
+
+  fastify-plugin@6.0.0: {}
 
   fastify@5.8.5:
     dependencies:
@@ -7836,6 +7838,8 @@ snapshots:
     dependencies:
       semver: 7.8.2
 
+  node-addon-api@8.9.2: {}
+
   node-domexception@1.0.0: {}
 
   node-fetch-native@1.6.7: {}
@@ -7854,6 +7858,8 @@ snapshots:
     dependencies:
       detect-libc: 2.1.2
     optional: true
+
+  node-gyp-build@4.8.4: {}
 
   node-int64@0.4.0: {}
 

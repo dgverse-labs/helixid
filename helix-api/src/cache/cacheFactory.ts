@@ -1,7 +1,7 @@
 // Copyright 2026 DgVerse LLP
 // Licensed under the Apache License, Version 2.0
 
-import type { Config } from '@helixid/core';
+import type { Config } from '../core/index.js';
 import type { ICache } from './ICache.js';
 import { InProcessCache } from './InProcessCache.js';
 import { NoopCache } from './NoopCache.js';

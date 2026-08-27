@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import supertest from 'supertest';
-import { HelixClient, VPBuilder } from '@helixid/sdk-js';
+import { HelixClient } from '@helixid/sdk-js';
+import type { SignedVC } from '@helixid/sdk-js';
 import {
   LIVE_HEDERA_TIMEOUT_MS,
+  buildAndSignVP,
   onboardLiveAgent,
   resetLiveTestDatabase,
   startLiveApi,
@@ -32,17 +34,13 @@ describe('VC Revocation Live Integration', () => {
     });
 
     try {
-      const templateRes = await http.post('/v1/vp/template').send({
-        agentDid: agent.did,
-        userDid: 'did:hedera:testnet:live-user-placeholder',
-        targetService: 'amazon',
-        vcType: 'HelixAgentCredential',
-      });
-      expect(templateRes.statusCode).toBe(201);
+      const vcRecord = await client.getVC(agent.vcId);
 
-      const signedVP = await new VPBuilder(templateRes.body.unsignedVP).sign(
+      const signedVP = await buildAndSignVP(
+        [vcRecord.vc as SignedVC],
+        agent.did,
         agent.privateKeyHex,
-        `${agent.did}#key-1`,
+        { targetService: 'amazon', userDid: 'did:hedera:testnet:live-user-placeholder' },
       );
 
       const unauthenticatedRevoke = await http.post(`/v1/vcs/${agent.vcId}/revoke`).send({});
@@ -61,7 +59,7 @@ describe('VC Revocation Live Integration', () => {
 
       const verifyRes = await http.post('/v1/vp/verify').send({ signedVP });
       expect(verifyRes.statusCode).toBe(400);
-      expect(verifyRes.body.error.code).toBe('VP_VERIFICATION_FAILED');
+      expect(verifyRes.body.error.code).toBe('VC_REVOKED');
     } finally {
       await agent.cleanup();
     }

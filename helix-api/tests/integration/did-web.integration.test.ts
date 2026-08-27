@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import Fastify from 'fastify';
-import { buildDIDDocument } from '@helixid/core';
+import { buildDIDDocument } from '../../src/core/index.js';
 
 import didWebRoutes from '../../src/routes/did-web/index.js';
 
@@ -12,6 +12,7 @@ describe('did:web hosting route', () => {
 
     await app.register(didWebRoutes, {
       issuerDid,
+      didDomain: 'example.com',
       didRepository: {
         async findDidById(did: string) {
           return did === issuerDid ? { didDocument } : null;

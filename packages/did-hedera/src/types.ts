@@ -1,4 +1,4 @@
-import type { SignedVC } from '@helixid/core';
+import type { SignedVC } from './core/schemas/vc.js';
 
 export interface HederaTransactionResult {
   transactionId: string;

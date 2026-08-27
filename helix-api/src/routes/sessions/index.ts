@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0
 
 import type { FastifyPluginAsync } from 'fastify';
-import { publicKeyToMultibase } from '@helixid/core';
+import { publicKeyToMultibase } from '../../core/index.js';
 
 interface SessionRouteOptions {
   publicKeyHex: string;

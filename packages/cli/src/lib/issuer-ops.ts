@@ -1,12 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
-import {
-  createEd25519Proof,
-  createStatusList,
-  getBit,
-  setBit,
-  type SignedVC,
-} from '@helixid/core';
+import { createEd25519Proof } from '../core/proof.js';
+import { createStatusList, getBit, setBit } from '../core/status-list-schema.js';
+import type { SignedVC } from '../core/schemas/vc.js';
 
 export interface IssuerKeyMaterial {
   did: string;

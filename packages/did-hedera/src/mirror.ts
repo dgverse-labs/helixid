@@ -1,5 +1,5 @@
-import type { DIDDocument } from '@helixid/core';
-import { HederaResolutionFailedError, ValidationError } from '@helixid/core';
+import type { DIDDocument } from './core/did.js';
+import { HederaResolutionFailedError, ValidationError } from './core/HelixError.js';
 
 export type HederaNetwork = 'testnet' | 'mainnet' | 'previewnet';
 

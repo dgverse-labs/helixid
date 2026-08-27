@@ -1250,6 +1250,322 @@ textarea:focus {
 }
 
 /* ---------------------------------------------------------------- */
+/* Hosted account auth (register / sign in) — split hero + form.     */
+/* Reuses the app's existing dark sidebar panel language for the     */
+/* hero half (see .app-sidebar) and the same accent/mono tokens for  */
+/* the form half, rather than inventing a competing palette.         */
+/* ---------------------------------------------------------------- */
+
+.account-auth {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  background: var(--bg);
+}
+
+.account-auth__hero {
+  position: relative;
+  background: #0c0c0c;
+  color: #e8e8e6;
+  padding: 56px 52px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.account-auth__hero::before {
+  content: '';
+  position: absolute;
+  inset: -20% -10% auto auto;
+  width: 480px;
+  height: 480px;
+  background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.account-auth__brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  position: relative;
+}
+
+.account-auth__brand img {
+  width: 30px;
+  height: 36px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 12px var(--accent-glow));
+}
+
+.account-auth__word {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.account-auth__word .accent {
+  color: var(--accent);
+}
+
+.account-auth__copy {
+  position: relative;
+  max-width: 420px;
+}
+
+.account-auth__eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: rgba(255, 106, 0, 0.85);
+  margin-bottom: 14px;
+}
+
+.account-auth__headline {
+  font-size: 32px;
+  line-height: 1.16;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  margin: 0 0 14px;
+}
+
+.account-auth__subhead {
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: rgba(232, 232, 230, 0.62);
+  margin: 0;
+}
+
+/* The signature element: a live-feeling seal that shows the actual
+   did:web document HelixID auto-provisions for every new account —
+   grounded in the real backend behaviour, not decoration. */
+.did-seal {
+  position: relative;
+  margin-top: 34px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  max-width: 420px;
+}
+
+.did-seal__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.did-seal__ring {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  display: grid;
+  place-items: center;
+  animation: did-seal-pulse 2.4s ease-in-out infinite;
+}
+
+.did-seal__ring::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+@keyframes did-seal-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-glow); }
+  50% { box-shadow: 0 0 0 6px transparent; }
+}
+
+.did-seal__label {
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: rgba(232, 232, 230, 0.55);
+}
+
+.did-seal__value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: #f2f2f0;
+  word-break: break-all;
+  min-height: 1.4em;
+}
+
+.did-seal__cursor {
+  display: inline-block;
+  width: 7px;
+  height: 1em;
+  background: var(--accent);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: did-seal-blink 1s step-end infinite;
+}
+
+@keyframes did-seal-blink {
+  50% { opacity: 0; }
+}
+
+.did-seal__foot {
+  margin-top: 10px;
+  font-size: 12px;
+  color: rgba(232, 232, 230, 0.45);
+}
+
+.account-auth__footnote {
+  position: relative;
+  font-size: 12px;
+  color: rgba(232, 232, 230, 0.4);
+}
+
+.account-auth__panel {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.account-auth__card {
+  width: 100%;
+  max-width: 380px;
+  padding: 8px 4px;
+}
+
+.account-auth__card h1 {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.account-auth__lede {
+  color: var(--ink-muted);
+  font-size: 13.5px;
+  margin: 6px 0 24px;
+}
+
+.account-auth__form {
+  display: grid;
+  gap: 15px;
+}
+
+.account-auth__form label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.account-auth__form input {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.account-auth__form input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.account-auth__form .btn-primary {
+  margin-top: 4px;
+  padding: 11px 15px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+}
+
+.account-auth__error {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  font-size: 13px;
+  margin: 0;
+}
+
+.account-auth__divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-faint);
+  font-size: 12px;
+  margin: 20px 0;
+}
+
+.account-auth__divider::before,
+.account-auth__divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--hairline-strong);
+}
+
+.account-auth__google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 15px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.account-auth__google:hover {
+  border-color: var(--hairline-strong);
+  background: var(--surface-2);
+}
+
+.account-auth__switch {
+  margin-top: 22px;
+  font-size: 13.5px;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+.account-auth__switch a {
+  color: var(--accent-strong);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.account-auth__switch a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 860px) {
+  .account-auth {
+    grid-template-columns: 1fr;
+  }
+  .account-auth__hero {
+    padding: 40px 28px;
+    border-right: none;
+  }
+  .account-auth__headline {
+    font-size: 26px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .did-seal__ring,
+  .did-seal__cursor {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------- */
 /* Toasts & alerts                                                   */
 /* ---------------------------------------------------------------- */
 

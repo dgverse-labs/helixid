@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { generateKeyPair } from '@helixid/core';
+import { generateKeyPair } from '@helixid/sdk-js';
 import { AgentWallet } from '@helixid/sdk-js';
 import { HelixIDMiddleware, HelixIDToolWrapper, filterToolsByScope } from '../src/index.js';
 
