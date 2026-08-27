@@ -42,7 +42,12 @@ interface DIDServiceEndpointParams extends DIDParams {
 const didRoutes: FastifyPluginAsync<DIDRouteOptions> = async (fastify: FastifyInstance, options) => {
   const { didService } = options;
 
-  const didPattern = '^did:hedera:testnet:[a-zA-Z0-9._-]+$';
+  // Matches whichever DID method this instance is configured to mint
+  // (DID_METHOD — see DIDService.createDID): did:hedera for anchored DIDs,
+  // did:key for self-describing ones, did:web for ones hosted at this
+  // instance's /agents/:slug/did.json.
+  const didPattern =
+    '^did:(hedera:(testnet|previewnet|mainnet):[a-zA-Z0-9._-]+|key:z[1-9A-HJ-NP-Za-km-z]+|web:[a-zA-Z0-9.%-]+(:[a-zA-Z0-9._%-]+)*)$';
   // Pattern for Ed25519 public key: 64 hex chars
   const publicKeyPattern = '^[0-9a-fA-F]{64}$';
 

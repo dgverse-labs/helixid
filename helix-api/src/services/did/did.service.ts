@@ -10,9 +10,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { 
-  deriveDID, 
-  buildDIDDocument, 
+import { sha256 } from '@noble/hashes/sha2';
+import {
+  deriveDID,
+  buildDIDDocument,
   addServiceEndpoint as addServiceCore,
   removeServiceEndpoint as removeServiceCore,
   publicKeyToMultibase,
@@ -20,12 +21,23 @@ import {
   ErrorCode,
   type IAuditLogger,
   type DIDDocument,
-  type ServiceEndpoint
+  type ServiceEndpoint,
+  type DidMethod,
 } from '../../core/index.js';
 import type { DidRepository } from '../../repositories/did.repository.js';
 import type { IHederaClient } from '../../hedera/IHederaClient.js';
 import type { ICache } from '../../cache/ICache.js';
 import { NoopCache } from '../../cache/NoopCache.js';
+
+/**
+ * A short, stable, non-secret identifier derived from an agent's public key
+ * — used as the did:web path segment (`:agents:<slug>`). Same construction
+ * as deriveDID()'s did:hedera identifier, minus the Hedera-specific prefix.
+ */
+function deriveAgentSlug(publicKeyHex: string): string {
+  const hash = sha256(Buffer.from(publicKeyHex, 'hex'));
+  return Buffer.from(hash.slice(0, 16)).toString('hex');
+}
 
 type DIDRecord = {
   id: string;
@@ -95,18 +107,32 @@ export class DIDService implements IDIDService {
     private audit: IAuditLogger,
     private cache: ICache<DIDDocument> = new NoopCache<DIDDocument>(),
     private cacheTtlSeconds = 300,
+    // Governs how newly-created (agent/user) DIDs are minted, independent of
+    // what method the hosted issuer itself uses. Only 'hedera' touches the
+    // Hedera client at all — 'web' and 'key' never anchor anywhere, so
+    // onboarding works with zero Hedera/network dependency when configured
+    // that way (see docs/proposal-sdk-api-only.md's DID_METHOD setting).
+    private didMethod: DidMethod = 'hedera',
+    private didDomain = '',
   ) {}
 
   /**
-   * Prepare a live did:hedera creation request for SDK-side signing.
+   * Prepare a live did:hedera creation request for SDK-side signing. Only
+   * meaningful when didMethod === 'hedera' — did:web and did:key are
+   * self-issued locally and need no signed creation round-trip, so this
+   * returns an empty (falsy) proof request for those, and createDID() below
+   * never touches the Hedera client for them.
    */
   async prepareDIDCreation(publicKeyHex: string): Promise<{ stateJson: string; signingPayloadHex: string }> {
+    if (this.didMethod !== 'hedera') {
+      return { stateJson: '', signingPayloadHex: '' };
+    }
     return this.hedera.prepareDIDCreation(publicKeyToMultibase(publicKeyHex));
   }
 
   /**
-   * Create a new DID and anchor it to Hedera.
-   * Satisfies SA-2 (Deduplication) and DID-1 (Anchoring).
+   * Create a new DID for the configured method. Satisfies SA-2
+   * (Deduplication) and, for didMethod === 'hedera', DID-1 (Anchoring).
    */
   async createDID(publicKeyHex: string, subjectType: 'agent' | 'user', domains: string[] = [], requestId: string, creationProof?: DIDCreationProof): Promise<CreateDIDResult> {
     // 1. Check for existing DID with this public key (SA-2)
@@ -133,37 +159,53 @@ export class DIDService implements IDIDService {
       serviceEndpoint: domain,
     }));
 
-    // 3. Anchor to Hedera
     let did: string;
     let document: DIDDocument;
-    let anchoring;
-    try {
-      if (creationProof) {
-        const result = await this.hedera.submitDIDCreation(creationProof.stateJson, creationProof.signatureHex);
-        did = result.did;
-        document = withServiceEndpoints(result.didDocument as DIDDocument, serviceEndpoints);
-        anchoring = {
-          transactionId: result.transactionId,
-          topicId: result.topicId,
-          sequenceNumber: result.sequenceNumber,
-        };
-      } else {
-        did = deriveDID(publicKeyHex);
-        document = buildDIDDocument(did, publicKeyHex, serviceEndpoints);
-        anchoring = await this.hedera.anchorDocument(JSON.stringify(document));
+    let anchoring: { transactionId: string; topicId?: string; sequenceNumber?: number };
+
+    if (this.didMethod === 'key') {
+      // Self-describing, resolvable from the public key alone — no anchoring,
+      // no network, no registry entry required to resolve it later.
+      did = `did:key:${publicKeyToMultibase(publicKeyHex)}`;
+      document = buildDIDDocument(did, publicKeyHex, serviceEndpoints);
+      anchoring = { transactionId: `not-anchored:key:${did}` };
+    } else if (this.didMethod === 'web') {
+      // Hosted at this same instance's /.well-known path — see
+      // routes/did-web/index.ts, which serves agent DIDs under
+      // /agents/:slug/did.json alongside the issuer's own document.
+      did = `did:web:${this.didDomain}:agents:${deriveAgentSlug(publicKeyHex)}`;
+      document = buildDIDDocument(did, publicKeyHex, serviceEndpoints);
+      anchoring = { transactionId: `not-anchored:web:${did}` };
+    } else {
+      // 3. Anchor to Hedera
+      try {
+        if (creationProof) {
+          const result = await this.hedera.submitDIDCreation(creationProof.stateJson, creationProof.signatureHex);
+          did = result.did;
+          document = withServiceEndpoints(result.didDocument as DIDDocument, serviceEndpoints);
+          anchoring = {
+            transactionId: result.transactionId,
+            topicId: result.topicId,
+            sequenceNumber: result.sequenceNumber,
+          };
+        } else {
+          did = deriveDID(publicKeyHex);
+          document = buildDIDDocument(did, publicKeyHex, serviceEndpoints);
+          anchoring = await this.hedera.anchorDocument(JSON.stringify(document));
+        }
+      } catch (err) {
+        await this.audit.log({
+          timestamp: new Date().toISOString(),
+          event: 'DID_CREATION_FAILED',
+          requestId,
+          reason: 'Hedera anchoring failed',
+        });
+        if (err instanceof HelixError) {
+          throw err;
+        }
+        const message = err instanceof Error ? err.message : 'Hedera anchoring failed';
+        throw new HelixError(ErrorCode.HEDERA_ANCHOR_FAILED, message, 502);
       }
-    } catch (err) {
-      await this.audit.log({
-        timestamp: new Date().toISOString(),
-        event: 'DID_CREATION_FAILED',
-        requestId,
-        reason: 'Hedera anchoring failed',
-      });
-      if (err instanceof HelixError) {
-        throw err;
-      }
-      const message = err instanceof Error ? err.message : 'Hedera anchoring failed';
-      throw new HelixError(ErrorCode.HEDERA_ANCHOR_FAILED, message, 502);
     }
 
     // 4. Persist to DB

@@ -113,6 +113,8 @@ const didService = new DIDService(
   auditLogger,
   didCache,
   config.DID_CACHE_L1_TTL_SECONDS,
+  didMethod,
+  config.DID_DOMAIN,
 );
 const vcService = new VCService(
   vcRepository,
@@ -260,7 +262,7 @@ async function ensureIssuerDidCached(): Promise<void> {
 }
 
 await app.register(didRoutes, { didService });
-await app.register(didWebRoutes, { issuerDid: config.HELIX_ISSUER_DID, didRepository });
+await app.register(didWebRoutes, { issuerDid: config.HELIX_ISSUER_DID, didDomain: config.DID_DOMAIN, didRepository });
 await app.register(vcRoutes, {
   prefix: '/v1/vcs',
   vcService,

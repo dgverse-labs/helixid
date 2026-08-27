@@ -12,6 +12,7 @@ describe('did:web hosting route', () => {
 
     await app.register(didWebRoutes, {
       issuerDid,
+      didDomain: 'example.com',
       didRepository: {
         async findDidById(did: string) {
           return did === issuerDid ? { didDocument } : null;
