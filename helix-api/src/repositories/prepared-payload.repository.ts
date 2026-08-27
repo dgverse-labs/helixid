@@ -181,9 +181,9 @@ export class PreparedPayloadRepository {
     }
 
     if (this.prisma) {
-      return (this.prisma as PrismaWithPreparedPayload).preparedPayload.findUnique({
+      return (await (this.prisma as PrismaWithPreparedPayload).preparedPayload.findUnique({
         where: { token },
-      });
+      })) as PreparedPayloadRecord | null;
     }
 
     if (this.sqlite) {
