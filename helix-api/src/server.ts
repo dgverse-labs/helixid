@@ -224,6 +224,13 @@ app.get('/health', async () => ({
   storageAdapter,
   database: usingPostgres ? databaseName : usingSqlite ? sqlitePath : 'disabled',
   cacheAdapter,
+  // didMethod/issuerDid: exposed so test harnesses (see
+  // tests/utils/liveApi.ts) can read back the actual resolved issuer DID
+  // instead of duplicating loadConfig()'s did:key/did:web auto-derivation
+  // logic — the issuer DID isn't always known in advance (e.g. did:web's
+  // domain includes a dynamically-chosen port in tests).
+  didMethod,
+  issuerDid: config.HELIX_ISSUER_DID,
 }));
 
 function getDatabaseName(databaseUrl: string | undefined): string {

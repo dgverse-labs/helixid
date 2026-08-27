@@ -56,6 +56,21 @@ export async function resetLiveTestDatabase(): Promise<void> {
   await prisma.$disconnect();
 }
 
+/**
+ * Which DID method newly-onboarded agents (and, unless overridden, the
+ * issuer) use for this run — independent of storage adapter. Set
+ * LIVE_DID_METHOD=web to exercise the did:web path instead. Defaults to
+ * 'key': self-describing, zero network/registry dependency, same reasoning
+ * as usingSqliteAdapter() above. 'hedera' is intentionally not a supported
+ * value here — see the DID_METHOD/MockHederaClient gap documented in
+ * DIDService.createDID and this repo's PR history; live tests need a real
+ * did:hedera-resolvable identity, which this harness cannot fabricate.
+ */
+function resolveLiveDidMethod(apiEnv: Record<string, string>, workspaceEnv: Record<string, string>): 'key' | 'web' {
+  const configured = apiEnv['DID_METHOD'] ?? workspaceEnv['DID_METHOD'] ?? process.env['LIVE_DID_METHOD'];
+  return configured === 'web' ? 'web' : 'key';
+}
+
 export async function startLiveApi(): Promise<LiveApi> {
   const port = await getAvailablePort();
   const baseUrl = `http://127.0.0.1:${port}`;
@@ -65,16 +80,25 @@ export async function startLiveApi(): Promise<LiveApi> {
   const testEnv = readEnvFile(`${apiRoot}/.env.test`);
   const adminApiKey =
     apiEnv['HELIX_ADMIN_API_KEY'] ?? workspaceEnv['HELIX_ADMIN_API_KEY'] ?? process.env['HELIX_ADMIN_API_KEY'] ?? 'test-admin-key-0001';
-  const issuerDid = apiEnv['HELIX_ISSUER_DID'] ?? workspaceEnv['HELIX_ISSUER_DID'] ?? process.env['HELIX_ISSUER_DID'];
   // tests/setup.ts (loaded for every non-live test file via vitest's
   // setupFiles) unconditionally defaults DID_METHOD to 'hedera' with a mocked
   // Hedera client, on *this* process — and that leaks into the spawned
-  // server's env below via the `...process.env` spread. Live tests never
-  // want that default: prefer whatever helix-api/.env declares, and in
-  // sqlite mode fall back to 'key' (self-describing, no registry/network
-  // needed) rather than silently inheriting the unit-test mock default.
-  const didMethod =
-    apiEnv['DID_METHOD'] ?? workspaceEnv['DID_METHOD'] ?? (usingSqliteAdapter() ? 'key' : process.env['DID_METHOD']);
+  // server's env below via the `...process.env` spread if left unhandled.
+  // Live tests never want that default (see resolveLiveDidMethod above).
+  const didMethod = resolveLiveDidMethod(apiEnv, workspaceEnv);
+  // did:web resolves by fetching back from DID_DOMAIN, so it must match this
+  // run's actual bound port — a static configured value can't, since a fresh
+  // port is chosen per startLiveApi() call. did:key needs no domain at all.
+  const didDomain =
+    didMethod === 'web'
+      ? apiEnv['DID_DOMAIN'] ?? workspaceEnv['DID_DOMAIN'] ?? `127.0.0.1:${port}`
+      : apiEnv['DID_DOMAIN'] ?? workspaceEnv['DID_DOMAIN'] ?? process.env['DID_DOMAIN'];
+  // Both did:key and did:web issuer DIDs auto-derive server-side from
+  // HELIX_SIGNING_KEY/DID_DOMAIN when unset (see loadConfig()) — only pass
+  // one through if a file explicitly configured it. The actual resolved
+  // value (needed for assertions) is read back from /health below instead
+  // of duplicated here.
+  const configuredIssuerDid = apiEnv['HELIX_ISSUER_DID'] ?? workspaceEnv['HELIX_ISSUER_DID'];
 
   const sqliteMode = usingSqliteAdapter();
   let sqliteDir: string | undefined;
@@ -98,9 +122,9 @@ export async function startLiveApi(): Promise<LiveApi> {
     HEDERA_OPERATOR_KEY: apiEnv['HEDERA_OPERATOR_KEY'] ?? workspaceEnv['HEDERA_OPERATOR_KEY'] ?? process.env['HEDERA_OPERATOR_KEY'],
     HEDERA_TOPIC_ID: apiEnv['HEDERA_TOPIC_ID'] ?? workspaceEnv['HEDERA_TOPIC_ID'] ?? process.env['HEDERA_TOPIC_ID'],
     HELIX_SIGNING_KEY: apiEnv['HELIX_SIGNING_KEY'] ?? workspaceEnv['HELIX_SIGNING_KEY'] ?? process.env['HELIX_SIGNING_KEY'],
-    HELIX_ISSUER_DID: issuerDid,
+    HELIX_ISSUER_DID: configuredIssuerDid,
     DID_METHOD: didMethod,
-    DID_DOMAIN: apiEnv['DID_DOMAIN'] ?? workspaceEnv['DID_DOMAIN'] ?? process.env['DID_DOMAIN'],
+    DID_DOMAIN: didDomain,
     JWT_SESSION_TTL_SECONDS: apiEnv['JWT_SESSION_TTL_SECONDS'] ?? workspaceEnv['JWT_SESSION_TTL_SECONDS'] ?? process.env['JWT_SESSION_TTL_SECONDS'] ?? '600',
     HELIX_ADMIN_API_KEY: adminApiKey,
     NODE_ENV: 'test',
@@ -123,11 +147,15 @@ export async function startLiveApi(): Promise<LiveApi> {
   child.stderr.on('data', appendLogs);
 
   await waitForHealth(baseUrl, child, () => logs);
+  // The actual resolved issuer DID — read back rather than recomputed here,
+  // since did:key/did:web auto-derive it server-side (loadConfig()) when not
+  // explicitly configured.
+  const health = (await (await fetch(`${baseUrl}/health`)).json()) as { issuerDid?: string };
 
   return {
     baseUrl,
     adminApiKey,
-    issuerDid,
+    issuerDid: health.issuerDid,
     async stop() {
       await stopChild(child);
       if (sqliteDir) await rm(sqliteDir, { recursive: true, force: true });

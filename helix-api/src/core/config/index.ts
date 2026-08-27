@@ -11,7 +11,7 @@
 // limitations under the License.
 
 import { z } from 'zod';
-import { isSupportedEd25519PrivateKeyHex } from '../crypto/keys.js';
+import { derivePublicKey, isSupportedEd25519PrivateKeyHex, publicKeyToMultibase } from '../crypto/keys.js';
 
 const BooleanEnvSchema = z.preprocess((value) => {
   if (typeof value === 'boolean') return value;
@@ -155,6 +155,10 @@ export function loadConfig(input: Record<string, unknown>): Config {
         'Environment configuration is invalid:\n  HELIX_ISSUER_DID: must be a did:web issuer DID when DID_METHOD=web',
       );
     }
+  }
+
+  if (didMethod === 'key' && !config.HELIX_ISSUER_DID) {
+    config.HELIX_ISSUER_DID = `did:key:${publicKeyToMultibase(derivePublicKey(config.HELIX_SIGNING_KEY))}`;
   }
 
   if (didMethod === 'hedera') {
