@@ -12,6 +12,22 @@ import { createTestPrisma } from './prisma.js';
 
 export const LIVE_HEDERA_TIMEOUT_MS = 240_000;
 
+/**
+ * Matches tests/setup.ts's fallback for the non-live suite: HELIX_SIGNING_KEY
+ * only needs to be a well-formed Ed25519 key for these tests (it signs VCs
+ * issued during the run, nothing production-sensitive), so live tests must
+ * not depend on a real secret being configured in CI — same reasoning as
+ * resolveLiveDidMethod defaulting to 'key' below, and consistent with the
+ * "no Hedera network access or secrets are needed at all" comment on the
+ * Live tests steps in ci.yml. A CI secret left unset resolves to an empty
+ * string (not undefined), so this is checked explicitly rather than via `??`.
+ */
+const DEFAULT_TEST_SIGNING_KEY = 'a'.repeat(64);
+
+function firstNonEmpty(...values: Array<string | undefined>): string | undefined {
+  return values.find((value) => value !== undefined && value !== '');
+}
+
 export interface LiveApi {
   baseUrl: string;
   adminApiKey: string;
@@ -121,7 +137,11 @@ export async function startLiveApi(): Promise<LiveApi> {
     HEDERA_OPERATOR_ID: apiEnv['HEDERA_OPERATOR_ID'] ?? workspaceEnv['HEDERA_OPERATOR_ID'] ?? process.env['HEDERA_OPERATOR_ID'],
     HEDERA_OPERATOR_KEY: apiEnv['HEDERA_OPERATOR_KEY'] ?? workspaceEnv['HEDERA_OPERATOR_KEY'] ?? process.env['HEDERA_OPERATOR_KEY'],
     HEDERA_TOPIC_ID: apiEnv['HEDERA_TOPIC_ID'] ?? workspaceEnv['HEDERA_TOPIC_ID'] ?? process.env['HEDERA_TOPIC_ID'],
-    HELIX_SIGNING_KEY: apiEnv['HELIX_SIGNING_KEY'] ?? workspaceEnv['HELIX_SIGNING_KEY'] ?? process.env['HELIX_SIGNING_KEY'],
+    HELIX_SIGNING_KEY: firstNonEmpty(
+      apiEnv['HELIX_SIGNING_KEY'],
+      workspaceEnv['HELIX_SIGNING_KEY'],
+      process.env['HELIX_SIGNING_KEY'],
+    ) ?? DEFAULT_TEST_SIGNING_KEY,
     HELIX_ISSUER_DID: configuredIssuerDid,
     DID_METHOD: didMethod,
     DID_DOMAIN: didDomain,

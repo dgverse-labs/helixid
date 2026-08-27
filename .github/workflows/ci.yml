@@ -94,7 +94,6 @@ jobs:
         env:
           DATABASE_URL: postgresql://helixid_test:helixid_test@localhost:5433/helixid_test
           NODE_ENV: test
-          HELIX_SIGNING_KEY: ${{ secrets.HELIX_SIGNING_KEY }}
           ENROLLMENT_TOKEN_TTL_SECONDS: 900
           CHALLENGE_TTL_SECONDS: 300
           VP_TTL_SECONDS: 300
@@ -105,7 +104,6 @@ jobs:
         env:
           LIVE_STORAGE_ADAPTER: sqlite
           NODE_ENV: test
-          HELIX_SIGNING_KEY: ${{ secrets.HELIX_SIGNING_KEY }}
           ENROLLMENT_TOKEN_TTL_SECONDS: 900
           CHALLENGE_TTL_SECONDS: 300
           VP_TTL_SECONDS: 300
@@ -117,7 +115,6 @@ jobs:
           LIVE_STORAGE_ADAPTER: sqlite
           LIVE_DID_METHOD: web
           NODE_ENV: test
-          HELIX_SIGNING_KEY: ${{ secrets.HELIX_SIGNING_KEY }}
           ENROLLMENT_TOKEN_TTL_SECONDS: 900
           CHALLENGE_TTL_SECONDS: 300
           VP_TTL_SECONDS: 300
