@@ -57,7 +57,9 @@ jobs:
       # (`pnpm run test` chains a coverage check that has never actually run
       # to completion in CI before now — Build/Test always failed first —
       # and the underlying coverage gap predates this change). Also skips
-      # tests/live/** (helix-api), which need real Hedera network access.
+      # tests/live/** (helix-api) — run separately below, against both
+      # storage adapters, since they spin up the real server themselves
+      # rather than sharing this step's fixtures.
       - name: Test
         run: pnpm run test:non-live
         env:
@@ -69,6 +71,45 @@ jobs:
           HEDERA_TOPIC_ID: ${{ secrets.HEDERA_TOPIC_ID }}
           HELIX_SIGNING_KEY: ${{ secrets.HELIX_SIGNING_KEY }}
           API_BASE_URL: http://localhost:3000
+          ENROLLMENT_TOKEN_TTL_SECONDS: 900
+          CHALLENGE_TTL_SECONDS: 300
+          VP_TTL_SECONDS: 300
+          AUDIT_LOG_DESTINATION: stdout
+
+      # Live/e2e tests (helix-api/tests/live) spin up the real server and
+      # drive it over HTTP end to end. They mint agent/user DIDs as did:key
+      # or did:web (LIVE_DID_METHOD, default 'key') rather than did:hedera —
+      # see DIDService.createDID — so unlike the step above, no Hedera
+      # network access or secrets are needed at all.
+      - name: Live tests (Postgres)
+        run: pnpm --filter @helixid/api run test:live
+        env:
+          DATABASE_URL: postgresql://helixid_test:helixid_test@localhost:5433/helixid_test
+          NODE_ENV: test
+          HELIX_SIGNING_KEY: ${{ secrets.HELIX_SIGNING_KEY }}
+          ENROLLMENT_TOKEN_TTL_SECONDS: 900
+          CHALLENGE_TTL_SECONDS: 300
+          VP_TTL_SECONDS: 300
+          AUDIT_LOG_DESTINATION: stdout
+
+      - name: Live tests (SQLite)
+        run: pnpm --filter @helixid/api run test:live
+        env:
+          LIVE_STORAGE_ADAPTER: sqlite
+          NODE_ENV: test
+          HELIX_SIGNING_KEY: ${{ secrets.HELIX_SIGNING_KEY }}
+          ENROLLMENT_TOKEN_TTL_SECONDS: 900
+          CHALLENGE_TTL_SECONDS: 300
+          VP_TTL_SECONDS: 300
+          AUDIT_LOG_DESTINATION: stdout
+
+      - name: Live tests (did:web)
+        run: pnpm --filter @helixid/api run test:live
+        env:
+          LIVE_STORAGE_ADAPTER: sqlite
+          LIVE_DID_METHOD: web
+          NODE_ENV: test
+          HELIX_SIGNING_KEY: ${{ secrets.HELIX_SIGNING_KEY }}
           ENROLLMENT_TOKEN_TTL_SECONDS: 900
           CHALLENGE_TTL_SECONDS: 300
           VP_TTL_SECONDS: 300
