@@ -42,6 +42,7 @@ describe('helixidMCPMiddleware', () => {
     await expect(middleware(toolCall)).resolves.toBe(toolCall);
     expect(verifyVP).toHaveBeenCalledWith(
       toolCall.input._helixVP,
+      undefined,
       expect.objectContaining({ allowSelfSigned: false }),
     );
   });
