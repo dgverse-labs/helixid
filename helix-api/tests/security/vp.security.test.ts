@@ -1,7 +1,20 @@
 // Copyright 2026 DgVerse LLP
 // §9.4 A1: the G1–G12 grant matrix run against POST /v1/vp/verify, confirming
 // the route is a genuine thin wrapper over core verifyVP() — same accept/
-// reject outcomes, with the API's uniform opaque failure envelope.
+// reject outcomes as calling verifyVP() directly.
+//
+// Previously this suite asserted every rejection collapsed to a single
+// generic VP_VERIFICATION_FAILED code ("opaque failure envelope"). That's no
+// longer how the route behaves: vp.service.ts deliberately preserves the
+// specific HelixError code for any recognized failure (expired, revoked,
+// signature invalid, subject mismatch, malformed grant, ...) for parity with
+// the SDK's local verifyVP(), which always threw these directly — see the
+// comment in VPService.verifyVP's catch block. Only genuinely unrecognized
+// (non-HelixError) failures still collapse to the generic code, so that
+// truly unexpected internals never leak. A caller here already possesses and
+// submitted the full signed VP/VC/grant being checked, so surfacing which of
+// their own submitted credentials failed isn't a new information leak the
+// way it would be for an unauthenticated probe of someone else's data.
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -57,9 +70,16 @@ describe('POST /v1/vp/verify — grant matrix (§9.4 A1)', () => {
     return app.inject({ method: 'POST', url: '/v1/vp/verify', payload: { signedVP, session } });
   }
 
-  function expectOpaqueFailure(response: { statusCode: number; json: () => { error: { code: string } } }): void {
+  function expectRejection(
+    response: { statusCode: number; json: () => { error: { code: string; message: string } } },
+    expectedCode: string,
+  ): void {
     expect(response.statusCode).toBe(400);
-    expect(response.json().error.code).toBe('VP_VERIFICATION_FAILED');
+    const error = response.json().error;
+    expect(error.code).toBe(expectedCode);
+    // Still a real requirement, unrelated to which specific code is used:
+    // the envelope never leaks a stack trace or other internal detail.
+    expect(error.message).not.toMatch(/at .*\(.*:\d+:\d+\)/);
   }
 
   it('G1: valid agent+grant passes with 200', async () => {
@@ -101,7 +121,7 @@ describe('POST /v1/vp/verify — grant matrix (§9.4 A1)', () => {
     const vc = await makeAgentVC(issuer, holder.did);
     const grant = await makeGrant(sp, stranger.did, USER_DID, ['book:flights'], spList);
 
-    expectOpaqueFailure(await post(await buildSignedVP([vc, grant], holder, USER_DID)));
+    expectRejection(await post(await buildSignedVP([vc, grant], holder, USER_DID)), 'CONSENT_GRANT_SUBJECT_MISMATCH');
   });
 
   it('G4: user-match failure is rejected', async () => {
@@ -112,7 +132,7 @@ describe('POST /v1/vp/verify — grant matrix (§9.4 A1)', () => {
     const vc = await makeAgentVC(issuer, holder.did);
     const grant = await makeGrant(sp, holder.did, 'did:web:other-user.example', ['book:flights'], spList);
 
-    expectOpaqueFailure(await post(await buildSignedVP([vc, grant], holder, USER_DID)));
+    expectRejection(await post(await buildSignedVP([vc, grant], holder, USER_DID)), 'CONSENT_GRANT_SUBJECT_MISMATCH');
   });
 
   it('G5: email-form user identifier matches on both sides', async () => {
@@ -135,7 +155,7 @@ describe('POST /v1/vp/verify — grant matrix (§9.4 A1)', () => {
     const vc = await makeAgentVC(issuer, holder.did);
     const grant = await makeGrant(sp, holder.did, USER_DID, ['book:flights'], spList);
 
-    expectOpaqueFailure(await post(await buildSignedVP([vc, grant], holder)));
+    expectRejection(await post(await buildSignedVP([vc, grant], holder)), 'CONSENT_GRANT_SUBJECT_MISMATCH');
   });
 
   it('G7: expired grant rejects the whole VP', async () => {
@@ -151,7 +171,7 @@ describe('POST /v1/vp/verify — grant matrix (§9.4 A1)', () => {
       sp,
     );
 
-    expectOpaqueFailure(await post(await buildSignedVP([vc, expired], holder, USER_DID)));
+    expectRejection(await post(await buildSignedVP([vc, expired], holder, USER_DID)), 'VC_EXPIRED');
   });
 
   it('G8: revoked grant rejects the whole VP', async () => {
@@ -164,7 +184,7 @@ describe('POST /v1/vp/verify — grant matrix (§9.4 A1)', () => {
     const revokedList = await revokeGrant(spList, sp, { vc: grant });
     stubFetch({ [SP_LIST_URL]: revokedList });
 
-    expectOpaqueFailure(await post(await buildSignedVP([vc, grant], holder, USER_DID)));
+    expectRejection(await post(await buildSignedVP([vc, grant], holder, USER_DID)), 'VC_REVOKED');
   });
 
   it('G9: tampered grant signature rejects the whole VP', async () => {
@@ -182,7 +202,7 @@ describe('POST /v1/vp/verify — grant matrix (§9.4 A1)', () => {
       },
     };
 
-    expectOpaqueFailure(await post(await buildSignedVP([vc, tampered as never], holder, USER_DID)));
+    expectRejection(await post(await buildSignedVP([vc, tampered as never], holder, USER_DID)), 'VC_SIGNATURE_INVALID');
   });
 
   it('G10/G11: session scopes reflect the intersection in both directions', async () => {
@@ -237,16 +257,17 @@ describe('POST /v1/vp/verify — grant matrix (§9.4 A1)', () => {
       sp,
     );
 
-    expectOpaqueFailure(await post(await buildSignedVP([vc, malformed], holder, USER_DID)));
+    expectRejection(await post(await buildSignedVP([vc, malformed], holder, USER_DID)), 'CONSENT_GRANT_INVALID');
   });
 
-  it('failure responses stay opaque for non-grant failures too (expired VP)', async () => {
+  it('non-grant failures are rejected with their own specific code too (expired VP)', async () => {
     const holder = makeActor();
     const vc = await makeAgentVC(issuer, holder.did);
     const vp = await buildSignedVP([vc], holder, USER_DID);
 
-    expectOpaqueFailure(
+    expectRejection(
       await post({ ...vp, expirationDate: new Date(Date.now() - 1000).toISOString() }),
+      'VP_EXPIRED',
     );
   });
 });

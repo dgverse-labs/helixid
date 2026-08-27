@@ -113,7 +113,7 @@ describe('VP integration API', () => {
     expect('userDid' in response.json()).toBe(false);
   });
 
-  it('rejection responses carry the opaque error envelope with requestId', async () => {
+  it('rejection responses carry the specific failure code plus requestId', async () => {
     const response = await app.inject({
       method: 'POST',
       url: '/v1/vp/verify',
@@ -122,7 +122,11 @@ describe('VP integration API', () => {
 
     expect(response.statusCode).toBe(400);
     const error = response.json().error;
-    expect(error.code).toBe('VP_VERIFICATION_FAILED');
+    // Structurally malformed input is a recognized HelixError
+    // (VP_INVALID_STRUCTURE), not an unexpected internal failure — see
+    // VPService.verifyVP's catch block, which only collapses to the generic
+    // VP_VERIFICATION_FAILED for non-HelixError errors.
+    expect(error.code).toBe('VP_INVALID_STRUCTURE');
     expect(error.requestId).toBeTruthy();
   });
 });
