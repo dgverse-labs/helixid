@@ -1,0 +1,11 @@
+--- a/package.json	2026-09-01 16:06:35.792001001 +0000
++++ b/package.json	2026-09-01 16:06:40.606001003 +0000
+@@ -40,7 +40,7 @@
+     "typecheck": "tsc --noEmit"
+   },
+   "dependencies": {
+-    "@helixid/sdk-js": "workspace:^"
++    "@helixid/sdk-js": "github:helixid/helix-sdk-js#path:helix-sdk-js"
+   },
+   "peerDependencies": {
+     "@modelcontextprotocol/sdk": "*"

@@ -1,0 +1,76 @@
+export const AuditEvents = {
+  // B1 — DID & Hedera
+  DID_CREATED: 'DID_CREATED',
+  DID_CREATION_FAILED: 'DID_CREATION_FAILED',
+  DID_RESOLVED: 'DID_RESOLVED',
+  DID_UPDATED: 'DID_UPDATED',
+  DID_UPDATE_FAILED: 'DID_UPDATE_FAILED',
+  DID_DEACTIVATED: 'DID_DEACTIVATED',
+
+  // B2 — VC Issuance & Management
+  VC_ISSUED: 'VC_ISSUED',
+  VC_ISSUANCE_FAILED: 'VC_ISSUANCE_FAILED',
+  VC_REVOKED: 'VC_REVOKED',
+  VC_REVOCATION_FAILED: 'VC_REVOCATION_FAILED',
+  VC_RENEWED: 'VC_RENEWED',
+  VC_RENEWAL_FAILED: 'VC_RENEWAL_FAILED',
+  VC_STATUS_CHECKED: 'VC_STATUS_CHECKED',
+  STATUS_LIST_UPDATED: 'STATUS_LIST_UPDATED',
+  VC_DELEGATED: 'VC_DELEGATED',
+  DELEGATION_FAILED: 'DELEGATION_FAILED',
+
+  // B3 — VP
+  VP_TEMPLATE_ISSUED: 'VP_TEMPLATE_ISSUED',
+  VP_VERIFIED: 'VP_VERIFIED',
+  VP_REJECTED: 'VP_REJECTED',
+  CHAIN_VERIFIED: 'CHAIN_VERIFIED',
+  CHAIN_REJECTED: 'CHAIN_REJECTED',
+  JWT_ISSUED: 'JWT_ISSUED',
+  JWT_REJECTED: 'JWT_REJECTED',
+
+  // B4 — Agent & User
+  ENROLLMENT_TOKEN_GENERATED: 'ENROLLMENT_TOKEN_GENERATED',
+  ENROLLMENT_TOKEN_CONSUMED: 'ENROLLMENT_TOKEN_CONSUMED',
+  ENROLLMENT_TOKEN_REJECTED: 'ENROLLMENT_TOKEN_REJECTED',
+  CHALLENGE_ISSUED: 'CHALLENGE_ISSUED',
+  CHALLENGE_VERIFIED: 'CHALLENGE_VERIFIED',
+  CHALLENGE_REJECTED: 'CHALLENGE_REJECTED',
+  AGENT_ONBOARDED: 'AGENT_ONBOARDED',
+  USER_DID_VERIFIED: 'USER_DID_VERIFIED',
+
+  // B5 — Consent (SP-issued delegation grants)
+  CONSENT_GRANTED: 'CONSENT_GRANTED',
+  CONSENT_REVOKED: 'CONSENT_REVOKED',
+
+  // B6 — Agent activity trail.
+  //
+  // One guarded tool call produces up to four of these, because they are four
+  // separable facts and any one can be the thing that failed:
+  //   VC_PRESENTED   the agent handed a presentation to a service
+  //   VP_VERIFIED /  the cryptographic verdict (see B3)
+  //   VP_REJECTED
+  //   AUTHZ_*        the policy verdict — a VP can verify perfectly and still
+  //                  be denied for lacking the scope the tool requires
+  //   TOOL_INVOKED   the action actually performed, and its result
+  VC_PRESENTED: 'VC_PRESENTED',
+  AUTHZ_GRANTED: 'AUTHZ_GRANTED',
+  AUTHZ_DENIED: 'AUTHZ_DENIED',
+  TOOL_INVOKED: 'TOOL_INVOKED',
+
+  // Hosted accounts & auth (Item #1)
+  ACCOUNT_REGISTERED: 'ACCOUNT_REGISTERED',
+  ACCOUNT_LOGIN_SUCCEEDED: 'ACCOUNT_LOGIN_SUCCEEDED',
+  ACCOUNT_LOGIN_FAILED: 'ACCOUNT_LOGIN_FAILED',
+  ACCOUNT_GOOGLE_LINKED: 'ACCOUNT_GOOGLE_LINKED',
+  REFRESH_TOKEN_ROTATED: 'REFRESH_TOKEN_ROTATED',
+  REFRESH_TOKEN_REUSE_DETECTED: 'REFRESH_TOKEN_REUSE_DETECTED',
+  ACCOUNT_LOGOUT: 'ACCOUNT_LOGOUT',
+} as const;
+
+export type AuditEventType = (typeof AuditEvents)[keyof typeof AuditEvents];
+export type AuditEvent = {
+  event: AuditEventType;
+  timestamp: string;
+  requestId: string;
+  [key: string]: unknown;
+};

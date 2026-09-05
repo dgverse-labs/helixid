@@ -134,4 +134,58 @@ and every deviation from the constitution is recorded here.
 
 ---
 
+## 2026-09-03 — CLI stays JS-only; MCP middleware stays per-language
+
+**Decision:** The `helix` CLI has one canonical implementation in
+`helix-sdk-js` — `helix_cli` is removed from `helix-sdk-py`. The MCP
+middleware is unaffected and continues to exist in both languages, in the
+same bucket as `helix_langchain`/`helix_crewai`, and is renamed
+`@helixid/mcp` → `@helixid/mcp-middleware` / `helix_mcp` →
+`helix_mcp_middleware` to remove the ambiguity with a possible future
+standalone MCP server. See `decision-cli-mcp-scope.md` for full reasoning.
+
+**Reason:** The CLI is a standalone consumer tool (nobody imports it as a
+library), so a JS-vs-Python split is a false split. The MCP middleware
+package is a peer-dependency library other MCP servers/clients import to
+verify/attach Helix VPs — a real per-runtime implementation, not a
+duplicate, same as the LangChain/CrewAI adapters. A future standalone
+Helix-MCP-server (Helix's own ops exposed as MCP tools, the MCP analogue of
+the CLI) would fall under the CLI rule if it's ever built, but doesn't
+exist yet — the `mcp-middleware` rename makes clear it isn't that.
+
+**Alternatives considered:** Keep `helix_cli` in Python for parity with
+`helix_langchain`/`helix_crewai` — rejected, since the CLI isn't a
+framework adapter and has no capability gap to close by existing twice.
+Also remove the MCP middleware from Python — rejected, it's structurally a
+library like the other framework adapters, not a standalone tool. Leave it
+named `mcp` — rejected, that was the source of the original confusion
+between "middleware library" and "standalone server."
+
+**Approved by:** [founder]
+
+---
+
+## 2026-09-03 — Built `@helixid/mcp-server`, the standalone Helix MCP server
+
+**Decision:** Built the standalone Helix MCP server named in the CLI/MCP
+scope decision above — `@helixid/mcp-server`, a new `helix-sdk-js` package
+exposing the CLI's platform-operator workflows (`did_create`, `issuer_init`,
+`status_list_create`, `vc_issue`, `vc_self_issue`, `revoke`,
+`wallet_inspect`) as MCP tools over stdio. One canonical implementation,
+JS only, same rule as the CLI. See `decision-cli-mcp-scope.md`'s "Applied"
+section for the full breakdown, including a required prerequisite refactor
+of `@helixid/cli`'s internals from `process.exit` to throwing (so a bad MCP
+tool call can't kill the whole server process) and the removal of stale
+compiled files that had been committed directly under `cli/src/`.
+
+**Reason:** The user confirmed both the MCP-middleware library and the
+standalone MCP server are wanted, and that the server belongs on
+`helix-sdk-js` — the same placement already decided for the CLI, and for
+the same reason (a standalone tool, not a library, so no per-language
+split).
+
+**Approved by:** [founder]
+
+---
+
 _Add new entries above this line. Date format: YYYY-MM-DD. Never delete or modify existing entries._

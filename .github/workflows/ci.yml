@@ -28,6 +28,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # @helixid/core depends on @helixid/sdk-js and @helixid/did-hedera as
+      # pnpm git+path dependencies pointing at the (currently private)
+      # helix-sdk-js repo, e.g.:
+      #   "@helixid/sdk-js": "github:helixid/helix-sdk-js#path:helix-sdk-js"
+      # A plain `git clone` of a private repo needs auth that the default
+      # GITHUB_TOKEN does not grant across repos, so pnpm's install would
+      # fail here with a 404/auth error even though checkout of *this*
+      # repo succeeded. HELIXID_CROSS_REPO_TOKEN must be a PAT (classic,
+      # `repo` scope, or fine-grained with contents:read) belonging to a
+      # user/machine account with read access to helixid/helix-sdk-js,
+      # stored as a repo or org secret. If helix-sdk-js is made public,
+      # or once these packages are published to a registry, this step
+      # (and the secret) can be removed.
+      - name: Configure git for private cross-repo dependency
+        run: |
+          git config --global --add url."https://${{ secrets.HELIXID_CROSS_REPO_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          git config --global --add url."https://${{ secrets.HELIXID_CROSS_REPO_TOKEN }}@github.com/".insteadOf "git@github.com:"
+          git config --global --add url."https://${{ secrets.HELIXID_CROSS_REPO_TOKEN }}@github.com/".insteadOf "ssh://git@github.com/"
+
       - uses: pnpm/action-setup@v4
         with:
           version: 9.15.2
@@ -40,26 +59,21 @@ jobs:
       - name: Install dependencies
         run: corepack enable && pnpm install --frozen-lockfile
 
-      # @helixid/console is excluded for now: its type imports from @helixid/sdk-js
-      # (AuditFilters, EnrollmentTokenInput, VcFilters, etc.) don't match the names
-      # sdk-js actually exports, so its build always fails. Pre-existing mismatch,
-      # unrelated to this change — tracked as a follow-up, not papered over silently.
       - name: Build
-        run: pnpm exec turbo run build --filter=!@helixid/console
+        run: pnpm run workspace:build
 
       - name: Prepare test database
-        run: pnpm --filter @helixid/api db:test:prepare
+        run: pnpm run db:test:prepare
         env:
           DATABASE_URL: postgresql://helixid_test:helixid_test@localhost:5433/helixid_test
           NODE_ENV: test
 
-      # Runs the real test suites but skips coverage-threshold enforcement
-      # (`pnpm run test` chains a coverage check that has never actually run
-      # to completion in CI before now — Build/Test always failed first —
-      # and the underlying coverage gap predates this change). Also skips
-      # tests/live/** (helix-api), which need real Hedera network access.
+      # Runs the real test suites but skips coverage-threshold enforcement,
+      # and skips tests/live/** — run separately below, against all three
+      # storage/DID configurations, since they spin up the real server
+      # themselves rather than sharing this step's fixtures.
       - name: Test
-        run: pnpm run test:non-live
+        run: pnpm run workspace:test:non-live
         env:
           DATABASE_URL: postgresql://helixid_test:helixid_test@localhost:5433/helixid_test
           NODE_ENV: test
@@ -69,6 +83,42 @@ jobs:
           HEDERA_TOPIC_ID: ${{ secrets.HEDERA_TOPIC_ID }}
           HELIX_SIGNING_KEY: ${{ secrets.HELIX_SIGNING_KEY }}
           API_BASE_URL: http://localhost:3000
+          ENROLLMENT_TOKEN_TTL_SECONDS: 900
+          CHALLENGE_TTL_SECONDS: 300
+          VP_TTL_SECONDS: 300
+          AUDIT_LOG_DESTINATION: stdout
+
+      # Live/e2e tests (tests/live) spin up the real server and drive it
+      # over HTTP end to end. They mint agent/user DIDs as did:key or
+      # did:web (LIVE_DID_METHOD, default 'key') rather than did:hedera —
+      # see DIDService.createDID — so unlike the step above, no Hedera
+      # network access or secrets are needed at all.
+      - name: Live tests (Postgres)
+        run: pnpm run test:live
+        env:
+          DATABASE_URL: postgresql://helixid_test:helixid_test@localhost:5433/helixid_test
+          NODE_ENV: test
+          ENROLLMENT_TOKEN_TTL_SECONDS: 900
+          CHALLENGE_TTL_SECONDS: 300
+          VP_TTL_SECONDS: 300
+          AUDIT_LOG_DESTINATION: stdout
+
+      - name: Live tests (SQLite)
+        run: pnpm run test:live
+        env:
+          LIVE_STORAGE_ADAPTER: sqlite
+          NODE_ENV: test
+          ENROLLMENT_TOKEN_TTL_SECONDS: 900
+          CHALLENGE_TTL_SECONDS: 300
+          VP_TTL_SECONDS: 300
+          AUDIT_LOG_DESTINATION: stdout
+
+      - name: Live tests (did:web)
+        run: pnpm run test:live
+        env:
+          LIVE_STORAGE_ADAPTER: sqlite
+          LIVE_DID_METHOD: web
+          NODE_ENV: test
           ENROLLMENT_TOKEN_TTL_SECONDS: 900
           CHALLENGE_TTL_SECONDS: 300
           VP_TTL_SECONDS: 300

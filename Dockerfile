@@ -1,52 +1,53 @@
-FROM node:24-alpine AS builder
+# helixid production image — self-hosted HelixID server. Fully standalone:
+# `docker build .` from this repo alone, no sibling-repo checkout needed.
+#
+# @helixid/did-hedera is declared as a pnpm git dependency
+# (github:helixid/helix-sdk-js#path:did-hedera, see pnpm-workspace.yaml's
+# allowBuilds), but that repo is currently *private* -- a plain `docker
+# build` has no git credentials for it. Pass one via the
+# HELIXID_CROSS_REPO_TOKEN build secret (same PAT used by CI, see
+# .github/workflows/ci.yml):
+#
+#   docker build --secret id=cross_repo_token,env=HELIXID_CROSS_REPO_TOKEN -t helixid .
+#
+# Once helix-sdk-js is public, or these packages are published to a
+# registry, the --mount=type=secret step below can be dropped.
+
+FROM node:24.15.0-alpine AS builder
 
 WORKDIR /app
+RUN corepack enable
+# better-sqlite3 has a native (node-gyp) build step.
+RUN apk add --no-cache python3 make g++ git
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-
-COPY helix-api/package.json ./helix-api/
-COPY helix-core/package.json ./helix-core/
-COPY helix-sdk-js/package.json ./helix-sdk-js/
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY e2e/package.json ./e2e/
-COPY examples/package.json ./examples/
-COPY examples/framework-middleware/package.json ./examples/framework-middleware/
-COPY packages/cli/package.json ./packages/cli/
-COPY packages/did-hedera/package.json ./packages/did-hedera/
-COPY packages/langchain/package.json ./packages/langchain/
-COPY packages/mcp/package.json ./packages/mcp/
 
-RUN corepack enable && pnpm install --frozen-lockfile
+RUN --mount=type=secret,id=cross_repo_token \
+    --mount=type=cache,target=/root/.local/share/pnpm/store \
+    sh -c '\
+      if [ -f /run/secrets/cross_repo_token ]; then \
+        TOKEN=$(cat /run/secrets/cross_repo_token); \
+        git config --global --add url."https://${TOKEN}@github.com/".insteadOf "https://github.com/"; \
+      fi; \
+      pnpm install --frozen-lockfile \
+    '
 
-COPY tsconfig.base.json ./
+COPY src src
+COPY tests tests
+COPY prisma prisma
+COPY tsconfig.json tsconfig.build.json vitest.config.ts prisma.config.ts ./
 
-COPY helix-core ./helix-core
-COPY helix-sdk-js ./helix-sdk-js
-COPY packages/did-hedera ./packages/did-hedera
+RUN pnpm run build
 
-RUN pnpm --filter @helixid/core build
-RUN pnpm --filter @helixid/did-hedera build
-RUN pnpm --filter @helixid/sdk-js build
-
-COPY helix-api ./helix-api
-
-RUN pnpm --filter @helixid/api build
-
-# Create a self-contained deployment with all production deps resolved (no workspace symlinks)
-RUN pnpm --filter @helixid/api deploy --prod /app/deploy
-
-# `pnpm deploy` re-resolves dependencies from the store rather than copying node_modules,
-# so it drops the .prisma/client output that `prisma generate` wrote during the build step
-# above. Regenerate it directly into the deploy output using the still-present dev CLI
-# (helix-api/node_modules is discarded when only /app/deploy is copied into the runner stage).
-RUN cd /app/deploy && /app/helix-api/node_modules/.bin/prisma generate
-
-
-FROM node:24-alpine AS runner
+FROM node:24.15.0-alpine AS runner
 
 WORKDIR /app
-
-COPY --from=builder /app/deploy ./helix-api
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/prisma ./prisma
 
 EXPOSE 3000
 
-CMD ["node", "helix-api/dist/server.js"]
+CMD ["node", "dist/server.js"]

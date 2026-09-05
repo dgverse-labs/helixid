@@ -1,24 +1,18 @@
-# Dependencies
 node_modules/
 .pnpm-store/
-
-# Build output
 dist/
-build/
 coverage/
-prisma/generated/
-
-# Runtime and cache
-.turbo/
-tmp/
-*.log
-
-# Local environment files
+data/
 .env
 .env.local
 .env.production
 .env.test
 *.env
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+wallet.enc
 
 # OS and editor files
 .DS_Store

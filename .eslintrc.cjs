@@ -22,7 +22,7 @@ module.exports = {
       'error',
       {
         selector: "CallExpression[callee.object.name='process'][callee.property.name='env']",
-        message: 'Do not access process.env directly. Use the config module from helix-core.',
+        message: 'Do not access process.env directly. Use the config module from src/core/config.',
       },
     ],
   },
@@ -30,18 +30,6 @@ module.exports = {
     {
       files: ['*.ts', 'e2e/**/*.ts'],
       parserOptions: { project: ['./tsconfig.json'] },
-    },
-    {
-      files: ['helix-core/**/*.ts'],
-      parserOptions: { project: ['./helix-core/tsconfig.json'] },
-    },
-    {
-      files: ['helix-api/**/*.ts'],
-      parserOptions: { project: ['./helix-api/tsconfig.json'] },
-    },
-    {
-      files: ['helix-sdk-js/**/*.ts'],
-      parserOptions: { project: ['./helix-sdk-js/tsconfig.json'] },
     },
     {
       files: ['**/tests/**/*.ts', '**/*.test.ts', 'vitest.config.ts'],

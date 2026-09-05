@@ -1,0 +1,648 @@
+openapi: "3.1.0"
+info:
+  title: Helix ID
+  version: "0.1.0"
+  description: Helix ID agent identity and trust infrastructure API.
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: API health
+  /.well-known/did.json:
+    get:
+      summary: Get hosted did:web issuer DID document
+      responses:
+        "200":
+          description: Issuer DID document
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+  /v1/dids:
+    post:
+      summary: Create a DID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDIDRequest"
+      responses:
+        "201":
+          description: DID created
+  /v1/dids/{did}:
+    get:
+      summary: Resolve a DID
+      parameters:
+        - in: path
+          name: did
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: live
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: DID resolved
+  /v1/dids/{did}/services:
+    post:
+      summary: Add a DID service endpoint
+      parameters:
+        - in: path
+          name: did
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: DID updated
+  /v1/dids/{did}/services/{endpointId}:
+    delete:
+      summary: Remove a DID service endpoint
+      parameters:
+        - in: path
+          name: did
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: endpointId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: DID updated
+  /v1/dids/{did}/deactivate:
+    post:
+      summary: Deactivate a DID
+      parameters:
+        - in: path
+          name: did
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: DID deactivated
+  /v1/vcs:
+    get:
+      summary: List VC summaries
+      description: Admin-only issuer operation. Requires x-admin-api-key.
+      parameters:
+        - in: query
+          name: subjectDid
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [active, revoked, expired]
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 500
+        - in: header
+          name: x-admin-api-key
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: VC summaries
+        "403":
+          description: Admin authorization required
+    post:
+      summary: Issue a VC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueVCRequest"
+      responses:
+        "201":
+          description: VC issued
+  /v1/vcs/{vcId}:
+    get:
+      summary: Get VC details
+      parameters:
+        - in: path
+          name: vcId
+          required: true
+          schema:
+            type: string
+            pattern: "^vc:helix:[a-zA-Z0-9]+$"
+      responses:
+        "200":
+          description: VC details
+  /v1/vcs/{vcId}/revoke:
+    post:
+      summary: Revoke a VC
+      description: Admin-only issuer operation. Requires x-admin-api-key.
+      parameters:
+        - in: path
+          name: vcId
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-admin-api-key
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: VC revoked
+        "403":
+          description: Admin authorization required
+  /v1/vcs/{vcId}/renew:
+    post:
+      summary: Renew a VC
+      parameters:
+        - in: path
+          name: vcId
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: VC renewed
+  /v1/vcs/delegation/prepare:
+    post:
+      summary: Prepare an unsigned delegation VC payload
+      description: >
+        See docs/proposal-sdk-api-only.md. Builds the delegation VC skeleton
+        and its canonical hash server-side; the caller signs the hash locally
+        with the delegator's own private key (never sent to the API) and
+        submits the signature to /v1/vcs/delegation/finalize. The returned
+        token expires after 5 minutes and is single-use.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrepareDelegationRequest"
+      responses:
+        "201":
+          description: Unsigned delegation payload and hash to sign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrepareResponse"
+        "400":
+          description: Scope escalation or delegation depth exceeded
+  /v1/vcs/delegation/finalize:
+    post:
+      summary: Finalize a prepared delegation VC with the caller's signature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinalizeRequest"
+      responses:
+        "200":
+          description: Fully signed delegation VC
+        "400":
+          description: Signature invalid, or verificationMethod does not match the prepared signer
+        "404":
+          description: Prepared payload not found
+        "409":
+          description: Prepared payload already consumed, or wrong purpose for this endpoint
+        "410":
+          description: Prepared payload expired
+  /v1/vcs/grant/prepare:
+    post:
+      summary: Prepare an unsigned consent grant VC payload
+      description: >
+        Same pattern as delegation/prepare, for the Service Provider's own
+        consent grant VC (see helix-core/src/grant.ts issueGrant()). The SP
+        continues to own status list storage — this endpoint only builds the
+        unsigned payload and claims a status list index.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrepareGrantRequest"
+      responses:
+        "201":
+          description: Unsigned grant payload and hash to sign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrepareResponse"
+  /v1/vcs/grant/finalize:
+    post:
+      summary: Finalize a prepared consent grant VC with the caller's signature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinalizeRequest"
+      responses:
+        "200":
+          description: Fully signed grant VC
+        "400":
+          description: Signature invalid, or verificationMethod does not match the prepared signer
+        "404":
+          description: Prepared payload not found
+        "409":
+          description: Prepared payload already consumed, or wrong purpose for this endpoint
+        "410":
+          description: Prepared payload expired
+  /v1/vcs/agent-renewal/prepare:
+    post:
+      summary: Prepare an unsigned renewed agent VC payload
+      description: >
+        Renewal is issuance repeated on a timer: signed by whoever signed
+        currentVC, same subject, optionally-narrower scopes, fresh validity
+        window. Enforces standard renewal hygiene before returning a payload
+        to sign: currentVC must not be revoked, requested scopes must not
+        exceed currentVC's scopes, the request must fall inside the renewal
+        window (opens at 80% of currentVC's validity elapsed, closes 24h
+        after currentVC.validUntil), and currentVC must not have already hit
+        the maximum renewal count — outside any of these, a fresh issuance
+        is required instead of renewal.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrepareAgentRenewalRequest"
+      responses:
+        "201":
+          description: Unsigned renewed VC payload and hash to sign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrepareResponse"
+        "400":
+          description: >
+            Revoked, scope escalation, renewal window not yet open or
+            expired, renewal count exceeded, or missing credentialStatus
+  /v1/vcs/agent-renewal/finalize:
+    post:
+      summary: Finalize a prepared agent VC renewal with the caller's signature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinalizeRequest"
+      responses:
+        "200":
+          description: Fully signed renewed VC
+        "400":
+          description: Signature invalid, or verificationMethod does not match the prepared signer
+        "404":
+          description: Prepared payload not found
+        "409":
+          description: Prepared payload already consumed, or wrong purpose for this endpoint
+        "410":
+          description: Prepared payload expired
+  /v1/status-list/{listId}:
+    get:
+      summary: Get StatusList2021 credential
+      parameters:
+        - in: path
+          name: listId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Status list credential
+  /v1/status-list:
+    post:
+      summary: Create or replace the default StatusList2021 credential
+      parameters:
+        - in: header
+          name: x-admin-api-key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                listId:
+                  type: string
+                length:
+                  type: integer
+                  minimum: 1
+      responses:
+        "201":
+          description: Status list credential created
+        "403":
+          description: Admin authorization required
+  /v1/vp/verify:
+    post:
+      summary: Verify signed VP only for JWT session bridge flow
+      responses:
+        "200":
+          description: VP verified and JWT session issued
+        "410":
+          description: SDK-only VP verification must use verifyVP() from @helixid/sdk-js
+  /v1/sessions/public-key:
+    get:
+      summary: Get JWT session verification public key
+      responses:
+        "200":
+          description: JWT session public key
+  /v1/enrollment-tokens:
+    post:
+      summary: Generate enrollment token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollmentTokenRequest"
+      responses:
+        "201":
+          description: Enrollment token generated
+  /v1/onboard:
+    post:
+      summary: Agent onboarding step 1
+      responses:
+        "200":
+          description: Challenge issued
+  /v1/onboard/verify:
+    post:
+      summary: Agent onboarding step 2
+      responses:
+        "201":
+          description: Agent onboarded
+  /v1/challenges:
+    post:
+      summary: Issue user verification challenge
+      responses:
+        "201":
+          description: Challenge issued
+  /v1/challenges/{challengeId}/verify:
+    post:
+      summary: Verify user challenge
+      responses:
+        "200":
+          description: Challenge verified
+  /v1/audit-log:
+    get:
+      summary: List audit events
+      description: Admin-only audit operation. Requires x-admin-api-key.
+      parameters:
+        - in: query
+          name: eventType
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: since
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 500
+        - in: header
+          name: x-admin-api-key
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audit event summaries
+        "403":
+          description: Admin authorization required
+  /v1/audit-log/vp-verification:
+    post:
+      summary: Record VP verification audit entry
+      description: Admin-only audit operation for API-backed VP verification outcomes. Requires x-admin-api-key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vpId, agentDid, result]
+              properties:
+                vpId:
+                  type: string
+                agentDid:
+                  type: string
+                subjectDid:
+                  type: string
+                targetService:
+                  type: string
+                result:
+                  type: string
+                  enum: [success, rejected]
+                reason:
+                  type: string
+                delegationChain:
+                  type: array
+                  items:
+                    type: object
+                verifiedAt:
+                  type: string
+                  format: date-time
+                source:
+                  type: string
+                  enum: [sdk]
+      parameters:
+        - in: header
+          name: x-admin-api-key
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Audit entry recorded
+        "403":
+          description: Admin authorization required
+components:
+  schemas:
+    CreateDIDRequest:
+      type: object
+      required: [publicKeyHex, subjectType]
+      properties:
+        publicKeyHex:
+          type: string
+        subjectType:
+          type: string
+          enum: [agent, user]
+        domains:
+          type: array
+          items:
+            type: string
+    IssueVCRequest:
+      type: object
+      required: [subjectDid, subjectType, expiresInSeconds]
+      properties:
+        subjectDid:
+          type: string
+        subjectType:
+          type: string
+          enum: [agent, user]
+        privilegeScopes:
+          type: array
+          items:
+            type: string
+        agentName:
+          type: string
+        userId:
+          type: string
+        expiresInSeconds:
+          type: integer
+          minimum: 3600
+          maximum: 31536000
+    EnrollmentTokenRequest:
+      type: object
+      required: [agentName, requestedScopes]
+      properties:
+        agentName:
+          type: string
+        requestedScopes:
+          type: array
+          items:
+            type: string
+        requestedDomains:
+          type: array
+          items:
+            type: string
+        maxDelegationDepth:
+          type: integer
+          minimum: 0
+          maximum: 5
+          default: 0
+    PrepareDelegationRequest:
+      type: object
+      required: [delegatorDid, fromVC, to, scopes, expiresIn]
+      properties:
+        delegatorDid:
+          type: string
+          description: DID of the delegator; becomes the new VC's issuer.
+        fromVC:
+          type: object
+          description: The delegator's own currently-held signed agent-authority VC.
+        to:
+          type: string
+          description: DID of the agent being delegated to.
+        scopes:
+          type: array
+          items:
+            type: string
+        expiresIn:
+          type: integer
+          description: Validity window of the new delegation VC, in seconds.
+    PrepareGrantRequest:
+      type: object
+      required:
+        - issuerDid
+        - agentDid
+        - userDid
+        - scopes
+        - durability
+        - statusList
+        - statusListCredentialUrl
+      properties:
+        issuerDid:
+          type: string
+          description: SP's own issuer DID; becomes the grant VC's issuer.
+        agentDid:
+          type: string
+        userDid:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        durability:
+          type: string
+          enum: [standing, session]
+        serviceDid:
+          type: string
+        statusList:
+          type: object
+          description: Current status list credential, unmodified. Caller owns storage.
+        statusListCredentialUrl:
+          type: string
+    PrepareResponse:
+      type: object
+      required: [token, unsignedPayload, canonicalHash, expiresAt]
+      properties:
+        token:
+          type: string
+          description: Single-use, 5-minute-TTL token to submit to the matching finalize endpoint.
+        unsignedPayload:
+          type: object
+          description: The VC skeleton, without a `proof` field.
+        canonicalHash:
+          type: string
+          description: Hex SHA-256 of the canonical JSON of unsignedPayload. Sign this locally.
+        expiresAt:
+          type: string
+          format: date-time
+    FinalizeRequest:
+      type: object
+      required: [token, verificationMethod, signatureHex]
+      properties:
+        token:
+          type: string
+        verificationMethod:
+          type: string
+          description: "Format: `${did}#fragment`. The DID must match who the payload was prepared for."
+        signatureHex:
+          type: string
+          description: Hex-encoded raw Ed25519 signature over the canonicalHash bytes from prepare().
+        proofCreatedAt:
+          type: string
+          format: date-time
+          description: Optional; defaults to now if omitted.
+    PrepareAgentRenewalRequest:
+      type: object
+      required: [currentVC, statusList, statusListCredentialUrl, expiresIn]
+      properties:
+        currentVC:
+          type: object
+          description: >
+            The agent's current signed VC, including its credentialStatus
+            entry. Renewal is signed by whoever signed this VC (its issuer).
+        statusList:
+          type: object
+          description: >
+            Status list credential currentVC's credentialStatus entry lives
+            on, unmodified. Caller owns storage.
+        statusListCredentialUrl:
+          type: string
+        expiresIn:
+          type: integer
+          description: Validity window of the renewed VC, in seconds.
+        scopes:
+          type: array
+          items:
+            type: string
+          description: Optional narrower scope set. Must be a subset of currentVC's scopes.

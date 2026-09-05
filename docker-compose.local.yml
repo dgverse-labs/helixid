@@ -1,0 +1,63 @@
+# Minimal local stack: just helix-api + the Console, no demo apps.
+#
+#   docker compose -f docker-compose.local.yml up --build
+#
+# Then open:
+#   API:     http://localhost:3000
+#   Console: http://localhost:8080   (login admin / admin)
+#
+# Reset (fresh DB): docker compose -f docker-compose.local.yml down -v
+#
+# Assumes helix-console is checked out as a sibling directory next to this
+# repo (../helix-console) -- same layout used for helix-sdk-js elsewhere in
+# this workspace.
+name: helixid-local
+
+services:
+  helix-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: "3000"
+      HELIX_STORAGE_ADAPTER: sqlite
+      HELIX_SQLITE_PATH: /app/data/helixid.sqlite
+      API_BASE_URL: http://localhost:3000
+      DID_METHOD: key
+      HELIX_ISSUER_DID: did:key:z6MkgHKqmKyCQroyo3RVx3gM1LXwUNwzZkynmsqwhYNqNjdn
+      HELIX_SIGNING_KEY: 11deb8f4b8f2e1c0a9d7c6b5a4938271605f4e3d2c1b0a998877665544332211
+      HELIX_ADMIN_API_KEY: ${HELIX_ADMIN_API_KEY:-dev-admin-key-change-in-production}
+      AUDIT_LOG_DESTINATION: both
+    volumes:
+      - helix_data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  console:
+    build:
+      context: ../helix-console
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    environment:
+      # Host-reachable URL -- the browser calls this directly, not via the
+      # Docker network.
+      API_BASE_URL: http://localhost:3000
+      ADMIN_API_KEY: ${HELIX_ADMIN_API_KEY:-dev-admin-key-change-in-production}
+      CONSOLE_USERNAME: admin
+      CONSOLE_PASSWORD: admin
+    depends_on:
+      helix-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  helix_data:

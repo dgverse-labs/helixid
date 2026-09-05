@@ -1,8 +1,0 @@
-node_modules
-dist
-coverage
-scratch
-scratch/**
-scratch_*.ts
-scratch_*.js
-prisma/seed.ts
