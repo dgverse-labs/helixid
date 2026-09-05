@@ -1,5 +1,8 @@
-// Prisma v7 schema
-// See constitution §11 for core table list.
+// Vendored verbatim from @helixid/core's prisma/schema.prisma. Prisma has
+// no cross-package schema composition today, so this file has to be
+// physically copied rather than imported — re-copy it whenever the pinned
+// @helixid/core version bumps; never hand-edit a model here, any change
+// belongs upstream in helix-core, not here.
 
 generator client {
   provider = "prisma-client-js"

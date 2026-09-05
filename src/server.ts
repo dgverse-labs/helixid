@@ -1,5 +1,13 @@
 // Copyright 2026 DgVerse LLP
 // Licensed under the Apache License, Version 2.0
+//
+// The self-hosted HelixID server. Every route/service/repository is
+// imported from @helixid/core — this file is only the composition root:
+// wire config -> storage -> services -> routes, register the single
+// admin-key auth gate, listen. No hosted-account/multi-tenant code exists
+// here at all (contrast with the closed-source enterprise server, which
+// imports this exact same @helixid/core and layers accounts/quotas on top
+// rather than forking it).
 import './loadEnv.js';
 import crypto from 'node:crypto';
 import { dirname, isAbsolute, resolve } from 'node:path';
@@ -15,36 +23,36 @@ import {
   generateKeyPair,
   loadConfigFromEnv,
   resolveDidMethod,
+  errorHandler,
+  ApiAuditLogger,
+  createHederaClient,
+  createDidCache,
+  createStatusListCache,
+  extractEd25519PublicKeyHexFromDIDDocument,
+  DidRepository,
+  VcRepository,
+  AuditLogRepository,
+  AgentRepository,
+  ServiceRegistryRepository,
+  PreparedPayloadRepository,
+  DIDService,
+  VCService,
+  VPService,
+  AgentService,
+  PreparedPayloadService,
+  SqliteStore,
+  didRoutes,
+  didWebRoutes,
+  vcRoutes,
+  statusListRoutes,
+  vpRoutes,
+  agentRoutes,
+  auditLogRoutes,
+  sessionRoutes,
+  preparedPayloadRoutes,
   type DIDDocument,
-} from './core/index.js';
-
-import { errorHandler } from './middleware/errorHandler.js';
-import { ApiAuditLogger } from './audit/index.js';
-import { createHederaClient } from './hedera/createHederaClient.js';
-import { DidRepository } from './repositories/did.repository.js';
-import { VcRepository } from './repositories/vc.repository.js';
-import { AuditLogRepository } from './repositories/audit-log.repository.js';
-import { AgentRepository } from './repositories/agent.repository.js';
-import { ServiceRegistryRepository } from './repositories/service-registry.repository.js';
-import { PreparedPayloadRepository } from './repositories/prepared-payload.repository.js';
-import { createDidCache, createStatusListCache } from './cache/cacheFactory.js';
-import { extractEd25519PublicKeyHexFromDIDDocument } from './services/did/publicKey.js';
-import { DIDService } from './services/did/did.service.js';
-import { VCService } from './services/vc/vc.service.js';
-import { VPService } from './services/vp/vp.service.js';
-import { AgentService } from './services/agent/agent.service.js';
-import { PreparedPayloadService } from './services/prepared-payload/index.js';
-import didRoutes from './routes/did/index.js';
-import didWebRoutes from './routes/did-web/index.js';
-import vcRoutes from './routes/vc/index.js';
-import statusListRoutes from './routes/status-list/index.js';
-import vpRoutes from './routes/vp/index.js';
-import agentRoutes from './routes/agent/index.js';
-import auditLogRoutes from './routes/audit-log/index.js';
-import sessionRoutes from './routes/sessions/index.js';
-import preparedPayloadRoutes from './routes/prepared-payload/index.js';
-import type { RedisLike } from './cache/RedisCache.js';
-import { SqliteStore } from './storage/sqlite.js';
+  type RedisLike,
+} from '@helixid/core';
 
 const config = loadConfigFromEnv();
 const storageAdapter =
@@ -162,11 +170,6 @@ app.get('/health', async () => ({
   storageAdapter,
   database: usingPostgres ? databaseName : usingSqlite ? sqlitePath : 'disabled',
   cacheAdapter,
-  // didMethod/issuerDid: exposed so test harnesses (see
-  // tests/utils/liveApi.ts) can read back the actual resolved issuer DID
-  // instead of duplicating loadConfig()'s did:key/did:web auto-derivation
-  // logic — the issuer DID isn't always known in advance (e.g. did:web's
-  // domain includes a dynamically-chosen port in tests).
   didMethod,
   issuerDid: config.HELIX_ISSUER_DID,
 }));
