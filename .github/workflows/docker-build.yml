@@ -1,4 +1,5 @@
-name: Docker Build
+name: Docker Build & Push
+run-name: ${{ github.ref == 'refs/heads/main' && 'Build + push to Docker Hub' || 'Build check only (no push)' }}
 
 on:
   push:
