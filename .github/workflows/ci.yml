@@ -28,25 +28,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # @helixid/core depends on @helixid/sdk-js and @helixid/did-hedera as
-      # pnpm git+path dependencies pointing at the (currently private)
-      # helix-sdk-js repo, e.g.:
-      #   "@helixid/sdk-js": "github:helixid/helix-sdk-js#path:helix-sdk-js"
-      # A plain `git clone` of a private repo needs auth that the default
-      # GITHUB_TOKEN does not grant across repos, so pnpm's install would
-      # fail here with a 404/auth error even though checkout of *this*
-      # repo succeeded. HELIXID_CROSS_REPO_TOKEN must be a PAT (classic,
-      # `repo` scope, or fine-grained with contents:read) belonging to a
-      # user/machine account with read access to helixid/helix-sdk-js,
-      # stored as a repo or org secret. If helix-sdk-js is made public,
-      # or once these packages are published to a registry, this step
-      # (and the secret) can be removed.
-      - name: Configure git for private cross-repo dependency
-        run: |
-          git config --global --add url."https://${{ secrets.HELIXID_CROSS_REPO_TOKEN }}@github.com/".insteadOf "https://github.com/"
-          git config --global --add url."https://${{ secrets.HELIXID_CROSS_REPO_TOKEN }}@github.com/".insteadOf "git@github.com:"
-          git config --global --add url."https://${{ secrets.HELIXID_CROSS_REPO_TOKEN }}@github.com/".insteadOf "ssh://git@github.com/"
-
       - uses: pnpm/action-setup@v4
         with:
           version: 9.15.2

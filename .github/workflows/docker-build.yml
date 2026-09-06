@@ -29,12 +29,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # @helixid/sdk-js and @helixid/did-hedera are pnpm git dependencies
-      # pointing at the currently-private helix-sdk-js repo (see the
-      # Dockerfile header). The build needs read access to it regardless
-      # of whether this run also pushes, so this secret is passed on
-      # every build, PR included — same HELIXID_CROSS_REPO_TOKEN used by
-      # ci.yml, mounted under the id the Dockerfile already expects.
       - name: Build image
         uses: docker/build-push-action@v6
         with:
@@ -44,7 +38,5 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME }}:latest
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          secrets: |
-            cross_repo_token=${{ secrets.HELIXID_CROSS_REPO_TOKEN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
