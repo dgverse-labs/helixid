@@ -21,11 +21,21 @@
     "db:reset": "prisma migrate reset --force",
     "test:e2e": "pnpm --filter @helixid/e2e run test",
     "workspace:build": "pnpm run build && pnpm -r --if-present run build",
-    "workspace:typecheck": "pnpm run typecheck && pnpm -r --if-present run typecheck",
-    "workspace:test:non-live": "pnpm run test:non-live && pnpm -r --if-present run test:non-live",
+    "workspace:typecheck": "pnpm run typecheck && pnpm --filter '!@helixid/example-e2e-consent-demo' -r --if-present run typecheck",
+    "workspace:test:non-live": "pnpm run test:non-live && pnpm --filter '!@helixid/example-e2e-consent-demo' -r --if-present run test:non-live",
     "format": "prettier --write \"**/*.{ts,json,md}\" --ignore-path .gitignore",
     "setup": "tsx scripts/setup.ts",
-    "setup:hedera": "tsx scripts/setup-hedera.ts"
+    "setup:hedera": "tsx scripts/setup-hedera.ts",
+    "example:verify-vp": "tsx examples/verify-vp.ts",
+    "example:verify-vp:sdk": "tsx examples/verify-vp-sdk.ts",
+    "example:verify-vp:session-bridge": "tsx examples/verify-vp-session-bridge.ts",
+    "example:scope-check": "tsx examples/scope-check.ts",
+    "example:self-verify": "tsx examples/self-verify.ts",
+    "example:revocation-check": "tsx examples/revocation-check.ts",
+    "example:verifier:vp-cache": "tsx examples/verifier-vp-cache-cycle.ts",
+    "example:middleware:setup": "pnpm --filter @helixid/example-framework-middleware run setup",
+    "example:middleware:langchain": "pnpm --filter @helixid/example-framework-middleware run langchain",
+    "example:middleware:mcp": "pnpm --filter @helixid/example-framework-middleware run mcp"
   },
   "dependencies": {
     "@fastify/sensible": "^6.0.0",
@@ -51,7 +61,8 @@
   "pnpm": {
     "overrides": {
       "fast-uri": "3.1.2",
-      "protobufjs": "8.0.2"
+      "protobufjs": "8.0.2",
+      "@helixid/mcp-middleware>@helixid/sdk-js": "file:../helix-sdk-js/helix-sdk-js"
     }
   },
   "devDependencies": {

@@ -1,0 +1,23 @@
+{
+  "name": "@helixid/example-framework-middleware",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "tsx setup-live.ts",
+    "langchain": "tsx langchain.ts",
+    "mcp": "tsx mcp.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@helixid/langchain": "^0.1.0",
+    "@helixid/mcp": "^0.1.0",
+    "@helixid/sdk-js": "^0.1.1",
+    "dotenv": "^17.4.2",
+    "tsx": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  }
+}

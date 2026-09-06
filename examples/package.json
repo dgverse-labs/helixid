@@ -1,0 +1,7 @@
+{
+  "name": "@helixid/examples",
+  "private": true,
+  "dependencies": {
+    "@helixid/sdk-js": "github:helixid/helix-sdk-js#path:helix-sdk-js"
+  }
+}

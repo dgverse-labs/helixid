@@ -1,0 +1,166 @@
+# examples/e2e-travel-concierge — one command, one happy path.
+#
+#   cp .env.example .env      # then put your LLM_API_KEY in it
+#   docker compose up --build
+#
+# Then open:
+#   Web (agent chat): http://localhost:8090
+#   Console (audit):  http://localhost:8080   (login admin / admin)
+#
+# Reset everything (fresh wallet + DB):  docker compose down -v
+#
+# Startup order is enforced with healthchecks + depends_on:
+#   helix-api → (console, helixid-setup) → mcp-server → agent → web
+name: helixid-travel-concierge
+
+# Shared build for the three Node services (they differ only by command).
+x-node-service: &node-service
+  build:
+    # TODO(helixid/helix-sdk-js visibility): once helix-sdk-js is public,
+    # this can go back to a normal same-repo pnpm dependency instead of the
+    # sibling-repo vendoring in node.Dockerfile -- see its header comment.
+    context: ../../..
+    dockerfile: helix-server/examples/e2e-travel-concierge/docker/node.Dockerfile
+  restart: unless-stopped
+
+services:
+  # ── HelixID API ──────────────────────────────────────────────────────────
+  # DID_METHOD=key so the issuer DID resolves locally inside every container
+  # (no did:web cross-container fetch). API_BASE_URL is the internal DNS name so
+  # the status-list URL baked into issued VCs is reachable from mcp-server.
+  helix-api:
+    build:
+      context: ../../..
+      dockerfile: helix-server/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: "3000"
+      HELIX_STORAGE_ADAPTER: sqlite
+      HELIX_SQLITE_PATH: /app/data/helixid.sqlite
+      API_BASE_URL: http://helix-api:3000
+      DID_METHOD: key
+      HELIX_ISSUER_DID: did:key:z6MkgHKqmKyCQroyo3RVx3gM1LXwUNwzZkynmsqwhYNqNjdn
+      HELIX_SIGNING_KEY: 11deb8f4b8f2e1c0a9d7c6b5a4938271605f4e3d2c1b0a998877665544332211
+      HELIX_ADMIN_API_KEY: ${HELIX_ADMIN_API_KEY:-dev-admin-key-change-in-production}
+      AUDIT_LOG_DESTINATION: both
+    volumes:
+      - helix_data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  # ── Console (audit UI) ───────────────────────────────────────────────────
+  # The repo's Console build, but with this example's nginx conf baked in (it
+  # proxies /v1 to helix-api so the browser reads the audit log same-origin —
+  # the demo API ships no CORS). Baked in rather than bind-mounted so it works
+  # regardless of the host's Docker Desktop file-sharing settings.
+  console:
+    build:
+      context: ../../..
+      dockerfile: helix-server/examples/e2e-travel-concierge/docker/console.Dockerfile
+    ports:
+      - "8080:80"
+    environment:
+      API_BASE_URL: http://localhost:8080
+      ADMIN_API_KEY: ${HELIX_ADMIN_API_KEY:-dev-admin-key-change-in-production}
+      CONSOLE_USERNAME: admin
+      CONSOLE_PASSWORD: admin
+    depends_on:
+      helix-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Seeder (run once, then exits 0) ──────────────────────────────────────
+  helixid-setup:
+    <<: *node-service
+    restart: "no"
+    command: ["pnpm", "run", "setup"]
+    environment:
+      HELIX_API_URL: http://helix-api:3000
+      HELIX_ADMIN_API_KEY: ${HELIX_ADMIN_API_KEY:-dev-admin-key-change-in-production}
+      WALLETS_DIR: /wallets
+      WALLET_PASSPHRASE: ${WALLET_PASSPHRASE:-demo-passphrase}
+    volumes:
+      - wallets:/wallets
+    depends_on:
+      helix-api:
+        condition: service_healthy
+
+  # ── MCP server (guards book_flight with @helixid/mcp) ────────────────────
+  mcp-server:
+    <<: *node-service
+    command: ["pnpm", "run", "mcp"]
+    ports:
+      - "7100:7100"
+    environment:
+      HELIX_API_URL: http://helix-api:3000
+      MCP_PORT: "7100"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7100/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    depends_on:
+      helix-api:
+        condition: service_healthy
+      helixid-setup:
+        condition: service_completed_successfully
+
+  # ── Agent (LLM + MCP client) ─────────────────────────────────────────────
+  agent:
+    <<: *node-service
+    command: ["pnpm", "run", "agent"]
+    ports:
+      - "4000:4000"
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+      LLM_API_KEY: ${LLM_API_KEY:?Set LLM_API_KEY in .env (Anthropic, OpenAI, or Azure key)}
+      # Only used when LLM_PROVIDER=azure:
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-10-21}
+      HELIX_API_URL: http://helix-api:3000
+      # The agent guards its /admin/onboard route with this key and uses it as
+      # the operator credential; enrollment tokens are minted server-side.
+      HELIX_ADMIN_API_KEY: ${HELIX_ADMIN_API_KEY:-dev-admin-key-change-in-production}
+      MCP_SERVER_URL: http://mcp-server:7100/mcp
+      AGENT_PORT: "4000"
+      WALLETS_DIR: /wallets
+      WALLET_PASSPHRASE: ${WALLET_PASSPHRASE:-demo-passphrase}
+    volumes:
+      - wallets:/wallets
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+      helixid-setup:
+        condition: service_completed_successfully
+
+  # ── Web chat UI ──────────────────────────────────────────────────────────
+  web:
+    build:
+      context: ./web
+    ports:
+      - "8090:80"
+    environment:
+      AGENT_UPSTREAM: agent:4000
+    depends_on:
+      agent:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  helix_data:
+  wallets:

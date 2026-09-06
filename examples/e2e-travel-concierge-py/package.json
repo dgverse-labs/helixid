@@ -1,0 +1,6 @@
+{
+  "name": "@helixid/example-e2e-travel-concierge-py",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Python-SDK (helix-sdk-py) port of examples/e2e-travel-concierge. Not a JS package -- this stub only satisfies pnpm-workspace.yaml's examples/* glob so `pnpm install` at the repo root doesn't choke on this directory having no package.json."
+}

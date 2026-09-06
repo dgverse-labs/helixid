@@ -13,6 +13,9 @@ data/
 *.sqlite-wal
 *.sqlite-shm
 wallet.enc
+__pycache__/
+*.pyc
+.venv/
 
 # OS and editor files
 .DS_Store

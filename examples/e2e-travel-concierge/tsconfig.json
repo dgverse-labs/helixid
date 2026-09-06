@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": [
+    "config.ts",
+    "personas/**/*.ts",
+    "helixid-setup/**/*.ts",
+    "mcp-server/**/*.ts",
+    "agent/**/*.ts"
+  ]
+}
